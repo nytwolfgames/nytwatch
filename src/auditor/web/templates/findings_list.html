@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Findings - Code Auditor{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="headline-lg">Findings</h1>
+    <div class="flex items-center gap-3">
+        {% if approved_count > 0 %}
+        <button onclick="applyBatch()" id="apply-btn" class="btn btn-primary">
+            Apply {{ approved_count }} Approved
+        </button>
+        {% endif %}
+        <a href="/findings/export?{{ request.query_string.decode() }}" class="btn btn-secondary btn-sm">Export</a>
+    </div>
+</div>
+
+<form method="GET" action="/findings" class="card mb-6">
+    <div class="flex gap-3 flex-wrap items-center">
+        <select name="status" class="input">
+            <option value="">All statuses</option>
+            {% for s in ['pending', 'approved', 'rejected', 'applied', 'verified', 'failed'] %}
+            <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s|title }}</option>
+            {% endfor %}
+        </select>
+        <select name="severity" class="input">
+            <option value="">All severities</option>
+            {% for s in ['critical', 'high', 'medium', 'low', 'info'] %}
+            <option value="{{ s }}" {% if filters.severity == s %}selected{% endif %}>{{ s|title }}</option>
+            {% endfor %}
+        </select>
+        <select name="category" class="input">
+            <option value="">All categories</option>
+            {% for c in ['bug', 'performance', 'ue-antipattern', 'modern-cpp', 'memory', 'readability'] %}
+            <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+        <select name="confidence" class="input">
+            <option value="">All confidence</option>
+            {% for c in ['high', 'medium', 'low'] %}
+            <option value="{{ c }}" {% if filters.confidence == c %}selected{% endif %}>{{ c|title }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="file_path" value="{{ filters.file_path or '' }}" placeholder="Filter by file path..." class="input" style="min-width: 12rem;">
+        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+        <a href="/findings" class="link-subtle body-sm">Clear</a>
+    </div>
+</form>
+
+{% if findings %}
+<div class="card" style="padding: 0;">
+    <div class="table-scroll">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width: 90px;">Severity</th>
+                <th style="width: 30%;">Title</th>
+                <th style="width: 20%;">File</th>
+                <th style="width: 85px;">Category</th>
+                <th style="width: 90px;">Confidence</th>
+                <th style="width: 85px;">Status</th>
+                <th style="width: 110px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in findings %}
+            <tr>
+                <td><span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span></td>
+                <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
+                <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}">{{ f.file_path }}:{{ f.line_start }}</td>
+                <td><span class="badge badge-category">{{ f.category }}</span></td>
+                <td class="body-sm text-variant">{{ f.confidence }}</td>
+                <td><span class="badge status-{{ f.status }}">{{ f.status }}</span></td>
+                <td>
+                    {% if f.status == 'pending' %}
+                    <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve">Approve</button>
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" style="margin-left: var(--sp-2);">Reject</button>
+                    {% elif f.status == 'approved' %}
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject">Unapprove</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% else %}
+<div class="card empty-state">
+    No findings match your filters. {% if not filters.status %}Try running a scan first.{% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function applyBatch() {
+    const btn = document.getElementById('apply-btn');
+    btn.disabled = true;
+    btn.textContent = 'Creating batch...';
+    try {
+        const res = await fetch('/batch/apply', { method: 'POST' });
+        const data = await res.json();
+        if (data.batch_id) {
+            window.location.href = '/batches/' + data.batch_id;
+        } else {
+            alert(data.error || 'Failed to create batch');
+        }
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Apply Findings';
+    }
+}
+</script>
+{% endblock %}

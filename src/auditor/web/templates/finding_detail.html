@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ finding.title }} - Code Auditor{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/findings" class="link-subtle body-sm">&larr; Back to findings</a>
+</div>
+
+<div class="flex items-center justify-between mb-6" style="flex-wrap: wrap; gap: var(--sp-4);">
+    <div>
+        <div class="flex items-center gap-2 mb-4 flex-wrap">
+            <span class="badge badge-{{ finding.severity }}">{{ finding.severity|upper }}</span>
+            <span class="badge badge-category">{{ finding.category }}</span>
+            <span class="badge badge-info">{{ finding.confidence }}</span>
+            <span class="badge status-{{ finding.status }}">{{ finding.status }}</span>
+        </div>
+        <h1 class="headline-lg">{{ finding.title }}</h1>
+    </div>
+    <div class="flex gap-2">
+        {% if finding.status == 'pending' %}
+        <button onclick="postAction('/findings/{{ finding.id }}/approve')" class="btn btn-success">Approve</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger">Reject</button>
+        {% elif finding.status == 'approved' %}
+        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger">Unapprove</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="section-label">Description</div>
+    <p class="body-md">{{ finding.description }}</p>
+</div>
+
+<div class="card mb-4">
+    <div class="section-label">Location</div>
+    <div class="mono text-primary">{{ finding.file_path }}:{{ finding.line_start }}-{{ finding.line_end }}</div>
+</div>
+
+<div class="card mb-4">
+    <div class="section-label">Current Code</div>
+    <div class="code-block">
+        <pre><code class="language-cpp">{{ finding.code_snippet }}</code></pre>
+    </div>
+</div>
+
+{% if finding.suggested_fix %}
+<div class="card mb-4">
+    <div class="section-label">Suggested Fix</div>
+    <p class="body-md">{{ finding.suggested_fix }}</p>
+</div>
+{% endif %}
+
+{% if finding.fix_diff %}
+<div class="card mb-4">
+    <div class="section-label">Diff Preview</div>
+    <div class="code-block">
+        <pre><code class="language-diff">{{ finding.fix_diff }}</code></pre>
+    </div>
+</div>
+{% endif %}
+
+{% if finding.test_code %}
+<div class="card mb-4">
+    <div class="section-label">Test Case</div>
+    {% if finding.test_description %}
+    <p class="body-sm text-variant mb-2">{{ finding.test_description }}</p>
+    {% endif %}
+    <div class="code-block">
+        <pre><code class="language-cpp">{{ finding.test_code }}</code></pre>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="section-label">Reasoning</div>
+    <p class="body-sm text-variant">{{ finding.reasoning }}</p>
+</div>
+
+<div class="card">
+    <div class="section-label">Metadata</div>
+    <div class="grid grid-2 gap-4" style="margin-top: var(--sp-3);">
+        <div>
+            <span class="body-sm text-outline">ID</span>
+            <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ finding.id }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Scan ID</span>
+            <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ finding.scan_id }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Auto-fixable</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ 'Yes' if finding.can_auto_fix else 'No' }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Created</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ finding.created_at[:19] }}</div>
+        </div>
+        {% if finding.reviewed_at %}
+        <div>
+            <span class="body-sm text-outline">Reviewed</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ finding.reviewed_at[:19] }}</div>
+        </div>
+        {% endif %}
+        {% if finding.batch_id %}
+        <div>
+            <span class="body-sm text-outline">Batch</span>
+            <div style="margin-top: var(--sp-1);"><a href="/batches/{{ finding.batch_id }}" class="mono">{{ finding.batch_id[:8] }}</a></div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

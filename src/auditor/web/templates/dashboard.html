@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Code Auditor{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="headline-lg">Dashboard</h1>
+    <p class="body-md text-variant" style="margin-top: var(--sp-1);">Proactive code analysis for your Unreal Engine project</p>
+</div>
+
+<div class="grid grid-4 gap-4 mb-8">
+    <div class="card">
+        <div class="stat-number" style="color: var(--severity-medium);">{{ stats.pending_count }}</div>
+        <div class="stat-label">Pending Review</div>
+    </div>
+    <div class="card">
+        <div class="stat-number" style="color: var(--primary);">{{ stats.approved_count }}</div>
+        <div class="stat-label">Approved (ready to apply)</div>
+    </div>
+    <div class="card">
+        <div class="stat-number">{{ stats.total_scans }}</div>
+        <div class="stat-label">Total Scans</div>
+    </div>
+    <div class="card">
+        <div class="stat-number" style="color: var(--status-verified-fg);">{{ stats.status_counts.get('verified', 0) }}</div>
+        <div class="stat-label">Verified Fixes</div>
+    </div>
+</div>
+
+{% if stats.severity_counts %}
+<div class="card mb-8">
+    <div class="label-lg mb-4">Pending by Severity</div>
+    <div class="flex gap-3 flex-wrap">
+        {% for sev in ['critical', 'high', 'medium', 'low', 'info'] %}
+        {% if stats.severity_counts.get(sev, 0) > 0 %}
+        <a href="/findings?status=pending&severity={{ sev }}" style="display: inline-flex; align-items: center; gap: var(--sp-2); background: var(--surface-container); border-radius: var(--radius-md); padding: var(--sp-2) var(--sp-3); text-decoration: none; transition: background 0.15s;">
+            <span class="badge badge-{{ sev }}">{{ sev|upper }}</span>
+            <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--on-surface);">{{ stats.severity_counts[sev] }}</span>
+        </a>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if stats.approved_count > 0 %}
+<div class="cta-section mb-8">
+    <div class="flex items-center justify-between">
+        <div>
+            <div class="label-lg">Ready to Apply</div>
+            <p class="body-sm text-variant" style="margin-top: var(--sp-1);">{{ stats.approved_count }} approved findings waiting to be applied as a batch</p>
+        </div>
+        <button onclick="applyBatch()" id="apply-btn" class="btn btn-primary">
+            Apply {{ stats.approved_count }} Findings
+        </button>
+    </div>
+</div>
+{% endif %}
+
+{% if stats.last_scan %}
+<div class="card mb-8">
+    <div class="label-lg mb-4">Last Scan</div>
+    <div class="grid grid-4 gap-4">
+        <div>
+            <span class="body-sm text-outline">Type</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ stats.last_scan.scan_type }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">System</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ stats.last_scan.system_name or 'All' }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Files</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ stats.last_scan.files_scanned }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Findings</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ stats.last_scan.findings_count }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Status</span>
+            <div style="margin-top: var(--sp-1);"><span class="badge status-{{ stats.last_scan.status }}">{{ stats.last_scan.status }}</span></div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Started</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ stats.last_scan.started_at[:10] }} {{ stats.last_scan.started_at[11:16] }}</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if batches %}
+<div class="card">
+    <div class="label-lg mb-4">Recent Batches</div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Batch</th>
+                <th>Findings</th>
+                <th>Status</th>
+                <th>PR</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for batch in batches[:5] %}
+            <tr>
+                <td><a href="/batches/{{ batch.id }}" class="mono">{{ batch.id[:8] }}</a></td>
+                <td>{{ batch.finding_ids|length }}</td>
+                <td><span class="badge status-{{ batch.status }}">{{ batch.status }}</span></td>
+                <td>
+                    {% if batch.pr_url %}
+                    <a href="{{ batch.pr_url }}" target="_blank">View PR</a>
+                    {% else %}<span class="text-outline">-</span>{% endif %}
+                </td>
+                <td class="body-sm text-variant">{{ batch.created_at[:19] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function applyBatch() {
+    const btn = document.getElementById('apply-btn');
+    btn.disabled = true;
+    btn.textContent = 'Creating batch...';
+    try {
+        const res = await fetch('/batch/apply', { method: 'POST' });
+        const data = await res.json();
+        if (data.batch_id) {
+            window.location.href = '/batches/' + data.batch_id;
+        } else {
+            alert(data.error || 'Failed to create batch');
+        }
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Apply Findings';
+    }
+}
+</script>
+{% endblock %}

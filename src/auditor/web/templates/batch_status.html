@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Batch #{{ batch.id[:8] }} - Code Auditor{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/batches" class="link-subtle body-sm">&larr; Back to batches</a>
+</div>
+
+<div class="flex items-center gap-4 mb-8">
+    <h1 class="headline-lg">Batch #{{ batch.id[:8] }}</h1>
+    <span class="badge status-{{ batch.status }}">{{ batch.status|upper }}</span>
+</div>
+
+{% set steps = [
+    ('applying', 'Fixes Applied', 'Code patches applied to branch'),
+    ('building', 'UE Build', 'Unreal Engine compilation'),
+    ('testing', 'Tests Passing', 'Automated test verification'),
+    ('verified', 'PR Created', 'Pull request created and dev notified'),
+] %}
+
+{% set status_order = {'pending': 0, 'applying': 1, 'building': 2, 'testing': 3, 'verified': 4, 'failed': -1} %}
+{% set current = status_order.get(batch.status, 0) %}
+
+<div class="card mb-6">
+    <div class="label-lg mb-4">Pipeline Progress</div>
+    <div style="display: flex; flex-direction: column; gap: var(--sp-4);">
+        {% for step_key, step_name, step_desc in steps %}
+        {% set step_num = status_order.get(step_key, 0) %}
+        <div>
+            <div class="flex items-center gap-3">
+                {% if batch.status == 'failed' and step_num >= current and current > 0 and loop.index == (current + 1) %}
+                <div class="step-circle step-failed">!</div>
+                {% elif step_num <= current and current > 0 %}
+                <div class="step-circle step-done">&#10003;</div>
+                {% elif step_num == current + 1 and batch.status not in ['failed', 'verified', 'pending'] %}
+                <div class="step-circle step-active">{{ loop.index }}</div>
+                {% else %}
+                <div class="step-circle step-pending">{{ loop.index }}</div>
+                {% endif %}
+                <div>
+                    <span class="label-md">{{ step_name }}</span>
+                    <span class="body-sm text-outline" style="margin-left: var(--sp-2);">{{ step_desc }}</span>
+                </div>
+            </div>
+            {% if step_num == current + 1 and batch.status not in ['failed', 'verified', 'pending'] %}
+            <div class="scanning-pulse" style="margin-top: var(--sp-2); margin-left: 2.25rem;"></div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card mb-6">
+    <div class="label-lg mb-4">Findings ({{ findings|length }})</div>
+    <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
+        {% for f in findings %}
+        <div class="flex items-center justify-between" style="background: var(--surface); border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-4);">
+            <div class="flex items-center gap-3">
+                <span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span>
+                <a href="/findings/{{ f.id }}" class="body-sm">{{ f.title }}</a>
+            </div>
+            <span class="mono body-sm text-outline">{{ f.file_path|truncate(30) }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% if batch.pr_url %}
+<div class="card mb-6" style="background: var(--status-verified-bg);">
+    <div class="label-lg" style="color: var(--status-verified-fg); margin-bottom: var(--sp-2);">Pull Request</div>
+    <a href="{{ batch.pr_url }}" target="_blank" style="color: var(--status-verified-fg); font-weight: 500;">{{ batch.pr_url }}</a>
+</div>
+{% endif %}
+
+{% if batch.build_log %}
+<details class="card mb-6">
+    <summary style="cursor: pointer;" class="label-lg">Build Log</summary>
+    <div class="code-block" style="margin-top: var(--sp-3);">
+        <pre style="max-height: 24rem; overflow-y: auto;">{{ batch.build_log }}</pre>
+    </div>
+</details>
+{% endif %}
+
+{% if batch.test_log %}
+<details class="card mb-6">
+    <summary style="cursor: pointer;" class="label-lg">Test Log</summary>
+    <div class="code-block" style="margin-top: var(--sp-3);">
+        <pre style="max-height: 24rem; overflow-y: auto;">{{ batch.test_log }}</pre>
+    </div>
+</details>
+{% endif %}
+
+<div class="card">
+    <div class="label-lg mb-4">Details</div>
+    <div class="grid grid-2 gap-4">
+        <div>
+            <span class="body-sm text-outline">Batch ID</span>
+            <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ batch.id }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Branch</span>
+            <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ batch.branch_name or '-' }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Commit</span>
+            <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ batch.commit_sha or '-' }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Created</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ batch.created_at[:10] }} {{ batch.created_at[11:16] }}</div>
+        </div>
+        {% if batch.completed_at %}
+        <div>
+            <span class="body-sm text-outline">Completed</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ batch.completed_at[:10] }} {{ batch.completed_at[11:16] }}</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if batch.status in ['applying', 'building', 'testing'] %}
+<script>setTimeout(() => location.reload(), 5000);</script>
+{% endif %}
+{% endblock %}

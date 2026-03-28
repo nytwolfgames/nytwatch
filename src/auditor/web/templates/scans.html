@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Scans - Code Auditor{% endblock %}
+
+{% block content %}
+<h1 class="headline-lg mb-6">Scan History</h1>
+
+{% if scans %}
+<div class="card" style="padding: 0;">
+    <div class="table-scroll">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>System</th>
+                <th>Files</th>
+                <th>Findings</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Completed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for scan in scans %}
+            <tr>
+                <td class="mono" style="font-size: 0.75rem; color: var(--on-surface-variant);">{{ scan.id[:8] }}</td>
+                <td><span class="badge badge-category">{{ scan.scan_type }}</span></td>
+                <td class="body-sm">{{ scan.system_name or 'All' }}</td>
+                <td class="body-sm">{{ scan.files_scanned }}</td>
+                <td>
+                    {% if scan.findings_count > 0 %}
+                    <a href="/findings?scan_id={{ scan.id }}">{{ scan.findings_count }}</a>
+                    {% else %}
+                    <span class="text-outline">0</span>
+                    {% endif %}
+                </td>
+                <td><span class="badge status-{{ scan.status }}">{{ scan.status }}</span></td>
+                <td class="body-sm text-variant">{{ scan.started_at[:10] }} {{ scan.started_at[11:16] }}</td>
+                <td class="body-sm text-variant">{{ (scan.completed_at[:10] ~ ' ' ~ scan.completed_at[11:16] if scan.completed_at else '-') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% else %}
+<div class="card empty-state">
+    No scans yet. Click "Trigger Scan" to run your first scan.
+</div>
+{% endif %}
+{% endblock %}

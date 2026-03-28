@@ -1,0 +1,346 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+from typing import Optional
+
+from auditor.models import (
+    Batch,
+    BatchStatus,
+    Finding,
+    FindingStatus,
+    Scan,
+    ScanStatus,
+    now_iso,
+)
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS findings (
+    id              TEXT PRIMARY KEY,
+    scan_id         TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL,
+    severity        TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    confidence      TEXT NOT NULL,
+    file_path       TEXT NOT NULL,
+    line_start      INTEGER NOT NULL,
+    line_end        INTEGER NOT NULL,
+    code_snippet    TEXT NOT NULL,
+    suggested_fix   TEXT,
+    fix_diff        TEXT,
+    can_auto_fix    INTEGER NOT NULL DEFAULT 0,
+    reasoning       TEXT NOT NULL,
+    test_code       TEXT,
+    test_description TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    batch_id        TEXT,
+    fingerprint     TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL,
+    reviewed_at     TEXT,
+    FOREIGN KEY (scan_id) REFERENCES scans(id)
+);
+
+CREATE TABLE IF NOT EXISTS scans (
+    id              TEXT PRIMARY KEY,
+    scan_type       TEXT NOT NULL,
+    system_name     TEXT,
+    started_at      TEXT NOT NULL,
+    completed_at    TEXT,
+    base_commit     TEXT NOT NULL DEFAULT '',
+    files_scanned   INTEGER DEFAULT 0,
+    findings_count  INTEGER DEFAULT 0,
+    status          TEXT NOT NULL DEFAULT 'running'
+);
+
+CREATE TABLE IF NOT EXISTS batches (
+    id              TEXT PRIMARY KEY,
+    created_at      TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    branch_name     TEXT,
+    build_log       TEXT,
+    test_log        TEXT,
+    commit_sha      TEXT,
+    pr_url          TEXT,
+    finding_ids     TEXT NOT NULL DEFAULT '[]',
+    completed_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS config (
+    key             TEXT PRIMARY KEY,
+    value           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status);
+CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
+CREATE INDEX IF NOT EXISTS idx_findings_file ON findings(file_path);
+CREATE INDEX IF NOT EXISTS idx_findings_fingerprint ON findings(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_findings_scan ON findings(scan_id);
+CREATE INDEX IF NOT EXISTS idx_findings_batch ON findings(batch_id);
+"""
+
+
+class Database:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn: Optional[sqlite3.Connection] = None
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+        return self._conn
+
+    def init_schema(self):
+        self.conn.executescript(SCHEMA_SQL)
+        self.conn.commit()
+
+    def close(self):
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+    # --- Config ---
+
+    def get_config(self, key: str, default: str = "") -> str:
+        row = self.conn.execute(
+            "SELECT value FROM config WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+    def set_config(self, key: str, value: str):
+        self.conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        self.conn.commit()
+
+    # --- Scans ---
+
+    def insert_scan(self, scan: Scan):
+        self.conn.execute(
+            """INSERT INTO scans (id, scan_type, system_name, started_at,
+               completed_at, base_commit, files_scanned, findings_count, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                scan.id, scan.scan_type.value, scan.system_name, scan.started_at,
+                scan.completed_at, scan.base_commit, scan.files_scanned,
+                scan.findings_count, scan.status.value,
+            ),
+        )
+        self.conn.commit()
+
+    def update_scan(self, scan_id: str, **kwargs):
+        sets = []
+        vals = []
+        for k, v in kwargs.items():
+            sets.append(f"{k} = ?")
+            vals.append(v.value if hasattr(v, "value") else v)
+        vals.append(scan_id)
+        self.conn.execute(
+            f"UPDATE scans SET {', '.join(sets)} WHERE id = ?", vals
+        )
+        self.conn.commit()
+
+    def get_scan(self, scan_id: str) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT * FROM scans WHERE id = ?", (scan_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_scans(self, limit: int = 50) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM scans ORDER BY started_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # --- Findings ---
+
+    def insert_finding(self, finding: Finding):
+        self.conn.execute(
+            """INSERT INTO findings (id, scan_id, title, description, severity,
+               category, confidence, file_path, line_start, line_end,
+               code_snippet, suggested_fix, fix_diff, can_auto_fix, reasoning,
+               test_code, test_description, status, batch_id, fingerprint, created_at, reviewed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                finding.id, finding.scan_id, finding.title, finding.description,
+                finding.severity.value, finding.category.value, finding.confidence.value,
+                finding.file_path, finding.line_start, finding.line_end,
+                finding.code_snippet, finding.suggested_fix, finding.fix_diff,
+                int(finding.can_auto_fix), finding.reasoning,
+                finding.test_code, finding.test_description,
+                finding.status.value, finding.batch_id, finding.fingerprint,
+                finding.created_at, finding.reviewed_at,
+            ),
+        )
+        self.conn.commit()
+
+    def get_finding(self, finding_id: str) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT * FROM findings WHERE id = ?", (finding_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_findings(
+        self,
+        status: Optional[str] = None,
+        severity: Optional[str] = None,
+        category: Optional[str] = None,
+        confidence: Optional[str] = None,
+        file_path: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        where = []
+        params: list = []
+
+        if status:
+            where.append("status = ?")
+            params.append(status)
+        if severity:
+            where.append("severity = ?")
+            params.append(severity)
+        if category:
+            where.append("category = ?")
+            params.append(category)
+        if confidence:
+            where.append("confidence = ?")
+            params.append(confidence)
+        if file_path:
+            where.append("file_path LIKE ?")
+            params.append(f"%{file_path}%")
+
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        params.extend([limit, offset])
+
+        rows = self.conn.execute(
+            f"SELECT * FROM findings {clause} ORDER BY "
+            f"CASE severity "
+            f"  WHEN 'critical' THEN 0 "
+            f"  WHEN 'high' THEN 1 "
+            f"  WHEN 'medium' THEN 2 "
+            f"  WHEN 'low' THEN 3 "
+            f"  WHEN 'info' THEN 4 "
+            f"END, created_at DESC LIMIT ? OFFSET ?",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_finding_status(self, finding_id: str, status: FindingStatus):
+        updates = {"status": status.value}
+        if status == FindingStatus.APPROVED or status == FindingStatus.REJECTED:
+            updates["reviewed_at"] = now_iso()
+        sets = ", ".join(f"{k} = ?" for k in updates)
+        vals = list(updates.values()) + [finding_id]
+        self.conn.execute(f"UPDATE findings SET {sets} WHERE id = ?", vals)
+        self.conn.commit()
+
+    def set_finding_batch(self, finding_id: str, batch_id: str):
+        self.conn.execute(
+            "UPDATE findings SET batch_id = ? WHERE id = ?",
+            (batch_id, finding_id),
+        )
+        self.conn.commit()
+
+    def has_fingerprint(self, fingerprint: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM findings WHERE fingerprint = ? AND status IN ('pending', 'approved', 'applied', 'verified') LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        return row is not None
+
+    def get_approved_findings(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM findings WHERE status = 'approved' ORDER BY file_path, line_start"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def count_by_status(self) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT status, COUNT(*) as cnt FROM findings GROUP BY status"
+        ).fetchall()
+        return {r["status"]: r["cnt"] for r in rows}
+
+    def count_by_severity(self) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT severity, COUNT(*) as cnt FROM findings WHERE status = 'pending' GROUP BY severity"
+        ).fetchall()
+        return {r["severity"]: r["cnt"] for r in rows}
+
+    # --- Batches ---
+
+    def insert_batch(self, batch: Batch):
+        self.conn.execute(
+            """INSERT INTO batches (id, created_at, status, branch_name,
+               build_log, test_log, commit_sha, pr_url, finding_ids, completed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                batch.id, batch.created_at, batch.status.value, batch.branch_name,
+                batch.build_log, batch.test_log, batch.commit_sha, batch.pr_url,
+                json.dumps(batch.finding_ids), batch.completed_at,
+            ),
+        )
+        self.conn.commit()
+
+    def update_batch(self, batch_id: str, **kwargs):
+        sets = []
+        vals = []
+        for k, v in kwargs.items():
+            sets.append(f"{k} = ?")
+            if k == "finding_ids":
+                vals.append(json.dumps(v))
+            elif hasattr(v, "value"):
+                vals.append(v.value)
+            else:
+                vals.append(v)
+        vals.append(batch_id)
+        self.conn.execute(
+            f"UPDATE batches SET {', '.join(sets)} WHERE id = ?", vals
+        )
+        self.conn.commit()
+
+    def get_batch(self, batch_id: str) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT * FROM batches WHERE id = ?", (batch_id,)
+        ).fetchone()
+        if row:
+            d = dict(row)
+            d["finding_ids"] = json.loads(d["finding_ids"])
+            return d
+        return None
+
+    def list_batches(self, limit: int = 20) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM batches ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["finding_ids"] = json.loads(d["finding_ids"])
+            result.append(d)
+        return result
+
+    def get_stats(self) -> dict:
+        status_counts = self.count_by_status()
+        severity_counts = self.count_by_severity()
+        scan_count = self.conn.execute("SELECT COUNT(*) as cnt FROM scans").fetchone()["cnt"]
+        batch_count = self.conn.execute("SELECT COUNT(*) as cnt FROM batches").fetchone()["cnt"]
+        last_scan = self.conn.execute(
+            "SELECT * FROM scans ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+
+        return {
+            "status_counts": status_counts,
+            "severity_counts": severity_counts,
+            "total_scans": scan_count,
+            "total_batches": batch_count,
+            "last_scan": dict(last_scan) if last_scan else None,
+            "pending_count": status_counts.get("pending", 0),
+            "approved_count": status_counts.get("approved", 0),
+        }
