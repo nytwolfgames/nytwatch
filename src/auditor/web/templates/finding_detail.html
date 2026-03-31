@@ -10,6 +10,7 @@
     <div>
         <div class="flex items-center gap-2 mb-4 flex-wrap">
             <span class="badge badge-{{ finding.severity }}">{{ finding.severity|upper }}</span>
+            <span class="badge badge-source-{{ finding.source|default('project') }}">{{ (finding.source or 'project')|title }}</span>
             <span class="badge badge-category">{{ finding.category }}</span>
             <span class="badge badge-info">{{ finding.confidence }}</span>
             <span class="badge status-{{ finding.status }}">{{ finding.status }}</span>
@@ -86,6 +87,10 @@
         <div>
             <span class="body-sm text-outline">Scan ID</span>
             <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ finding.scan_id }}</div>
+        </div>
+        <div>
+            <span class="body-sm text-outline">Source</span>
+            <div class="body-md" style="margin-top: var(--sp-1);">{{ (finding.source or 'project')|title }}</div>
         </div>
         <div>
             <span class="body-sm text-outline">Auto-fixable</span>
