@@ -11,6 +11,7 @@ from auditor.models import (
     Category,
     Confidence,
     Finding,
+    FindingSource,
     ScanStatus,
     ScanType,
     Scan,
@@ -20,6 +21,7 @@ from auditor.models import (
 )
 from auditor.analysis.engine import analyze_system
 from auditor.scanner.chunker import collect_system_files, chunk_system
+from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
 
@@ -133,6 +135,7 @@ def _process_system(
                 log.debug("Duplicate fingerprint, skipping: %s", fo.title)
                 continue
 
+            source_type = db.classify_path(fo.file_path)
             finding = Finding(
                 scan_id=scan_id,
                 title=fo.title,
@@ -150,6 +153,7 @@ def _process_system(
                 reasoning=fo.reasoning,
                 test_code=fo.test_code,
                 test_description=fo.test_description,
+                source=FindingSource(source_type),
                 fingerprint=fingerprint,
             )
             db.insert_finding(finding)
@@ -169,6 +173,8 @@ def _process_system(
 
 
 def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
+    detect_source_dirs(config.repo_path, db)
+
     scan_id = new_id()
     current_commit = get_current_commit(config.repo_path)
     last_commit = db.get_config("last_scan_commit")

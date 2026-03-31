@@ -14,6 +14,7 @@ from auditor.models import (
 )
 from auditor.scanner.chunker import collect_system_files, chunk_system
 from auditor.scanner.incremental import run_incremental_scan, get_current_commit, _process_system
+from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ def run_full_system_scan(
     db: Database,
     system_name: str,
 ) -> str:
+    detect_source_dirs(config.repo_path, db)
+
     scan_id = new_id()
 
     system = next((s for s in config.systems if s.name == system_name), None)

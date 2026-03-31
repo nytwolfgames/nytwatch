@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Settings - Code Auditor{% endblock %}
+
+{% block content %}
+<h1 class="headline-lg mb-6">Source Directory Classification</h1>
+<p class="body-md text-variant mb-6">
+    Directories are auto-detected as Project or Plugin using Unreal Engine heuristics and AI classification.
+    You can override any classification below. Changes take effect on the next scan.
+</p>
+
+<div class="grid grid-2 gap-6">
+    <!-- Project Directories -->
+    <div class="card">
+        <div class="section-label mb-4">Project Directories</div>
+        {% if project_dirs %}
+        <div class="dir-list">
+            {% for d in project_dirs %}
+            <div class="dir-item" data-path="{{ d.path }}">
+                <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
+                <button onclick="moveDir('{{ d.path }}', 'plugin')" class="btn btn-secondary btn-sm" title="Move to Plugin">
+                    Plugin &rarr;
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="body-sm text-variant">No project directories classified yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Plugin Directories -->
+    <div class="card">
+        <div class="section-label mb-4">Plugin Directories</div>
+        {% if plugin_dirs %}
+        <div class="dir-list">
+            {% for d in plugin_dirs %}
+            <div class="dir-item" data-path="{{ d.path }}">
+                <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
+                <button onclick="moveDir('{{ d.path }}', 'project')" class="btn btn-secondary btn-sm" title="Move to Project">
+                    &larr; Project
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="body-sm text-variant">No plugin directories classified yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mt-6">
+    <div class="section-label mb-4">Add Directory</div>
+    <div class="flex gap-3 items-center">
+        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex: 1;">
+        <select id="new-dir-type" class="input" style="width: 10rem;">
+            <option value="project">Project</option>
+            <option value="plugin">Plugin</option>
+        </select>
+        <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.dir-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.dir-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--surface-container-low);
+    border-radius: 6px;
+}
+</style>
+<script>
+async function moveDir(path, newType) {
+    try {
+        const res = await fetch('/settings/source-dirs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: path, source_type: newType}),
+        });
+        const data = await res.json();
+        if (data.ok) location.reload();
+        else alert(data.error || 'Failed to update');
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    }
+}
+
+async function addDir() {
+    const path = document.getElementById('new-dir-path').value.trim();
+    const sourceType = document.getElementById('new-dir-type').value;
+    if (!path) { alert('Please enter a directory path'); return; }
+    try {
+        const res = await fetch('/settings/source-dirs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: path, source_type: sourceType}),
+        });
+        const data = await res.json();
+        if (data.ok) location.reload();
+        else alert(data.error || 'Failed to add');
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    }
+}
+</script>
+{% endblock %}

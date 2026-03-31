@@ -54,6 +54,7 @@ async def findings_list(
     category: Optional[str] = None,
     confidence: Optional[str] = None,
     file_path: Optional[str] = None,
+    source: Optional[str] = None,
 ):
     db = get_db(request)
     findings = db.list_findings(
@@ -62,6 +63,7 @@ async def findings_list(
         category=category,
         confidence=confidence,
         file_path=file_path,
+        source=source,
     )
     approved_count = len(db.get_approved_findings())
     filters = {
@@ -70,6 +72,7 @@ async def findings_list(
         "category": category,
         "confidence": confidence,
         "file_path": file_path,
+        "source": source,
     }
     return templates.TemplateResponse("findings_list.html", {
         "request": request,
@@ -87,6 +90,7 @@ async def findings_export(
     category: Optional[str] = None,
     confidence: Optional[str] = None,
     file_path: Optional[str] = None,
+    source: Optional[str] = None,
 ):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -100,6 +104,7 @@ async def findings_export(
         category=category,
         confidence=confidence,
         file_path=file_path,
+        source=source,
     )
     scans = db.list_scans()
     stats = db.get_stats()
@@ -162,7 +167,7 @@ async def findings_export(
     # --- Sheet 2: Findings ---
     ws_findings = wb.create_sheet("Findings")
     headers = [
-        "Severity", "Title", "File", "Line Start", "Line End",
+        "Severity", "Source", "Title", "File", "Line Start", "Line End",
         "Category", "Confidence", "Status", "Description",
         "Suggested Fix", "Reasoning", "Test Description",
         "Created", "Reviewed",
@@ -183,19 +188,20 @@ async def findings_export(
     for row_idx, f in enumerate(findings, start=2):
         sev = f.get("severity", "")
         ws_findings.cell(row=row_idx, column=1, value=sev)
-        ws_findings.cell(row=row_idx, column=2, value=f.get("title", ""))
-        ws_findings.cell(row=row_idx, column=3, value=f.get("file_path", ""))
-        ws_findings.cell(row=row_idx, column=4, value=f.get("line_start", 0))
-        ws_findings.cell(row=row_idx, column=5, value=f.get("line_end", 0))
-        ws_findings.cell(row=row_idx, column=6, value=f.get("category", ""))
-        ws_findings.cell(row=row_idx, column=7, value=f.get("confidence", ""))
-        ws_findings.cell(row=row_idx, column=8, value=f.get("status", ""))
-        ws_findings.cell(row=row_idx, column=9, value=f.get("description", ""))
-        ws_findings.cell(row=row_idx, column=10, value=f.get("suggested_fix", ""))
-        ws_findings.cell(row=row_idx, column=11, value=f.get("reasoning", ""))
-        ws_findings.cell(row=row_idx, column=12, value=f.get("test_description", ""))
-        ws_findings.cell(row=row_idx, column=13, value=f.get("created_at", ""))
-        ws_findings.cell(row=row_idx, column=14, value=f.get("reviewed_at", ""))
+        ws_findings.cell(row=row_idx, column=2, value=f.get("source", "project"))
+        ws_findings.cell(row=row_idx, column=3, value=f.get("title", ""))
+        ws_findings.cell(row=row_idx, column=4, value=f.get("file_path", ""))
+        ws_findings.cell(row=row_idx, column=5, value=f.get("line_start", 0))
+        ws_findings.cell(row=row_idx, column=6, value=f.get("line_end", 0))
+        ws_findings.cell(row=row_idx, column=7, value=f.get("category", ""))
+        ws_findings.cell(row=row_idx, column=8, value=f.get("confidence", ""))
+        ws_findings.cell(row=row_idx, column=9, value=f.get("status", ""))
+        ws_findings.cell(row=row_idx, column=10, value=f.get("description", ""))
+        ws_findings.cell(row=row_idx, column=11, value=f.get("suggested_fix", ""))
+        ws_findings.cell(row=row_idx, column=12, value=f.get("reasoning", ""))
+        ws_findings.cell(row=row_idx, column=13, value=f.get("test_description", ""))
+        ws_findings.cell(row=row_idx, column=14, value=f.get("created_at", ""))
+        ws_findings.cell(row=row_idx, column=15, value=f.get("reviewed_at", ""))
 
         sev_cell = ws_findings.cell(row=row_idx, column=1)
         if sev in severity_fills:
@@ -291,6 +297,46 @@ async def trigger_scan(request: Request):
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return JSONResponse({"ok": True, "scan_id": "started"})
+
+
+# --- Settings ---
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    db = get_db(request)
+    source_dirs = db.list_source_dirs()
+    project_dirs = [d for d in source_dirs if d["source_type"] == "project"]
+    plugin_dirs = [d for d in source_dirs if d["source_type"] == "plugin"]
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "project_dirs": project_dirs,
+        "plugin_dirs": plugin_dirs,
+    })
+
+
+@router.post("/settings/source-dirs")
+async def update_source_dir(request: Request):
+    db = get_db(request)
+    body = await request.json()
+    path = body.get("path", "").strip()
+    source_type = body.get("source_type", "").strip()
+    if not path or source_type not in ("project", "plugin"):
+        return JSONResponse({"error": "Invalid path or source_type"}, status_code=400)
+    db.upsert_source_dir(path, source_type)
+    logger.info("Source dir updated: '%s' -> '%s'", path, source_type)
+    return JSONResponse({"ok": True, "path": path, "source_type": source_type})
+
+
+@router.delete("/settings/source-dirs")
+async def delete_source_dir(request: Request):
+    db = get_db(request)
+    body = await request.json()
+    path = body.get("path", "").strip()
+    if not path:
+        return JSONResponse({"error": "Invalid path"}, status_code=400)
+    db.delete_source_dir(path)
+    logger.info("Source dir deleted: '%s'", path)
+    return JSONResponse({"ok": True, "path": path})
 
 
 # --- Batches ---

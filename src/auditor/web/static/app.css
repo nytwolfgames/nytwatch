@@ -313,6 +313,17 @@ body {
 .badge-low { background: var(--severity-low); color: white; }
 .badge-info { background: var(--severity-info); color: white; }
 
+.badge-source-project {
+  background: #dbeafe;
+  color: #1e40af;
+  font-weight: 600;
+}
+.badge-source-plugin {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+}
+
 .badge-category {
   background: var(--surface-container-high);
   color: var(--on-surface-variant);

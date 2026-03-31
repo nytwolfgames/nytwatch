@@ -39,6 +39,11 @@ class Confidence(str, Enum):
     LOW = "low"
 
 
+class FindingSource(str, Enum):
+    PROJECT = "project"
+    PLUGIN = "plugin"
+
+
 class FindingStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -88,6 +93,7 @@ class Finding(BaseModel):
     reasoning: str
     test_code: Optional[str] = None
     test_description: Optional[str] = None
+    source: FindingSource = FindingSource.PROJECT
     status: FindingStatus = FindingStatus.PENDING
     batch_id: Optional[str] = None
     fingerprint: str = ""

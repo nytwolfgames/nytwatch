@@ -9,6 +9,7 @@ from auditor.models import (
     Batch,
     BatchStatus,
     Finding,
+    FindingSource,
     FindingStatus,
     Scan,
     ScanStatus,
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS findings (
     reasoning       TEXT NOT NULL,
     test_code       TEXT,
     test_description TEXT,
+    source          TEXT NOT NULL DEFAULT 'project',
     status          TEXT NOT NULL DEFAULT 'pending',
     batch_id        TEXT,
     fingerprint     TEXT NOT NULL DEFAULT '',
@@ -67,6 +69,11 @@ CREATE TABLE IF NOT EXISTS batches (
     completed_at    TEXT
 );
 
+CREATE TABLE IF NOT EXISTS source_dirs (
+    path            TEXT PRIMARY KEY,
+    source_type     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS config (
     key             TEXT PRIMARY KEY,
     value           TEXT NOT NULL
@@ -78,6 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_findings_file ON findings(file_path);
 CREATE INDEX IF NOT EXISTS idx_findings_fingerprint ON findings(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_findings_scan ON findings(scan_id);
 CREATE INDEX IF NOT EXISTS idx_findings_batch ON findings(batch_id);
+CREATE INDEX IF NOT EXISTS idx_findings_source ON findings(source);
 """
 
 
@@ -166,8 +174,8 @@ class Database:
             """INSERT INTO findings (id, scan_id, title, description, severity,
                category, confidence, file_path, line_start, line_end,
                code_snippet, suggested_fix, fix_diff, can_auto_fix, reasoning,
-               test_code, test_description, status, batch_id, fingerprint, created_at, reviewed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               test_code, test_description, source, status, batch_id, fingerprint, created_at, reviewed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 finding.id, finding.scan_id, finding.title, finding.description,
                 finding.severity.value, finding.category.value, finding.confidence.value,
@@ -175,8 +183,8 @@ class Database:
                 finding.code_snippet, finding.suggested_fix, finding.fix_diff,
                 int(finding.can_auto_fix), finding.reasoning,
                 finding.test_code, finding.test_description,
-                finding.status.value, finding.batch_id, finding.fingerprint,
-                finding.created_at, finding.reviewed_at,
+                finding.source.value, finding.status.value, finding.batch_id,
+                finding.fingerprint, finding.created_at, finding.reviewed_at,
             ),
         )
         self.conn.commit()
@@ -194,6 +202,7 @@ class Database:
         category: Optional[str] = None,
         confidence: Optional[str] = None,
         file_path: Optional[str] = None,
+        source: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]:
@@ -215,6 +224,9 @@ class Database:
         if file_path:
             where.append("file_path LIKE ?")
             params.append(f"%{file_path}%")
+        if source:
+            where.append("source = ?")
+            params.append(source)
 
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         params.extend([limit, offset])
@@ -325,6 +337,41 @@ class Database:
             d["finding_ids"] = json.loads(d["finding_ids"])
             result.append(d)
         return result
+
+    # --- Source Dirs ---
+
+    def list_source_dirs(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT path, source_type FROM source_dirs ORDER BY path"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_source_dir(self, path: str, source_type: str):
+        self.conn.execute(
+            "INSERT OR REPLACE INTO source_dirs (path, source_type) VALUES (?, ?)",
+            (path, source_type),
+        )
+        self.conn.commit()
+
+    def delete_source_dir(self, path: str):
+        self.conn.execute("DELETE FROM source_dirs WHERE path = ?", (path,))
+        self.conn.commit()
+
+    def has_source_dir(self, path: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM source_dirs WHERE path = ? LIMIT 1", (path,)
+        ).fetchone()
+        return row is not None
+
+    def classify_path(self, file_path: str) -> str:
+        rows = self.conn.execute(
+            "SELECT path, source_type FROM source_dirs ORDER BY length(path) DESC"
+        ).fetchall()
+        for row in rows:
+            prefix = row["path"].rstrip("/") + "/"
+            if file_path.startswith(prefix) or file_path.startswith(row["path"]):
+                return row["source_type"]
+        return "project"
 
     def get_stats(self) -> dict:
         status_counts = self.count_by_status()
