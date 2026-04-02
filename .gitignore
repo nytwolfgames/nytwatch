@@ -12,3 +12,5 @@ build/
 *.xlsx
 *.png
 .claude/
+.DS_Store
+src/.DS_Store

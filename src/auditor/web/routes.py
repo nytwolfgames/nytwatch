@@ -307,10 +307,12 @@ async def settings_page(request: Request):
     source_dirs = db.list_source_dirs()
     project_dirs = [d for d in source_dirs if d["source_type"] == "project"]
     plugin_dirs = [d for d in source_dirs if d["source_type"] == "plugin"]
+    ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "project_dirs": project_dirs,
         "plugin_dirs": plugin_dirs,
+        "ignored_dirs": ignored_dirs,
     })
 
 
@@ -320,7 +322,7 @@ async def update_source_dir(request: Request):
     body = await request.json()
     path = body.get("path", "").strip()
     source_type = body.get("source_type", "").strip()
-    if not path or source_type not in ("project", "plugin"):
+    if not path or source_type not in ("project", "plugin", "ignored"):
         return JSONResponse({"error": "Invalid path or source_type"}, status_code=400)
     db.upsert_source_dir(path, source_type)
     logger.info("Source dir updated: '%s' -> '%s'", path, source_type)

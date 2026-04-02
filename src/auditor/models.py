@@ -42,6 +42,7 @@ class Confidence(str, Enum):
 class FindingSource(str, Enum):
     PROJECT = "project"
     PLUGIN = "plugin"
+    IGNORED = "ignored"
 
 
 class FindingStatus(str, Enum):

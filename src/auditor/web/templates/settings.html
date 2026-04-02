@@ -17,9 +17,11 @@
             {% for d in project_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
-                <button onclick="moveDir('{{ d.path }}', 'plugin')" class="btn btn-secondary btn-sm" title="Move to Plugin">
-                    Plugin &rarr;
-                </button>
+                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
+                    <option value="project" selected>Project</option>
+                    <option value="plugin">Plugin</option>
+                    <option value="ignored">Ignored</option>
+                </select>
             </div>
             {% endfor %}
         </div>
@@ -36,9 +38,11 @@
             {% for d in plugin_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
-                <button onclick="moveDir('{{ d.path }}', 'project')" class="btn btn-secondary btn-sm" title="Move to Project">
-                    &larr; Project
-                </button>
+                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
+                    <option value="project">Project</option>
+                    <option value="plugin" selected>Plugin</option>
+                    <option value="ignored">Ignored</option>
+                </select>
             </div>
             {% endfor %}
         </div>
@@ -48,6 +52,28 @@
     </div>
 </div>
 
+<!-- Ignored Directories -->
+<div class="card mt-6">
+    <div class="section-label mb-2">Ignored Directories</div>
+    <p class="body-sm text-variant mb-4">These directories contain no scannable C++ code and are skipped during analysis.</p>
+    {% if ignored_dirs %}
+    <div class="dir-list">
+        {% for d in ignored_dirs %}
+        <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
+            <span class="mono body-sm" style="flex: 1; word-break: break-all; opacity: 0.6;">{{ d.path }}</span>
+            <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
+                <option value="project">Project</option>
+                <option value="plugin">Plugin</option>
+                <option value="ignored" selected>Ignored</option>
+            </select>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="body-sm text-variant">No ignored directories.</p>
+    {% endif %}
+</div>
+
 <div class="card mt-6">
     <div class="section-label mb-4">Add Directory</div>
     <div class="flex gap-3 items-center">
@@ -55,6 +81,7 @@
         <select id="new-dir-type" class="input" style="width: 10rem;">
             <option value="project">Project</option>
             <option value="plugin">Plugin</option>
+            <option value="ignored">Ignored</option>
         </select>
         <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
     </div>
@@ -75,6 +102,10 @@
     padding: var(--sp-2) var(--sp-3);
     background: var(--surface-container-low);
     border-radius: 6px;
+}
+.dir-item-ignored {
+    opacity: 0.7;
+    border-left: 3px solid var(--outline);
 }
 </style>
 <script>

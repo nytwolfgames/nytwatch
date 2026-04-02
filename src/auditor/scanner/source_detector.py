@@ -102,6 +102,26 @@ def _heuristic_classify(repo: Path) -> tuple[dict[str, str], list[str]]:
             if rel in unclassified:
                 unclassified.remove(rel)
 
+    # Rule 4: Classify remaining top-level dirs as ignored if they have no C++ code
+    _ue_generated = {".git", "Intermediate", "Saved", "Binaries", "DerivedDataCache", ".vs", ".idea"}
+    for item in repo.iterdir():
+        if not item.is_dir() or item.name in _ue_generated or item.name.startswith("."):
+            continue
+        rel = str(item.relative_to(repo))
+        # Skip if already classified (Source/DragonRacer, Plugins/X, etc.)
+        already_covered = any(
+            c == rel or c.startswith(rel + "/") or rel.startswith(c + "/")
+            for c in classified
+        )
+        if already_covered or rel in unclassified:
+            continue
+        # Check for any .h/.cpp files
+        has_code = any(item.rglob("*.h")) or any(item.rglob("*.cpp"))
+        if has_code:
+            unclassified.append(rel)
+        else:
+            classified[rel] = "ignored"
+
     return classified, unclassified
 
 
