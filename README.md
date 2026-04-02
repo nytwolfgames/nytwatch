@@ -24,6 +24,15 @@ A proactive code analysis agent for Unreal Engine C++ game projects. It scans yo
 9. MERGE       Dev reviews PR and merges at their convenience
 ```
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Product Brief](docs/PRODUCT_BRIEF.md) | What Code Auditor is, who it's for, features, roadmap, competitive landscape |
+| [Technical Specification](docs/TECHNICAL_SPEC.md) | Complete module reference, database schema, API endpoints, prompt engineering, status lifecycles |
+| [Setup Guide](docs/SETUP_GUIDE.md) | Step-by-step setup for humans and AI agents, with automated setup script |
+| [Design System](docs/DESIGN_SYSTEM.md) | "Clinical Precision" visual language — colors, typography, components, interaction patterns |
+
 ## Requirements
 
 - Python 3.9+
