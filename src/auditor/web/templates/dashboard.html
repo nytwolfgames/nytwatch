@@ -58,8 +58,12 @@
 
 {% if systems %}
 <div class="card mb-8" style="padding: 0;">
-    <div class="label-lg" style="padding: var(--sp-4) var(--sp-4) 0;">Systems</div>
-    <table class="data-table" style="width: 100%; margin-top: var(--sp-3);">
+    <div style="padding: var(--sp-4) var(--sp-4) 0; display:flex; align-items:center; gap: var(--sp-2);">
+        <span class="label-lg" style="flex:1;">Systems</span>
+        <button class="btn btn-sm" onclick="triggerScan(null, 'incremental')">Incremental All</button>
+        <button class="btn btn-sm btn-primary" onclick="triggerScan(null, 'full')">Full Scan All</button>
+    </div>
+    <table id="systems-table" class="data-table" style="width: 100%; margin-top: var(--sp-3);">
         <thead>
             <tr>
                 <th>System</th>
@@ -68,11 +72,17 @@
         </thead>
         <tbody>
             {% for system in systems %}
-            <tr>
-                <td class="body-md">{{ system }}</td>
+            <tr data-system="{{ system }}">
+                <td class="body-md">
+                    {{ system }}
+                    <span class="system-scan-badge" style="display:none; margin-left: var(--sp-2); font-size:0.7rem; background:#1d4ed8; color:#fff; padding:2px 7px; border-radius:4px; font-weight:500; vertical-align:middle;"></span>
+                </td>
                 <td style="text-align: right; white-space: nowrap;">
-                    <button class="btn btn-sm" onclick="triggerScan('{{ system }}', 'incremental')">Incremental</button>
-                    <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system }}', 'full')" style="margin-left: var(--sp-2);">Full Scan</button>
+                    <span class="system-actions">
+                        <button class="btn btn-sm" onclick="triggerScan('{{ system }}', 'incremental')">Incremental</button>
+                        <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system }}', 'full')" style="margin-left: var(--sp-2);">Full Scan</button>
+                    </span>
+                    <button class="btn btn-sm btn-danger system-stop-btn scan-safe" onclick="cancelScan()" style="display:none;">Stop</button>
                 </td>
             </tr>
             {% endfor %}
@@ -117,6 +127,34 @@
 
 {% block scripts %}
 <script>
+function highlightScannedSystem(data) {
+    const activeSystem = data.running && data.scan ? data.scan.system_name : null;
+    document.querySelectorAll('#systems-table tbody tr').forEach(row => {
+        const badge = row.querySelector('.system-scan-badge');
+        const actions = row.querySelector('.system-actions');
+        const stopBtn = row.querySelector('.system-stop-btn');
+        if (!badge) return;
+
+        if (activeSystem && activeSystem === row.dataset.system) {
+            const label = data.cancelling ? 'cancelling' : (data.scan.scan_type || 'scanning');
+            badge.textContent = label;
+            badge.style.display = '';
+            row.style.background = 'var(--surface-container-high, rgba(29,78,216,.12))';
+            actions.style.display = 'none';
+            stopBtn.style.display = '';
+            stopBtn.disabled = data.cancelling;
+            stopBtn.textContent = data.cancelling ? 'Cancelling…' : 'Stop';
+        } else {
+            badge.style.display = 'none';
+            row.style.background = '';
+            actions.style.display = '';
+            stopBtn.style.display = 'none';
+        }
+    });
+}
+
+onWsMessage('scan_status', highlightScannedSystem);
+
 async function triggerScan(systemName, scanType) {
     try {
         const res = await fetch('/scans/trigger', {
