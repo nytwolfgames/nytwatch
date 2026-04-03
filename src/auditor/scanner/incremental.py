@@ -6,6 +6,7 @@ import subprocess
 from typing import Optional
 
 from auditor.config import AuditorConfig, SystemDef
+from auditor.paths import normalize_path
 from auditor.database import Database
 from auditor.models import (
     Category,
@@ -60,11 +61,13 @@ def map_files_to_systems(
     mapping: dict[str, list[str]] = {}
 
     for fpath in changed_files:
+        norm_fpath = normalize_path(fpath)
         matched = False
         for system in systems:
             for prefix in system.paths:
-                normalized = prefix.rstrip("/") + "/"
-                if fpath.startswith(normalized) or fpath.startswith(prefix):
+                norm_prefix = normalize_path(prefix)
+                normalized = norm_prefix.rstrip("/") + "/"
+                if norm_fpath.startswith(normalized) or norm_fpath.startswith(norm_prefix):
                     mapping.setdefault(system.name, []).append(fpath)
                     matched = True
                     break

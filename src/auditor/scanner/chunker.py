@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from auditor.config import SystemDef
+from auditor.paths import normalize_path
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def collect_system_files(
                 if fpath.stat().st_size > MAX_FILE_SIZE:
                     log.debug("Skipping large file: %s (%d bytes)", fpath, fpath.stat().st_size)
                     continue
-                rel = str(fpath.relative_to(repo))
+                rel = normalize_path(str(fpath.relative_to(repo)))
                 try:
                     collected[rel] = fpath.read_text(errors="replace")
                 except OSError as exc:

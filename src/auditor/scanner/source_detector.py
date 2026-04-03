@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from auditor.database import Database
+from auditor.paths import normalize_path
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def _heuristic_classify(repo: Path) -> tuple[dict[str, str], list[str]]:
     if plugins_dir.exists():
         for item in plugins_dir.iterdir():
             if item.is_dir():
-                rel = str(item.relative_to(repo))
+                rel = normalize_path(str(item.relative_to(repo)))
                 uplugin_files = list(item.glob("*.uplugin"))
                 if uplugin_files:
                     classified[rel] = "plugin"
@@ -82,7 +83,7 @@ def _heuristic_classify(repo: Path) -> tuple[dict[str, str], list[str]]:
     if source_dir.exists():
         for item in source_dir.iterdir():
             if item.is_dir():
-                rel = str(item.relative_to(repo))
+                rel = normalize_path(str(item.relative_to(repo)))
                 if project_name and item.name == project_name:
                     classified[rel] = "project"
                 elif project_name and item.name.startswith(project_name):
@@ -96,7 +97,7 @@ def _heuristic_classify(repo: Path) -> tuple[dict[str, str], list[str]]:
     # Rule 3: Check for .uplugin files anywhere else (in-project plugins)
     for uplugin in repo.rglob("*.uplugin"):
         plugin_dir = uplugin.parent
-        rel = str(plugin_dir.relative_to(repo))
+        rel = normalize_path(str(plugin_dir.relative_to(repo)))
         if rel not in classified:
             classified[rel] = "plugin"
             if rel in unclassified:
