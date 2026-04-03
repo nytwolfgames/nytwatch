@@ -90,10 +90,12 @@
     <script>
         hljs.highlightAll();
 
-        // --- Scan state polling ---
+        // --- Scan state via WebSocket (polling fallback) ---
 
-        let _scanPolling = null;
         let _wasRunning = false;
+        let _ws = null;
+        let _wsReconnectDelay = 1000;
+        let _fallbackPolling = null;
 
         function setScanRunning(running, scan, cancelling) {
             const banner = document.getElementById('scan-banner');
@@ -140,25 +142,70 @@
             }
         }
 
-        async function checkScanStatus() {
+        function handleScanStatusMessage(data) {
+            const wasRunning = _wasRunning;
+            setScanRunning(data.running, data.scan, data.cancelling);
+            _wasRunning = data.running;
+            if (!data.running && wasRunning) {
+                // Scan just finished — reload to refresh tables/findings
+                setTimeout(() => location.reload(), 300);
+            }
+        }
+
+        // Dispatch incoming WS messages to whichever handler is registered
+        // (base.html handles scan_status; scans.html registers a log handler)
+        const _wsHandlers = {};
+        function onWsMessage(type, fn) { _wsHandlers[type] = fn; }
+
+        function connectWs() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            _ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+            _ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'scan_status') {
+                        handleScanStatusMessage(data);
+                    }
+                    if (_wsHandlers[data.type]) {
+                        _wsHandlers[data.type](data);
+                    }
+                } catch (e) {}
+            };
+
+            _ws.onopen = () => {
+                _wsReconnectDelay = 1000;
+                // WS is up — drop fallback polling if it was running
+                if (_fallbackPolling) {
+                    clearInterval(_fallbackPolling);
+                    _fallbackPolling = null;
+                }
+            };
+
+            _ws.onclose = () => {
+                _ws = null;
+                // Fall back to REST polling while WS is down
+                if (!_fallbackPolling) {
+                    _fallbackPolling = setInterval(checkScanStatusFallback, 4000);
+                }
+                // Reconnect with backoff
+                setTimeout(connectWs, _wsReconnectDelay);
+                _wsReconnectDelay = Math.min(_wsReconnectDelay * 2, 30000);
+            };
+
+            _ws.onerror = () => { _ws && _ws.close(); };
+        }
+
+        async function checkScanStatusFallback() {
             try {
                 const res = await fetch('/api/scan-status');
                 const data = await res.json();
-                setScanRunning(data.running, data.scan, data.cancelling);
-
-                if (!data.running && _wasRunning) {
-                    // Scan just finished or was cancelled — reload
-                    clearInterval(_scanPolling);
-                    _scanPolling = null;
-                    location.reload();
-                }
-                _wasRunning = data.running;
-            } catch (e) {
-                // Server unreachable — stop polling silently
-                clearInterval(_scanPolling);
-                _scanPolling = null;
-            }
+                handleScanStatusMessage(data);
+            } catch (e) {}
         }
+
+        // Start WS connection on page load
+        connectWs();
 
         async function cancelScan() {
             const btn = document.getElementById('cancel-scan-btn');
@@ -172,16 +219,6 @@
             }
         }
 
-        function startScanPolling() {
-            if (_scanPolling) return;
-            _scanPolling = setInterval(checkScanStatus, 3000);
-        }
-
-        // Check immediately on page load, then start polling
-        checkScanStatus().then(() => {
-            if (_wasRunning) startScanPolling();
-        });
-
         async function triggerScan() {
             const btn = document.getElementById('trigger-scan-btn');
             btn.disabled = true;
@@ -191,8 +228,7 @@
                 const data = await res.json();
                 if (data.ok) {
                     _wasRunning = true;
-                    setScanRunning(true, null);
-                    startScanPolling();
+                    setScanRunning(true, null, false);
                     // Give the background thread ~400ms to insert the scan record,
                     // then reload so the Scan History page shows it immediately.
                     setTimeout(() => location.reload(), 400);

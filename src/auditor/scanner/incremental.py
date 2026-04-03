@@ -187,9 +187,12 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
     db.insert_scan(scan)
 
     from auditor.scan_state import ScanLogHandler
+    from auditor.ws_manager import manager as ws_manager
     _log_handler = ScanLogHandler(scan_id, db)
     _log_handler.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger("auditor").addHandler(_log_handler)
+
+    ws_manager.push_scan_status(running=True, scan=db.get_scan(scan_id), cancelling=False)
 
     try:
         detect_source_dirs(config.repo_path, db)
@@ -284,6 +287,13 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
             systems_failed, systems_attempted,
         )
 
+    except InterruptedError:
+        log.info("Incremental scan %s was cancelled", scan_id)
+        db.update_scan(
+            scan_id,
+            status=ScanStatus.CANCELLED,
+            completed_at=now_iso(),
+        )
     except Exception:
         log.exception("Incremental scan %s failed", scan_id)
         db.update_scan(
@@ -293,5 +303,6 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
         )
     finally:
         logging.getLogger("auditor").removeHandler(_log_handler)
+        ws_manager.push_scan_status(running=False, scan=db.get_scan(scan_id), cancelling=False)
 
     return scan_id

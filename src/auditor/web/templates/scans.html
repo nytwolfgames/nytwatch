@@ -152,33 +152,40 @@
                 _logOffset += data.logs.length;
             }
 
-            const total = _logOffset;
-            countEl.textContent = `${total} line${total !== 1 ? 's' : ''}`;
+            countEl.textContent = `${_logOffset} line${_logOffset !== 1 ? 's' : ''}`;
 
             if (!data.running) {
                 liveBadge.style.display = 'none';
-                stopLogPolling();
             }
 
-            if (autoScroll) {
-                content.scrollTop = content.scrollHeight;
-            }
-        } catch (e) {
-            stopLogPolling();
-        }
+            if (autoScroll) content.scrollTop = content.scrollHeight;
+        } catch (e) {}
     }
 
-    function startLogPolling() {
-        stopLogPolling();
-        _logPolling = setInterval(() => fetchLogs(false), 2000);
-    }
+    // Register WS log handler — appends live lines as they arrive
+    onWsMessage('log', (data) => {
+        if (!_logScanId || data.scan_id !== _logScanId) return;
+        const content = document.getElementById('log-content');
+        const countEl = document.getElementById('log-count');
+        const autoScroll = document.getElementById('log-autoscroll').checked;
 
-    function stopLogPolling() {
-        if (_logPolling) {
-            clearInterval(_logPolling);
-            _logPolling = null;
+        if (content.innerHTML.includes('No log entries')) content.innerHTML = '';
+        content.innerHTML += (content.innerHTML ? '\n' : '') + renderLines([data.entry]);
+        _logOffset += 1;
+        countEl.textContent = `${_logOffset} line${_logOffset !== 1 ? 's' : ''}`;
+        if (autoScroll) content.scrollTop = content.scrollHeight;
+    });
+
+    // When a scan finishes, hide the LIVE badge on the open modal
+    onWsMessage('scan_status', (data) => {
+        if (!_logScanId) return;
+        if (!data.running) {
+            document.getElementById('log-live-badge').style.display = 'none';
         }
-    }
+    });
+
+    function startLogPolling() { /* no-op: WS handles live updates */ }
+    function stopLogPolling() { /* no-op */ }
 
     function closeLog() {
         stopLogPolling();

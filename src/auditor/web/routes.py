@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from io import BytesIO
@@ -7,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
@@ -314,8 +315,11 @@ async def cancel_scan(request: Request):
         canceller.cancel()
         logger.info("Scan cancellation requested")
 
-    # Mark any still-running scan record as cancelled
+    # Notify clients that cancellation is in progress
+    from auditor.ws_manager import manager as ws_manager
     running = db.get_running_scan()
+    ws_manager.push_scan_status(running=running is not None, scan=running, cancelling=True)
+
     if running:
         from auditor.models import ScanStatus, now_iso
         db.update_scan(running["id"], status=ScanStatus.CANCELLED, completed_at=now_iso())
@@ -435,6 +439,33 @@ async def apply_batch(request: Request):
 async def api_stats(request: Request):
     db = get_db(request)
     return JSONResponse(db.get_stats())
+
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    from auditor.ws_manager import manager as ws_manager
+    from auditor.scan_state import canceller
+
+    await ws_manager.connect(websocket)
+    try:
+        # Push current scan state immediately so the client doesn't have to wait
+        db = websocket.app.state.db
+        running = db.get_running_scan()
+        await websocket.send_text(json.dumps({
+            "type": "scan_status",
+            "running": running is not None,
+            "scan": running,
+            "cancelling": canceller.is_cancelled,
+        }))
+        # Keep connection alive; client may send pings
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        ws_manager.disconnect(websocket)
 
 
 @router.get("/api/scans/{scan_id}/logs")

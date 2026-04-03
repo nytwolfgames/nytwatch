@@ -64,11 +64,22 @@ class ScanLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            from auditor.models import now_iso
+            logged_at = now_iso()
+            message = self.format(record)
             self._db.insert_scan_log(
                 self.scan_id,
                 record.levelname,
                 record.name,
-                self.format(record),
+                message,
+            )
+            from auditor.ws_manager import manager as ws_manager
+            ws_manager.push_log(
+                scan_id=self.scan_id,
+                level=record.levelname,
+                logger_name=record.name,
+                message=message,
+                logged_at=logged_at,
             )
         except Exception:
             self.handleError(record)

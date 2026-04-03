@@ -22,7 +22,14 @@ logger = logging.getLogger("auditor")
 
 
 def create_app(config: AuditorConfig) -> FastAPI:
+    import asyncio
+    from auditor.ws_manager import manager as ws_manager
+
     app = FastAPI(title="Code Auditor", version="0.1.0")
+
+    @app.on_event("startup")
+    async def startup():
+        ws_manager.set_loop(asyncio.get_event_loop())
 
     db = Database(get_db_path(config))
     db.init_schema()
