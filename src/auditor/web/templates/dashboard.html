@@ -60,6 +60,7 @@
 <div class="card mb-8" style="padding: 0;">
     <div style="padding: var(--sp-4) var(--sp-4) 0; display:flex; align-items:center; gap: var(--sp-2);">
         <span class="label-lg" style="flex:1;">Systems</span>
+        <button class="btn btn-sm scan-safe" onclick="openDrawer(null)">+ Add System</button>
         <button class="btn btn-sm" onclick="triggerScan(null, 'incremental')">Incremental All</button>
         <button class="btn btn-sm btn-primary" onclick="triggerScan(null, 'full')">Full Scan All</button>
     </div>
@@ -76,6 +77,8 @@
             <tr data-system="{{ system.name }}">
                 <td class="body-md">
                     <a href="/findings?system={{ system.name }}" style="color: inherit; text-decoration: none;">{{ system.name }}</a>
+                    <button onclick="openDrawer({{ loop.index0 }})" class="scan-safe" title="Edit system"
+                        style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:0.8rem;padding:1px 5px;margin-left:3px;opacity:.5;vertical-align:middle;">✏</button>
                     <span class="system-scan-badge" style="display:none; margin-left: var(--sp-2); font-size:0.7rem; background:#1d4ed8; color:#fff; padding:2px 7px; border-radius:4px; font-weight:500; vertical-align:middle;"></span>
                 </td>
                 <td class="body-sm text-variant" style="width: 80px;">
@@ -131,10 +134,352 @@
 </div>
 {% endif %}
 
+<!-- ── System editor drawer ──────────────────────────────────────────────── -->
+<div id="drawer-backdrop" onclick="closeDrawer()"
+     style="display:none;position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.45);"></div>
+
+<aside id="system-drawer"
+       style="display:none;position:fixed;right:0;top:0;bottom:0;width:460px;z-index:1600;
+              background:var(--surface);border-left:1px solid var(--outline);
+              flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3);">
+    <div style="display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--outline);flex-shrink:0;">
+        <span id="drawer-title" style="font-weight:600;font-size:0.95rem;flex:1;"></span>
+        <button onclick="closeDrawer()" class="scan-safe"
+                style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.3rem;line-height:1;padding:2px 8px;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px;">
+        <div style="margin-bottom:20px;">
+            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Name</label>
+            <input id="drawer-name" type="text" class="input" style="width:100%;"
+                   placeholder="e.g. Campaign-Core" oninput="syncDrawerName()">
+        </div>
+        <div>
+            <label class="body-sm text-outline" style="display:block;margin-bottom:8px;">Paths</label>
+            <div id="drawer-paths"></div>
+            <button onclick="addBlankPath(this)" class="btn btn-sm scan-safe" style="margin-top:8px;">+ Add Path</button>
+        </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <button id="drawer-delete-btn" onclick="deleteCurrentSystem()" class="btn btn-sm btn-danger scan-safe">Delete</button>
+        <span style="flex:1;"></span>
+        <button onclick="closeDrawer()" class="btn btn-sm scan-safe">Cancel</button>
+        <button onclick="saveDrawer()" class="btn btn-sm btn-primary scan-safe">Save</button>
+    </div>
+</aside>
+
+<!-- ── Path browser popup ────────────────────────────────────────────────── -->
+<div id="path-picker"
+     style="display:none;position:fixed;z-index:1700;background:var(--surface);
+            border:1px solid var(--outline);border-radius:8px;
+            box-shadow:0 8px 24px rgba(0,0,0,.35);width:400px;
+            flex-direction:column;overflow:hidden;max-height:340px;">
+    <div id="picker-breadcrumb"
+         style="padding:9px 14px;border-bottom:1px solid var(--outline);
+                font-size:0.78rem;flex-shrink:0;line-height:1.8;"></div>
+    <div id="picker-entries" style="flex:1;overflow-y:auto;"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--outline);flex-shrink:0;">
+        <button id="picker-select-btn" onclick="selectPickerCurrent()" class="btn btn-sm btn-primary scan-safe"
+                style="width:100%;"></button>
+    </div>
+</div>
+
+<!-- ── Move-to popup ─────────────────────────────────────────────────────── -->
+<div id="move-menu"
+     style="display:none;position:fixed;z-index:1700;background:var(--surface);
+            border:1px solid var(--outline);border-radius:8px;
+            box-shadow:0 4px 16px rgba(0,0,0,.3);width:220px;
+            max-height:280px;overflow-y:auto;padding:4px;"></div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let _sys = [];          // full staged systems [{name, paths[]}]
+let _editIdx = -1;      // index in _sys currently in drawer; -1 = none
+let _origSys = null;    // deep-copy at drawer open, restored on cancel
+let _pickerForPath = -1;
+let _pickerCurrent = '';
+
+// Boot: load current systems from API
+(async () => {
+    try {
+        const r = await fetch('/api/systems');
+        _sys = (await r.json()).systems;
+    } catch {}
+})();
+
+// ── Drawer open / close ───────────────────────────────────────────────────────
+function openDrawer(idx) {
+    _origSys = JSON.parse(JSON.stringify(_sys));
+    if (idx === null) {
+        _sys.push({ name: '', paths: [] });
+        _editIdx = _sys.length - 1;
+    } else {
+        _editIdx = idx;
+    }
+    const isNew = idx === null;
+    document.getElementById('drawer-title').textContent = isNew ? 'New System' : 'Edit System';
+    document.getElementById('drawer-delete-btn').style.display = isNew ? 'none' : '';
+    document.getElementById('drawer-name').value = _sys[_editIdx].name;
+    renderPaths();
+    document.getElementById('drawer-backdrop').style.display = '';
+    document.getElementById('system-drawer').style.display = 'flex';
+}
+
+function closeDrawer() {
+    closePicker(); closeMoveMenu();
+    if (_origSys) { _sys = _origSys; _origSys = null; }
+    _editIdx = -1;
+    document.getElementById('drawer-backdrop').style.display = 'none';
+    document.getElementById('system-drawer').style.display = 'none';
+}
+
+function syncDrawerName() {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].name = document.getElementById('drawer-name').value;
+}
+
+// ── Path list rendering ───────────────────────────────────────────────────────
+function renderPaths() {
+    if (_editIdx < 0) return;
+    const { name, paths } = _sys[_editIdx];
+    document.getElementById('drawer-paths').innerHTML = paths.map((p, i) => {
+        const owners = subOwners(p, name);
+        const ownerHtml = Object.keys(owners).length
+            ? `<div style="font-size:0.71rem;color:var(--on-surface-variant);padding:2px 0 0 2px;">
+                 ↳ sub-paths owned by: ${Object.keys(owners).map(k => `<strong>${escH(k)}</strong>`).join(', ')}
+               </div>`
+            : '';
+        return `<div style="margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button data-path-idx="${i}" onclick="openPicker(${i},this)" class="scan-safe"
+                    style="flex:1;text-align:left;background:var(--surface-container);border:1px solid var(--outline);
+                           border-radius:6px;padding:7px 10px;cursor:pointer;font-size:0.8rem;font-family:monospace;
+                           color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="${escH(p)}">📁 ${escH(p) || '<span style="opacity:.5">click to browse</span>'}</button>
+                <button onclick="openMoveMenu(${i},this)" class="btn btn-sm scan-safe"
+                    title="Move to another system" style="padding:4px 8px;font-size:0.78rem;flex-shrink:0;">→</button>
+                <button onclick="removePath(${i})" class="scan-safe"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.1rem;padding:2px 6px;flex-shrink:0;" title="Remove">&times;</button>
+            </div>${ownerHtml}
+        </div>`;
+    }).join('');
+}
+
+function addBlankPath(addBtnEl) {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].paths.push('');
+    renderPaths();
+    const newIdx = _sys[_editIdx].paths.length - 1;
+    const btn = document.querySelector(`[data-path-idx="${newIdx}"]`);
+    openPicker(newIdx, btn || addBtnEl);
+}
+
+function removePath(i) {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].paths.splice(i, 1);
+    closePicker(); closeMoveMenu();
+    renderPaths();
+}
+
+// ── Ownership helper ──────────────────────────────────────────────────────────
+function subOwners(path, systemName) {
+    if (!path) return {};
+    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    const result = {};
+    for (const s of _sys) {
+        if (s.name === systemName) continue;
+        for (const p of s.paths) {
+            const np = p.replace(/\\/g, '/').replace(/\/?$/, '/');
+            if (np.startsWith(norm) && np !== norm)
+                (result[s.name] = result[s.name] || []).push(p);
+        }
+    }
+    return result;
+}
+
+// ── Path picker ───────────────────────────────────────────────────────────────
+async function openPicker(pathIdx, anchorEl) {
+    closeMoveMenu();
+    _pickerForPath = pathIdx;
+    const current = (_sys[_editIdx]?.paths[pathIdx] || '').replace(/\/?$/, '');
+    await navigatePicker(current);
+    popup(document.getElementById('path-picker'), anchorEl, 'flex');
+}
+
+async function navigatePicker(path) {
+    _pickerCurrent = path.replace(/\\/g, '/').replace(/\/?$/, '');
+    const el = document.getElementById('picker-entries');
+    el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
+    try {
+        const r = await fetch('/api/browse?path=' + encodeURIComponent(_pickerCurrent));
+        if (!r.ok) throw new Error();
+        renderPickerData(await r.json());
+    } catch {
+        el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--error,#f87171);">Failed to load</div>';
+    }
+}
+
+function renderPickerData(data) {
+    // Breadcrumb
+    const parts = _pickerCurrent ? _pickerCurrent.split('/').filter(Boolean) : [];
+    let crumb = `<span onclick="navigatePicker('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
+    let cum = '';
+    for (const p of parts) {
+        cum += (cum ? '/' : '') + p;
+        const cp = cum;
+        crumb += ` <span style="color:var(--on-surface-variant);">/</span> <span onclick="navigatePicker('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+    }
+    document.getElementById('picker-breadcrumb').innerHTML = crumb;
+
+    // Entries
+    const curSysName = _sys[_editIdx]?.name || '';
+    const el = document.getElementById('picker-entries');
+    if (!data.entries?.length) {
+        el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
+    } else {
+        el.innerHTML = data.entries.map(e => {
+            const np = e.path.replace(/\\/g, '/').replace(/\/?$/, '/');
+            const owner = _sys.find(s => s.name !== curSysName &&
+                s.paths.some(p => p.replace(/\\/g, '/').replace(/\/?$/, '/') === np));
+            const badge = owner
+                ? ` <span style="font-size:0.68rem;color:var(--on-surface-variant);margin-left:4px;">(${escH(owner.name)})</span>`
+                : '';
+            return `<div style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+                         onmouseenter="this.style.background='var(--surface-container)'"
+                         onmouseleave="this.style.background=''">
+                <span onclick="navigatePicker('${e.path}')"
+                      style="flex:1;font-size:0.8rem;cursor:pointer;font-family:monospace;">📁 ${escH(e.name)}${badge}</span>
+                <button onclick="event.stopPropagation();selectPickerPath('${e.path}')" class="scan-safe"
+                    style="background:none;border:1px solid var(--outline);border-radius:4px;padding:2px 8px;
+                           font-size:0.72rem;cursor:pointer;color:var(--on-surface-variant);white-space:nowrap;">Select</button>
+            </div>`;
+        }).join('');
+    }
+
+    document.getElementById('picker-select-btn').textContent =
+        _pickerCurrent ? `Select "${_pickerCurrent}/"` : 'Select repo root';
+}
+
+function selectPickerPath(path) {
+    if (_pickerForPath < 0 || _editIdx < 0) return;
+    _sys[_editIdx].paths[_pickerForPath] = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    closePicker();
+    renderPaths();
+}
+
+function selectPickerCurrent() {
+    selectPickerPath(_pickerCurrent ? _pickerCurrent + '/' : '');
+}
+
+function closePicker() {
+    document.getElementById('path-picker').style.display = 'none';
+    _pickerForPath = -1;
+}
+
+// ── Move menu ─────────────────────────────────────────────────────────────────
+function openMoveMenu(pathIdx, anchorEl) {
+    closePicker();
+    const others = _sys.filter((_, i) => i !== _editIdx);
+    if (!others.length) { alert('No other systems to move to.'); return; }
+    const menu = document.getElementById('move-menu');
+    menu.innerHTML =
+        `<div style="padding:5px 10px 6px;font-size:0.72rem;color:var(--on-surface-variant);border-bottom:1px solid var(--outline);">Move to:</div>` +
+        others.map(s =>
+            `<div onclick="movePathTo(${pathIdx},'${s.name.replace(/'/g,"\\'")}')"
+                  style="padding:7px 12px;cursor:pointer;font-size:0.82rem;border-radius:4px;"
+                  onmouseenter="this.style.background='var(--surface-container)'"
+                  onmouseleave="this.style.background=''">${escH(s.name)}</div>`
+        ).join('');
+    popup(menu, anchorEl, 'block');
+}
+
+function movePathTo(pathIdx, targetName) {
+    const path = _sys[_editIdx].paths[pathIdx];
+    _sys[_editIdx].paths.splice(pathIdx, 1);
+    const target = _sys.find(s => s.name === targetName);
+    if (target) target.paths.push(path);
+    closeMoveMenu();
+    renderPaths();
+}
+
+function closeMoveMenu() {
+    document.getElementById('move-menu').style.display = 'none';
+}
+
+// ── Save / Delete ─────────────────────────────────────────────────────────────
+async function saveDrawer() {
+    const name = document.getElementById('drawer-name').value.trim();
+    if (!name) { alert('System name is required.'); return; }
+    const paths = (_sys[_editIdx]?.paths || []).filter(p => p.trim());
+    if (!paths.length) { alert('Add at least one path.'); return; }
+    _sys[_editIdx].name = name;
+    _sys[_editIdx].paths = paths;
+    _origSys = null;
+    closeDrawer();
+    await commitSystems();
+}
+
+function deleteCurrentSystem() {
+    const name = _sys[_editIdx]?.name || 'this system';
+    if (!confirm(`Delete "${name}"? Existing findings remain but won't be linked to a system.`)) return;
+    _sys.splice(_editIdx, 1);
+    _origSys = null;
+    closeDrawer();
+    commitSystems();
+}
+
+async function commitSystems() {
+    try {
+        const r = await fetch('/api/systems', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ systems: _sys }),
+        });
+        const d = await r.json();
+        if (d.ok) location.reload();
+        else alert(d.error || 'Failed to save');
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function popup(el, anchor, display) {
+    el.style.display = display;
+    const ar = anchor.getBoundingClientRect();
+    const eh = el.offsetHeight || 340, ew = el.offsetWidth || 400;
+    let top = ar.bottom + 6;
+    if (top + eh > window.innerHeight - 10) top = Math.max(10, ar.top - eh - 6);
+    let left = ar.left;
+    if (left + ew > window.innerWidth - 10) left = window.innerWidth - ew - 10;
+    el.style.top = top + 'px';
+    el.style.left = left + 'px';
+}
+
+function escH(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close popups on outside click
+document.addEventListener('click', e => {
+    const picker = document.getElementById('path-picker');
+    const menu = document.getElementById('move-menu');
+    if (picker?.style.display !== 'none' && !picker.contains(e.target) && !e.target.closest('[data-path-idx]') && !e.target.closest('#drawer-paths button'))
+        closePicker();
+    if (menu?.style.display !== 'none' && !menu.contains(e.target))
+        closeMoveMenu();
+}, true);
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('path-picker')?.style.display !== 'none') { closePicker(); return; }
+    if (document.getElementById('move-menu')?.style.display !== 'none') { closeMoveMenu(); return; }
+});
+
+// ── Scan highlighting ─────────────────────────────────────────────────────────
 function highlightScannedSystem(data) {
     const activeSystem = data.running && data.scan ? data.scan.system_name : null;
     document.querySelectorAll('#systems-table tbody tr').forEach(row => {
@@ -142,7 +487,6 @@ function highlightScannedSystem(data) {
         const actions = row.querySelector('.system-actions');
         const stopBtn = row.querySelector('.system-stop-btn');
         if (!badge) return;
-
         if (activeSystem && activeSystem === row.dataset.system) {
             const label = data.cancelling ? 'cancelling' : (data.scan.scan_type || 'scanning');
             badge.textContent = label;
@@ -160,18 +504,18 @@ function highlightScannedSystem(data) {
         }
     });
 }
-
 onWsMessage('scan_status', highlightScannedSystem);
 
+// ── Scan triggers ─────────────────────────────────────────────────────────────
 async function triggerScan(systemName, scanType) {
     try {
-        const res = await fetch('/scans/trigger', {
+        const r = await fetch('/scans/trigger', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ system_name: systemName, scan_type: scanType }),
         });
-        const data = await res.json();
-        if (!data.ok) alert(data.error || 'Failed to start scan');
+        const d = await r.json();
+        if (!d.ok) alert(d.error || 'Failed to start scan');
     } catch (e) {
         alert('Failed to trigger scan: ' + e.message);
     }
@@ -182,13 +526,10 @@ async function applyBatch() {
     btn.disabled = true;
     btn.textContent = 'Creating batch...';
     try {
-        const res = await fetch('/batch/apply', { method: 'POST' });
-        const data = await res.json();
-        if (data.batch_id) {
-            window.location.href = '/batches/' + data.batch_id;
-        } else {
-            alert(data.error || 'Failed to create batch');
-        }
+        const r = await fetch('/batch/apply', { method: 'POST' });
+        const d = await r.json();
+        if (d.batch_id) window.location.href = '/batches/' + d.batch_id;
+        else alert(d.error || 'Failed to create batch');
     } catch (e) {
         alert('Failed: ' + e.message);
     } finally {

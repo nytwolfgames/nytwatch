@@ -299,6 +299,64 @@ async def scans_list(request: Request):
     })
 
 
+# --- System config API ---
+
+@router.get("/api/browse")
+async def browse_directory(request: Request, path: str = ""):
+    config = get_config(request)
+    repo = Path(config.repo_path).resolve()
+    norm = path.replace("\\", "/").strip("/")
+    target = (repo / norm).resolve() if norm else repo
+    try:
+        target.relative_to(repo)
+    except ValueError:
+        return JSONResponse({"error": "Invalid path"}, status_code=400)
+    if not target.is_dir():
+        return JSONResponse({"error": "Not a directory"}, status_code=404)
+
+    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", "node_modules", ".git"}
+    entries = []
+    try:
+        for entry in sorted(target.iterdir(), key=lambda e: e.name.lower()):
+            if entry.name.startswith(".") or entry.name in _skip or not entry.is_dir():
+                continue
+            rel = str(entry.relative_to(repo)).replace("\\", "/")
+            entries.append({"name": entry.name, "path": rel + "/"})
+    except PermissionError:
+        pass
+
+    current_rel = str(target.relative_to(repo)).replace("\\", "/") if target != repo else ""
+    parent = None
+    if current_rel:
+        p = Path(current_rel).parent
+        parent = "" if str(p) == "." else str(p).replace("\\", "/") + "/"
+
+    return JSONResponse({"path": current_rel + "/" if current_rel else "", "entries": entries, "parent": parent})
+
+
+@router.get("/api/systems")
+async def get_systems_api(request: Request):
+    config = get_config(request)
+    return JSONResponse({"systems": [{"name": s.name, "paths": list(s.paths)} for s in config.systems]})
+
+
+@router.post("/api/systems")
+async def save_systems_api(request: Request):
+    from auditor.config import SystemDef, save_config
+    body = await request.json()
+    systems_data = body.get("systems", [])
+    for s in systems_data:
+        if not s.get("name", "").strip():
+            return JSONResponse({"error": "System name cannot be empty"}, status_code=400)
+        if not s.get("paths"):
+            return JSONResponse({"error": f"System '{s['name']}' has no paths"}, status_code=400)
+    config = get_config(request)
+    config.systems = [SystemDef(name=s["name"].strip(), paths=s["paths"]) for s in systems_data]
+    save_config(config)
+    request.app.state.config = config
+    return JSONResponse({"ok": True})
+
+
 @router.post("/scans/trigger")
 async def trigger_scan(request: Request):
     config = get_config(request)

@@ -64,6 +64,15 @@ def load_config(path: Optional[Path] = None) -> AuditorConfig:
     return AuditorConfig(**raw)
 
 
+def save_config(config: AuditorConfig, path: Optional[Path] = None) -> None:
+    config_path = Path(path or DEFAULT_CONFIG_PATH).expanduser()
+    with open(config_path) as f:
+        raw = yaml.safe_load(f) or {}
+    raw["systems"] = [{"name": s.name, "paths": list(s.paths)} for s in config.systems]
+    with open(config_path, "w") as f:
+        yaml.dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
 def get_data_dir(config: AuditorConfig) -> Path:
     data_dir = Path(config.data_dir).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
