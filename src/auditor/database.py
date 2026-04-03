@@ -364,12 +364,14 @@ class Database:
         return row is not None
 
     def classify_path(self, file_path: str) -> str:
+        norm_file = file_path.replace("\\", "/")
         rows = self.conn.execute(
             "SELECT path, source_type FROM source_dirs ORDER BY length(path) DESC"
         ).fetchall()
         for row in rows:
-            prefix = row["path"].rstrip("/") + "/"
-            if file_path.startswith(prefix) or file_path.startswith(row["path"]):
+            stored = row["path"].replace("\\", "/")
+            prefix = stored.rstrip("/") + "/"
+            if norm_file.startswith(prefix) or norm_file.startswith(stored):
                 return row["source_type"]
         return "project"
 

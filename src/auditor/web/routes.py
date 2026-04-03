@@ -4,6 +4,7 @@ import logging
 import threading
 from io import BytesIO
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Request
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 templates = Jinja2Templates(
-    directory=str(__file__).replace("routes.py", "templates")
+    directory=str(Path(__file__).parent / "templates")
 )
 
 
@@ -122,7 +123,7 @@ async def findings_export(
     cell_title.value = "Code Auditor Report"
     cell_title.font = bold
 
-    project_name = config.repo_path.rstrip("/").split("/")[-1] if "/" in config.repo_path else config.repo_path
+    project_name = Path(config.repo_path).name or config.repo_path
     ws_overview["A3"] = "Project"
     ws_overview["B3"] = project_name
     ws_overview["A4"] = "Generated"
