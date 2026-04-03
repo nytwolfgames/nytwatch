@@ -300,7 +300,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | `upsert_source_dir` | `(path: str, source_type: str) -> None` | Inserts or replaces a source directory classification. |
 | `delete_source_dir` | `(path: str) -> None` | Deletes a source directory entry. |
 | `has_source_dir` | `(path: str) -> bool` | Returns True if path exists in `source_dirs`. |
-| `classify_path` | `(file_path: str) -> str` | Matches a file path against stored source dirs (longest prefix first). Returns `"project"` if no match. |
+| `classify_path` | `(file_path: str) -> str` | Normalizes both input and stored paths (backslash to forward slash) before matching against source dirs (longest prefix first). Returns `"project"` if no match. Cross-platform safe. |
 | **Stats** | | |
 | `get_stats` | `() -> dict` | Returns aggregate stats: `status_counts`, `severity_counts`, `total_scans`, `total_batches`, `last_scan`, `pending_count`, `approved_count`. |
 
@@ -368,7 +368,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `collect_system_files` | `(repo_path: str, system: SystemDef, extensions: list[str]) -> dict[str, str]` | Walks all paths defined for a system, collects files matching extensions (skipping files > 500KB). Returns `{relative_path: content}`. |
+| `collect_system_files` | `(repo_path: str, system: SystemDef, extensions: list[str]) -> dict[str, str]` | Walks all paths defined for a system, collects files matching extensions (skipping files > 500KB). Normalizes relative paths via `normalize_path()` for cross-platform consistency. Returns `{relative_path: content}`. |
 | `estimate_tokens` | `(text: str) -> int` | Estimates token count as `len(text) / 3.5`. |
 | `chunk_system` | `(file_contents: dict[str, str], max_tokens: int = 120_000) -> list[dict[str, str]]` | Splits files into chunks that fit within the token budget. Header files (`.h`) are included in every chunk as shared context. `.cpp` files are distributed across chunks. Returns `[chunk]` where each chunk is `{path: content}`. |
 | `resolve_includes` | `(file_content: str, repo_path: str) -> list[str]` | Extracts local `#include "..."` paths from a file and resolves them against the repo. Returns list of relative paths that exist on disk. |
@@ -383,7 +383,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 |----------|-----------|-------------|
 | `get_current_commit` | `(repo_path: str) -> str` | Runs `git rev-parse HEAD`. Raises on failure. |
 | `get_changed_files` | `(repo_path: str, since_commit: str, extensions: list[str]) -> list[str]` | Runs `git diff --name-only {since_commit} HEAD`, filters by extensions. |
-| `map_files_to_systems` | `(changed_files: list[str], systems: list[SystemDef]) -> dict[str, list[str]]` | Maps each changed file to its system based on path prefix. Unmatched files go to `"__uncategorized"`. |
+| `map_files_to_systems` | `(changed_files: list[str], systems: list[SystemDef]) -> dict[str, list[str]]` | Maps each changed file to its system based on path prefix. Normalizes both file paths and system prefixes via `normalize_path()` before matching. Unmatched files go to `"__uncategorized"`. |
 | `_compute_fingerprint` | `(file_path: str, line_range: str, category: str, title: str) -> str` | MD5 hash of `"{file_path}|{line_range}|{category}|{title}"`. Used for deduplication. |
 | `_process_system` | `(system_name: str, config: AuditorConfig, db: Database, scan_id: str, fast: bool) -> int` | Collects files, chunks, analyzes each chunk via Claude, deduplicates via fingerprint, classifies source type, inserts findings. Returns finding count or `-1` if all chunks failed. |
 | `run_incremental_scan` | `(config: AuditorConfig, db: Database) -> str` | Orchestrates an incremental scan. Detects source dirs, diffs from last scanned commit (falls back to HEAD~20), processes each system, updates scan record and `last_scan_commit` config. Returns scan ID. |
@@ -409,7 +409,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `detect_source_dirs` | `(repo_path: str, db: Database) -> None` | Two-layer classification: (1) deterministic UE heuristics, (2) Claude AI fallback for ambiguous dirs. Never overwrites existing DB classifications (preserves user overrides). |
-| `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: `.uplugin` presence -> plugin; project-name match under `Source/` -> project; `ThirdParty` -> plugin; generated dirs -> ignored. Returns `(classified, unclassified)`. |
+| `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: `.uplugin` presence -> plugin; project-name match under `Source/` -> project; `ThirdParty` -> plugin; generated dirs -> ignored. Normalizes all `relative_to()` outputs via `normalize_path()`. Returns `(classified, unclassified)`. |
 | `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Falls back to `"project"` on failure. |
 | `_build_classify_prompt` | `(dir_listings: dict[str, list[str]]) -> str` | Builds the classification prompt. Asks Claude to return `{"classifications": {"path": "project"|"plugin"}}`. |
 
@@ -425,7 +425,23 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 ---
 
-### 2.12 `auditor/pipeline/batch.py` -- Batch Pipeline Orchestrator
+### 2.12 `auditor/paths.py` -- Path Normalization
+
+**Purpose:** Cross-platform path handling. Ensures all internal paths use POSIX-style forward slashes regardless of host OS.
+
+**Functions:**
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `normalize_path` | `(p: str) -> str` | Replaces all backslashes with forward slashes. Called by `chunker.collect_system_files`, `incremental.map_files_to_systems`, `source_detector._heuristic_classify`. Also used inline in `database.classify_path`. |
+
+**Consumers:** `scanner/chunker.py`, `scanner/incremental.py`, `scanner/source_detector.py`, `database.py`
+
+**Rationale:** `pathlib.Path.relative_to()` produces backslash-separated paths on Windows. Git output uses forward slashes on all platforms. This mismatch breaks path prefix matching (system mapping, source classification). The normalizer ensures consistent forward-slash paths at every storage and comparison boundary.
+
+---
+
+### 2.13 `auditor/pipeline/batch.py` -- Batch Pipeline Orchestrator
 
 **Functions:**
 
