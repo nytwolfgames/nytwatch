@@ -6,8 +6,7 @@
 
 {% if scans %}
 <div class="card" style="padding: 0;">
-    <div class="table-scroll">
-    <table class="data-table">
+    <table class="data-table" style="width: 100%;">
         <thead>
             <tr>
                 <th>ID</th>
@@ -18,6 +17,7 @@
                 <th>Status</th>
                 <th>Started</th>
                 <th>Completed</th>
+                <th>Log</th>
             </tr>
         </thead>
         <tbody>
@@ -37,15 +37,165 @@
                 <td><span class="badge status-{{ scan.status }}">{{ scan.status }}</span></td>
                 <td class="body-sm text-variant">{{ scan.started_at[:10] }} {{ scan.started_at[11:16] }}</td>
                 <td class="body-sm text-variant">{{ (scan.completed_at[:10] ~ ' ' ~ scan.completed_at[11:16] if scan.completed_at else '-') }}</td>
+                <td>
+                    {% if log_counts.get(scan.id, 0) > 0 %}
+                    <button class="btn btn-sm" onclick="showLog('{{ scan.id }}', '{{ scan.status }}')">Show Log</button>
+                    {% else %}
+                    <span class="body-sm text-outline">No log</span>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    </div>
 </div>
 {% else %}
 <div class="card empty-state">
     No scans yet. Click "Trigger Scan" to run your first scan.
 </div>
 {% endif %}
+
+<!-- Log Modal -->
+<div id="log-modal" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.55); align-items:center; justify-content:center;">
+    <div style="background:var(--surface, #1e1e2e); border:1px solid var(--outline, #3f3f5a); border-radius:10px; width:min(900px,95vw); max-height:80vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.5);">
+        <div style="display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--outline, #3f3f5a); gap:10px;">
+            <span id="log-modal-title" style="font-weight:600; font-size:0.95rem; flex:1;">Scan Log</span>
+            <span id="log-live-badge" style="display:none; font-size:0.75rem; background:#1d4ed8; color:#fff; padding:2px 8px; border-radius:4px; font-weight:500;">LIVE</span>
+            <button onclick="closeLog()" style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant,#aaa);font-size:1.2rem;line-height:1;padding:2px 6px;">&times;</button>
+        </div>
+        <div id="log-content" style="flex:1; overflow-y:auto; padding:14px 18px; font-family:monospace; font-size:0.78rem; line-height:1.6; white-space:pre-wrap; word-break:break-all; background:var(--surface-container, #13131f); max-height:calc(80vh - 60px);">
+            <span style="color:var(--on-surface-variant,#888);">Loading…</span>
+        </div>
+        <div id="log-footer" style="padding:8px 18px; border-top:1px solid var(--outline, #3f3f5a); font-size:0.75rem; color:var(--on-surface-variant,#888); display:flex; gap:12px; align-items:center;">
+            <span id="log-count"></span>
+            <label style="margin-left:auto; display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="log-autoscroll" checked> Auto-scroll
+            </label>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let _logScanId = null;
+    let _logPolling = null;
+    let _logOffset = 0;
+
+    const LEVEL_COLORS = {
+        'DEBUG':    'color:#6b7280',
+        'INFO':     'color:#60a5fa',
+        'WARNING':  'color:#fbbf24',
+        'ERROR':    'color:#f87171',
+        'CRITICAL': 'color:#f43f5e; font-weight:700',
+    };
+
+    function renderLines(logs) {
+        return logs.map(r => {
+            const ts = r.logged_at ? r.logged_at.replace('T', ' ').slice(0, 19) : '';
+            const style = LEVEL_COLORS[r.level] || '';
+            const lvl = (r.level || '').padEnd(8);
+            const logger = r.logger || '';
+            const msg = r.message || '';
+            return `<span style="color:#6b7280">${ts}</span> <span style="${style}">${lvl}</span> <span style="color:#9ca3af">${logger}:</span> ${escHtml(msg)}`;
+        }).join('\n');
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function showLog(scanId, status) {
+        _logScanId = scanId;
+        _logOffset = 0;
+
+        const modal = document.getElementById('log-modal');
+        const content = document.getElementById('log-content');
+        const title = document.getElementById('log-modal-title');
+        const liveBadge = document.getElementById('log-live-badge');
+        const countEl = document.getElementById('log-count');
+
+        title.textContent = `Scan Log — ${scanId.slice(0, 8)}`;
+        content.innerHTML = '<span style="color:var(--on-surface-variant,#888)">Loading…</span>';
+        countEl.textContent = '';
+        modal.style.display = 'flex';
+        liveBadge.style.display = 'none';
+
+        await fetchLogs(true);
+
+        if (status === 'running') {
+            liveBadge.style.display = '';
+            startLogPolling();
+        }
+    }
+
+    async function fetchLogs(initial = false) {
+        if (!_logScanId) return;
+        try {
+            const res = await fetch(`/api/scans/${_logScanId}/logs?offset=${_logOffset}`);
+            const data = await res.json();
+            const content = document.getElementById('log-content');
+            const countEl = document.getElementById('log-count');
+            const liveBadge = document.getElementById('log-live-badge');
+            const autoScroll = document.getElementById('log-autoscroll').checked;
+
+            if (initial) {
+                content.innerHTML = data.logs.length
+                    ? renderLines(data.logs)
+                    : '<span style="color:var(--on-surface-variant,#888)">No log entries yet.</span>';
+                _logOffset = data.logs.length;
+            } else if (data.logs.length > 0) {
+                if (content.innerHTML.includes('No log entries')) {
+                    content.innerHTML = '';
+                }
+                content.innerHTML += (content.innerHTML ? '\n' : '') + renderLines(data.logs);
+                _logOffset += data.logs.length;
+            }
+
+            const total = _logOffset;
+            countEl.textContent = `${total} line${total !== 1 ? 's' : ''}`;
+
+            if (!data.running) {
+                liveBadge.style.display = 'none';
+                stopLogPolling();
+            }
+
+            if (autoScroll) {
+                content.scrollTop = content.scrollHeight;
+            }
+        } catch (e) {
+            stopLogPolling();
+        }
+    }
+
+    function startLogPolling() {
+        stopLogPolling();
+        _logPolling = setInterval(() => fetchLogs(false), 2000);
+    }
+
+    function stopLogPolling() {
+        if (_logPolling) {
+            clearInterval(_logPolling);
+            _logPolling = null;
+        }
+    }
+
+    function closeLog() {
+        stopLogPolling();
+        _logScanId = null;
+        _logOffset = 0;
+        document.getElementById('log-modal').style.display = 'none';
+        document.getElementById('log-content').innerHTML = '';
+    }
+
+    // Close on backdrop click
+    document.getElementById('log-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeLog();
+    });
+
+    // Close on Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeLog();
+    });
+</script>
 {% endblock %}

@@ -73,6 +73,11 @@ def run_full_system_scan(
     )
     db.insert_scan(scan)
 
+    from auditor.scan_state import ScanLogHandler
+    _log_handler = ScanLogHandler(scan_id, db)
+    _log_handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger("auditor").addHandler(_log_handler)
+
     try:
         file_contents = collect_system_files(
             config.repo_path, system, config.file_extensions
@@ -123,6 +128,8 @@ def run_full_system_scan(
             status=ScanStatus.FAILED,
             completed_at=now_iso(),
         )
+    finally:
+        logging.getLogger("auditor").removeHandler(_log_handler)
 
     return scan_id
 

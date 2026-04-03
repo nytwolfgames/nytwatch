@@ -186,6 +186,11 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
     )
     db.insert_scan(scan)
 
+    from auditor.scan_state import ScanLogHandler
+    _log_handler = ScanLogHandler(scan_id, db)
+    _log_handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger("auditor").addHandler(_log_handler)
+
     try:
         detect_source_dirs(config.repo_path, db)
 
@@ -248,6 +253,11 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
             )
             if count == -1:
                 systems_failed += 1
+                log.error(
+                    "System '%s' failed — stopping scan early to avoid wasting further calls",
+                    system_name,
+                )
+                break
             else:
                 total_findings += count
 
@@ -281,5 +291,7 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
             status=ScanStatus.FAILED,
             completed_at=now_iso(),
         )
+    finally:
+        logging.getLogger("auditor").removeHandler(_log_handler)
 
     return scan_id

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 import threading
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from auditor.database import Database
 
 
 class _ScanCanceller:
@@ -48,3 +52,23 @@ class _ScanCanceller:
 
 # Module-level singleton — imported by engine.py, routes.py, and main.py
 canceller = _ScanCanceller()
+
+
+class ScanLogHandler(logging.Handler):
+    """Logging handler that writes records to the scan_logs DB table for a given scan."""
+
+    def __init__(self, scan_id: str, db: "Database") -> None:
+        super().__init__()
+        self.scan_id = scan_id
+        self._db = db
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._db.insert_scan_log(
+                self.scan_id,
+                record.levelname,
+                record.name,
+                self.format(record),
+            )
+        except Exception:
+            self.handleError(record)

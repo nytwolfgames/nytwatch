@@ -158,7 +158,7 @@ body {
 .main-content {
   flex: 1;
   padding: var(--sp-6) var(--sp-8);
-  max-width: 76rem;
+  min-width: 0;
   overflow-x: hidden;
 }
 

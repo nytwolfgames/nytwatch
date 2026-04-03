@@ -273,8 +273,10 @@ async def reject_finding(request: Request, finding_id: str):
 async def scans_list(request: Request):
     db = get_db(request)
     scans = db.list_scans()
+    log_counts = db.get_scan_log_counts()
     return templates.TemplateResponse(request, "scans.html", {
         "scans": scans,
+        "log_counts": log_counts,
     })
 
 
@@ -433,6 +435,15 @@ async def apply_batch(request: Request):
 async def api_stats(request: Request):
     db = get_db(request)
     return JSONResponse(db.get_stats())
+
+
+@router.get("/api/scans/{scan_id}/logs")
+async def api_scan_logs(request: Request, scan_id: str, offset: int = 0):
+    db = get_db(request)
+    logs = db.get_scan_logs(scan_id, offset=offset)
+    scan = db.get_scan(scan_id)
+    running = scan["status"] == "running" if scan else False
+    return JSONResponse({"logs": logs, "running": running, "total": len(logs)})
 
 
 @router.get("/api/scan-status")

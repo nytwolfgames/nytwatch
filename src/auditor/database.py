@@ -86,6 +86,16 @@ CREATE INDEX IF NOT EXISTS idx_findings_fingerprint ON findings(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_findings_scan ON findings(scan_id);
 CREATE INDEX IF NOT EXISTS idx_findings_batch ON findings(batch_id);
 CREATE INDEX IF NOT EXISTS idx_findings_source ON findings(source);
+
+CREATE TABLE IF NOT EXISTS scan_logs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id     TEXT NOT NULL,
+    logged_at   TEXT NOT NULL,
+    level       TEXT NOT NULL,
+    logger      TEXT NOT NULL,
+    message     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scan_logs_scan ON scan_logs(scan_id);
 """
 
 
@@ -172,6 +182,16 @@ class Database:
             "SELECT * FROM scans WHERE status = 'running' ORDER BY started_at DESC LIMIT 1"
         ).fetchone()
         return dict(row) if row else None
+
+    def fail_stale_scans(self) -> int:
+        """Mark any scans still in 'running' state as failed (left over from a crashed session)."""
+        from auditor.models import now_iso
+        cursor = self.conn.execute(
+            "UPDATE scans SET status = 'failed', completed_at = ? WHERE status = 'running'",
+            (now_iso(),),
+        )
+        self.conn.commit()
+        return cursor.rowcount
 
     # --- Findings ---
 
@@ -380,6 +400,31 @@ class Database:
             if norm_file.startswith(prefix) or norm_file.startswith(stored):
                 return row["source_type"]
         return "project"
+
+    # --- Scan Logs ---
+
+    def insert_scan_log(self, scan_id: str, level: str, logger_name: str, message: str):
+        self.conn.execute(
+            "INSERT INTO scan_logs (scan_id, logged_at, level, logger, message) VALUES (?, ?, ?, ?, ?)",
+            (scan_id, now_iso(), level, logger_name, message),
+        )
+        self.conn.commit()
+
+    def get_scan_log_counts(self) -> dict[str, int]:
+        """Return {scan_id: log_line_count} for all scans that have any logs."""
+        rows = self.conn.execute(
+            "SELECT scan_id, COUNT(*) as cnt FROM scan_logs GROUP BY scan_id"
+        ).fetchall()
+        return {r["scan_id"]: r["cnt"] for r in rows}
+
+    def get_scan_logs(self, scan_id: str, offset: int = 0) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id, logged_at, level, logger, message FROM scan_logs WHERE scan_id = ? ORDER BY id LIMIT 2000 OFFSET ?",
+            (scan_id, offset),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # --- Stats ---
 
     def get_stats(self) -> dict:
         status_counts = self.count_by_status()

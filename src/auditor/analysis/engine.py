@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -62,14 +63,54 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600) -> str:
 
             canceller.register_process(proc)
             try:
-                try:
-                    stdout, stderr = proc.communicate(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.communicate()
-                    log.error("Claude CLI timed out after %ds", timeout)
-                    (log_dir / f"{call_id}_timeout.txt").write_text("", encoding="utf-8")
-                    raise subprocess.TimeoutExpired(cmd, timeout)
+                # Read stdout/stderr in background threads so we can poll
+                # for cancellation and log progress at regular intervals.
+                _stdout_buf: list[str] = []
+                _stderr_buf: list[str] = []
+
+                def _read(stream, buf):
+                    buf.append(stream.read())
+
+                t_out = threading.Thread(target=_read, args=(proc.stdout, _stdout_buf), daemon=True)
+                t_err = threading.Thread(target=_read, args=(proc.stderr, _stderr_buf), daemon=True)
+                t_out.start()
+                t_err.start()
+
+                check_interval = 30  # seconds between status log lines
+                deadline = t0 + timeout
+
+                while True:
+                    t_out.join(timeout=check_interval)
+                    if not t_out.is_alive():
+                        break  # stdout closed — process finished
+
+                    elapsed = time.time() - t0
+
+                    if canceller.is_cancelled:
+                        proc.kill()
+                        t_out.join()
+                        t_err.join()
+                        raise InterruptedError("Scan was cancelled")
+
+                    if time.time() >= deadline:
+                        proc.kill()
+                        t_out.join()
+                        t_err.join()
+                        log.error("Claude CLI timed out after %ds (call %s)", timeout, call_id)
+                        (log_dir / f"{call_id}_timeout.txt").write_text("", encoding="utf-8")
+                        raise subprocess.TimeoutExpired(cmd, timeout)
+
+                    log.info(
+                        "Claude call %s: still running (%.0fs elapsed, %.0fs remaining)",
+                        call_id, elapsed, deadline - time.time(),
+                    )
+
+                t_err.join()
+                proc.wait()
+
+                stdout = _stdout_buf[0] if _stdout_buf else ""
+                stderr = _stderr_buf[0] if _stderr_buf else ""
+
             finally:
                 canceller.unregister_process()
 

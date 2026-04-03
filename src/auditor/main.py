@@ -30,6 +30,10 @@ def create_app(config: AuditorConfig) -> FastAPI:
     app.state.db = db
     app.state.config = config
 
+    stale = db.fail_stale_scans()
+    if stale:
+        logger.warning("Marked %d stale running scan(s) as failed on startup", stale)
+
     static_dir = Path(__file__).parent / "web" / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -73,6 +77,13 @@ def create_app(config: AuditorConfig) -> FastAPI:
 
     @app.on_event("shutdown")
     def shutdown():
+        from auditor.scan_state import canceller
+        if canceller.is_cancelled is False:
+            # Kill any active Claude subprocess and signal scan threads to stop
+            canceller.cancel()
+        stale = db.fail_stale_scans()
+        if stale:
+            logger.warning("Shutdown: marked %d running scan(s) as failed", stale)
         if hasattr(app.state, "scheduler"):
             app.state.scheduler.shutdown()
         db.close()
