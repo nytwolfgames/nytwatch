@@ -145,6 +145,8 @@ def _process_system(
             "Analyzing system '%s' chunk %d/%d (%d files)",
             system_name, i + 1, len(chunks), len(chunk),
         )
+        for fname in sorted(chunk.keys()):
+            log.info("  %s", fname)
         result = analyze_system(
             system_name=system_name,
             file_contents=chunk,
