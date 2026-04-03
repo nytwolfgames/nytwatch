@@ -21,7 +21,7 @@ from auditor.models import (
     now_iso,
 )
 from auditor.analysis.engine import analyze_system
-from auditor.scanner.chunker import collect_system_files, chunk_system
+from auditor.scanner.chunker import collect_system_files, collect_specific_files, chunk_system
 from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
@@ -95,15 +95,21 @@ def _process_system(
     db: Database,
     scan_id: str,
     fast: bool,
+    changed_files: Optional[list[str]] = None,
 ) -> int:
     system = next((s for s in config.systems if s.name == system_name), None)
     if system is None:
         log.warning("System '%s' not found in config, skipping", system_name)
         return 0
 
-    file_contents = collect_system_files(
-        config.repo_path, system, config.file_extensions
-    )
+    if changed_files is not None:
+        file_contents = collect_specific_files(
+            config.repo_path, changed_files, config.file_extensions
+        )
+    else:
+        file_contents = collect_system_files(
+            config.repo_path, system, config.file_extensions
+        )
     if not file_contents:
         log.info("No files found for system '%s'", system_name)
         return 0
@@ -252,7 +258,8 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
                 continue
             systems_attempted += 1
             count = _process_system(
-                system_name, config, db, scan_id, config.claude_fast_mode
+                system_name, config, db, scan_id, config.claude_fast_mode,
+                changed_files=system_map[system_name],
             )
             if count == -1:
                 systems_failed += 1

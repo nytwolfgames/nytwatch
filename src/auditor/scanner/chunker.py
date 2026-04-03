@@ -45,6 +45,35 @@ def collect_system_files(
     return collected
 
 
+def collect_specific_files(
+    repo_path: str,
+    file_paths: list[str],
+    extensions: list[str],
+) -> dict[str, str]:
+    """Read a specific list of repo-relative file paths instead of walking directories."""
+    repo = Path(repo_path)
+    collected: dict[str, str] = {}
+
+    for rel_path in file_paths:
+        if not any(rel_path.endswith(ext) for ext in extensions):
+            continue
+        fpath = repo / rel_path
+        if not fpath.exists():
+            log.warning("Changed file not found on disk: %s", fpath)
+            continue
+        if fpath.stat().st_size > MAX_FILE_SIZE:
+            log.debug("Skipping large file: %s (%d bytes)", fpath, fpath.stat().st_size)
+            continue
+        norm = normalize_path(rel_path)
+        try:
+            collected[norm] = fpath.read_text(errors="replace")
+        except OSError as exc:
+            log.warning("Could not read %s: %s", fpath, exc)
+
+    log.info("Collected %d/%d specific files", len(collected), len(file_paths))
+    return collected
+
+
 def estimate_tokens(text: str) -> int:
     return int(len(text) / 3.5)
 
