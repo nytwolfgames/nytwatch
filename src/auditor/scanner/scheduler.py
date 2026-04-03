@@ -25,51 +25,55 @@ def run_scan(
     system_name: Optional[str] = None,
 ) -> str:
     if scan_type == "incremental":
-        log.info("Starting incremental scan")
-        return run_incremental_scan(config, db)
+        log.info("Starting incremental scan%s", f" for '{system_name}'" if system_name else "")
+        return run_incremental_scan(config, db, system_name=system_name)
     elif scan_type == "full":
-        if system_name is None:
-            system_name = get_next_rotation_system(config, db)
-        log.info("Starting full scan for system '%s'", system_name)
-        return run_full_system_scan(config, db, system_name)
+        log.info("Starting full scan")
+        return run_full_scan(config, db, system_name=system_name)
     else:
         raise ValueError(f"Unknown scan_type: {scan_type!r}. Expected 'incremental' or 'full'.")
 
 
-def run_full_system_scan(
+def run_full_scan(
     config: AuditorConfig,
     db: Database,
-    system_name: str,
+    system_name: Optional[str] = None,
 ) -> str:
+    """Run a full scan across all systems (or a single named system).
+
+    Each system is analysed in turn; findings_count and files_scanned on the
+    scan record are updated after every system so the UI reflects progress.
+    """
     from auditor.scan_state import ScanLogHandler
     from auditor.ws_manager import manager as ws_manager
 
+    # Determine which systems to scan
+    if system_name:
+        systems = [s for s in config.systems if s.name == system_name]
+        if not systems:
+            log.error("System '%s' not found in config", system_name)
+            scan_id = new_id()
+            db.insert_scan(Scan(
+                id=scan_id,
+                scan_type=ScanType.FULL,
+                system_name=system_name,
+                status=ScanStatus.FAILED,
+                completed_at=now_iso(),
+            ))
+            return scan_id
+        label = system_name
+    else:
+        systems = config.systems
+        label = None  # UI shows "All"
+
     scan_id = new_id()
 
-    # Insert scan record immediately so the UI shows it as running right away
-    system = next((s for s in config.systems if s.name == system_name), None)
-    if system is None:
-        log.error("System '%s' not found in config", system_name)
-        db.insert_scan(Scan(
-            id=scan_id,
-            scan_type=ScanType.FULL,
-            system_name=system_name,
-            status=ScanStatus.FAILED,
-            completed_at=now_iso(),
-        ))
-        return scan_id
-
-    try:
-        current_commit = get_current_commit(config.repo_path)
-    except Exception:
-        current_commit = ""
-        log.warning("Could not determine current commit")
-
+    # Insert immediately so the UI shows the scan as running right away
     db.insert_scan(Scan(
         id=scan_id,
         scan_type=ScanType.FULL,
-        system_name=system_name,
-        base_commit=current_commit,
+        system_name=label,
+        base_commit="",
     ))
 
     _log_handler = ScanLogHandler(scan_id, db)
@@ -77,63 +81,85 @@ def run_full_system_scan(
     logging.getLogger("auditor").addHandler(_log_handler)
     ws_manager.push_scan_status(running=True, scan=db.get_scan(scan_id), cancelling=False)
 
+    total_findings = 0
+    total_files = 0
+    systems_attempted = 0
+    systems_failed = 0
+
     try:
+        try:
+            current_commit = get_current_commit(config.repo_path)
+            db.update_scan(scan_id, base_commit=current_commit)
+        except Exception:
+            log.warning("Could not determine current commit")
+
         detect_source_dirs(config.repo_path, db)
 
-        findings_count, files_scanned = _process_system(
-            system_name, config, db, scan_id, config.claude_fast_mode
-        )
+        for system in systems:
+            systems_attempted += 1
+            log.info("Full scan: processing system '%s' (%d/%d)", system.name, systems_attempted, len(systems))
 
-        if findings_count == -1:
-            log.error("Full scan %s: analysis failed entirely for '%s'", scan_id, system_name)
+            findings_count, files_scanned = _process_system(
+                system.name, config, db, scan_id, config.claude_fast_mode
+            )
+
+            if findings_count == -1:
+                systems_failed += 1
+                log.error("Full scan: system '%s' failed entirely", system.name)
+            else:
+                total_findings += findings_count
+                total_files += files_scanned
+                log.info(
+                    "Full scan: system '%s' done — %d files, %d findings",
+                    system.name, files_scanned, findings_count,
+                )
+
+            # Update the scan record after each system so the UI stays current
             db.update_scan(
                 scan_id,
-                status=ScanStatus.FAILED,
-                completed_at=now_iso(),
-                files_scanned=files_scanned,
-                findings_count=0,
+                files_scanned=total_files,
+                findings_count=total_findings,
             )
+
+        all_failed = systems_attempted > 0 and systems_failed == systems_attempted
+        final_status = ScanStatus.FAILED if all_failed else ScanStatus.COMPLETED
+
+        if all_failed:
+            log.error("Full scan %s: ALL %d systems failed", scan_id, systems_attempted)
         else:
-            db.update_scan(
-                scan_id,
-                status=ScanStatus.COMPLETED,
-                completed_at=now_iso(),
-                files_scanned=files_scanned,
-                findings_count=findings_count,
-            )
             log.info(
-                "Full scan %s complete for '%s': %d files, %d findings",
-                scan_id, system_name, files_scanned, findings_count,
+                "Full scan %s complete: %d systems, %d files, %d findings (%d failed)",
+                scan_id, systems_attempted, total_files, total_findings, systems_failed,
             )
+
+        db.update_scan(
+            scan_id,
+            status=final_status,
+            completed_at=now_iso(),
+            files_scanned=total_files,
+            findings_count=total_findings,
+        )
 
     except InterruptedError:
         log.info("Full scan %s was cancelled", scan_id)
-        db.update_scan(scan_id, status=ScanStatus.CANCELLED, completed_at=now_iso())
+        db.update_scan(
+            scan_id,
+            status=ScanStatus.CANCELLED,
+            completed_at=now_iso(),
+            files_scanned=total_files,
+            findings_count=total_findings,
+        )
     except Exception:
-        log.exception("Full scan %s failed for system '%s'", scan_id, system_name)
-        db.update_scan(scan_id, status=ScanStatus.FAILED, completed_at=now_iso())
+        log.exception("Full scan %s failed", scan_id)
+        db.update_scan(
+            scan_id,
+            status=ScanStatus.FAILED,
+            completed_at=now_iso(),
+            files_scanned=total_files,
+            findings_count=total_findings,
+        )
     finally:
         logging.getLogger("auditor").removeHandler(_log_handler)
         ws_manager.push_scan_status(running=False, scan=db.get_scan(scan_id), cancelling=False)
 
     return scan_id
-
-
-def get_next_rotation_system(config: AuditorConfig, db: Database) -> str:
-    if not config.systems:
-        raise ValueError("No systems defined in config")
-
-    raw = db.get_config("rotation_index", "0")
-    try:
-        idx = int(raw)
-    except ValueError:
-        idx = 0
-
-    idx = idx % len(config.systems)
-    system_name = config.systems[idx].name
-
-    next_idx = (idx + 1) % len(config.systems)
-    db.set_config("rotation_index", str(next_idx))
-
-    log.info("Rotation: selected system '%s' (index %d)", system_name, idx)
-    return system_name

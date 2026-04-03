@@ -36,7 +36,6 @@
         body.scan-running .main-content form { pointer-events: none; opacity: .45; }
 
         body.scan-running .main-content { margin-top: 42px; }
-        body.scan-running #trigger-scan-btn { opacity: .5; cursor: not-allowed; pointer-events: none; }
     </style>
 </head>
 <body class="app-layout">
@@ -79,7 +78,6 @@
 
         <div class="sidebar-footer">
             <span id="scan-status-text" class="body-sm text-outline"></span>
-            <button id="trigger-scan-btn" onclick="triggerScan()" class="btn btn-primary" style="width: 100%;">Full Scan</button>
         </div>
     </aside>
 
@@ -103,13 +101,11 @@
             const bannerSub = document.getElementById('scan-banner-sub');
             const spinner = document.getElementById('scan-spinner');
             const cancelBtn = document.getElementById('cancel-scan-btn');
-            const triggerBtn = document.getElementById('trigger-scan-btn');
             const statusText = document.getElementById('scan-status-text');
 
             if (running) {
                 banner.classList.add('visible');
                 document.body.classList.add('scan-running');
-                triggerBtn.disabled = true;
 
                 if (cancelling) {
                     bannerText.textContent = 'Cancelling scan…';
@@ -134,8 +130,6 @@
             } else {
                 banner.classList.remove('visible');
                 document.body.classList.remove('scan-running');
-                triggerBtn.disabled = false;
-                triggerBtn.textContent = 'Full Scan';
                 cancelBtn.disabled = false;
                 cancelBtn.textContent = 'Cancel';
                 statusText.textContent = '';
@@ -236,31 +230,6 @@
             } catch (e) {
                 btn.disabled = false;
                 btn.textContent = 'Cancel';
-            }
-        }
-
-        async function triggerScan() {
-            const btn = document.getElementById('trigger-scan-btn');
-            btn.disabled = true;
-            btn.textContent = 'Starting full scan…';
-            try {
-                const res = await fetch('/scans/trigger', { method: 'POST' });
-                const data = await res.json();
-                if (data.ok) {
-                    _wasRunning = true;
-                    setScanRunning(true, null, false);
-                    // Give the background thread ~400ms to insert the scan record,
-                    // then reload so the Scan History page shows it immediately.
-                    setTimeout(() => location.reload(), 400);
-                } else {
-                    alert(data.error || 'Failed to start scan');
-                    btn.disabled = false;
-                    btn.textContent = 'Full Scan';
-                }
-            } catch (e) {
-                alert('Failed to trigger scan: ' + e.message);
-                btn.disabled = false;
-                btn.textContent = 'Full Scan';
             }
         }
 

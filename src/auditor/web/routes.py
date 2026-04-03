@@ -37,11 +37,13 @@ def get_config(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     db = get_db(request)
+    config = get_config(request)
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
     return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "batches": batches,
+        "systems": [s.name for s in config.systems],
     })
 
 
@@ -286,6 +288,10 @@ async def trigger_scan(request: Request):
     config = get_config(request)
     db_path = get_db(request).db_path
 
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    scan_type = body.get("scan_type", "full")
+    system_name = body.get("system_name") or None
+
     from auditor.scan_state import canceller
     canceller.reset()
 
@@ -294,16 +300,16 @@ async def trigger_scan(request: Request):
         from auditor.scanner.scheduler import run_scan
         thread_db = Database(db_path)
         try:
-            scan_id = run_scan(config, thread_db, scan_type="full")
-            logger.info("Full scan completed: %s", scan_id)
+            scan_id = run_scan(config, thread_db, scan_type=scan_type, system_name=system_name)
+            logger.info("Scan completed: %s", scan_id)
         except Exception:
-            logger.exception("Full scan failed")
+            logger.exception("Scan failed")
         finally:
             thread_db.close()
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
-    return JSONResponse({"ok": True, "scan_id": "started"})
+    return JSONResponse({"ok": True})
 
 
 @router.delete("/scans/{scan_id}")

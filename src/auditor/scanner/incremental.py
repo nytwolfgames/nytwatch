@@ -220,13 +220,14 @@ def _process_system(
     return findings_count, files_scanned
 
 
-def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
+def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optional[str] = None) -> str:
     # Insert the scan record immediately so the UI can show it as running
     # before any slow setup work (source detection, git calls) begins.
     scan_id = new_id()
     scan = Scan(
         id=scan_id,
         scan_type=ScanType.INCREMENTAL,
+        system_name=system_name,
         base_commit="",
     )
     db.insert_scan(scan)
@@ -285,26 +286,29 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
             db.set_config("last_scan_commit", current_commit)
             return scan_id
 
-        system_map = map_files_to_systems(changed, config.systems)
+        systems_to_scan = config.systems
+        if system_name:
+            systems_to_scan = [s for s in config.systems if s.name == system_name]
+        system_map = map_files_to_systems(changed, systems_to_scan)
         total_findings = 0
         total_files = len(changed)
         systems_attempted = 0
         systems_failed = 0
 
-        for system_name in system_map:
-            if system_name == "__uncategorized":
-                log.info("Skipping %d uncategorized files", len(system_map[system_name]))
+        for sname in system_map:
+            if sname == "__uncategorized":
+                log.info("Skipping %d uncategorized files", len(system_map[sname]))
                 continue
             systems_attempted += 1
             count, _files = _process_system(
-                system_name, config, db, scan_id, config.claude_fast_mode,
-                changed_files=system_map[system_name],
+                sname, config, db, scan_id, config.claude_fast_mode,
+                changed_files=system_map[sname],
             )
             if count == -1:
                 systems_failed += 1
                 log.error(
                     "System '%s' failed — stopping scan early to avoid wasting further calls",
-                    system_name,
+                    sname,
                 )
                 break
             else:
@@ -314,10 +318,7 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
         final_status = ScanStatus.FAILED if all_failed else ScanStatus.COMPLETED
 
         if all_failed:
-            log.error(
-                "Incremental scan %s: ALL %d systems failed analysis",
-                scan_id, systems_attempted,
-            )
+            log.error("Incremental scan %s: ALL %d systems failed analysis", scan_id, systems_attempted)
 
         db.update_scan(
             scan_id,
