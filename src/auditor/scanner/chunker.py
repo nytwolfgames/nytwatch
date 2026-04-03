@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 from auditor.config import SystemDef
 from auditor.paths import normalize_path
@@ -11,7 +13,13 @@ from auditor.paths import normalize_path
 log = logging.getLogger(__name__)
 
 MAX_FILE_SIZE = 500 * 1024  # 500 KB
+MAX_TOKENS = 70_000          # Hard ceiling per chunk (leaves room for prompt + output)
+_INCLUDE_RE = re.compile(r'^\s*#include\s+"([^"]+)"', re.MULTILINE)
 
+
+# ---------------------------------------------------------------------------
+# File collection
+# ---------------------------------------------------------------------------
 
 def collect_system_files(
     repo_path: str,
@@ -74,74 +82,308 @@ def collect_specific_files(
     return collected
 
 
+# ---------------------------------------------------------------------------
+# Token estimation
+# ---------------------------------------------------------------------------
+
 def estimate_tokens(text: str) -> int:
     return int(len(text) / 3.5)
 
 
-def chunk_system(
-    file_contents: dict[str, str],
-    max_tokens: int = 120_000,
-) -> list[dict[str, str]]:
-    if not file_contents:
-        return []
+# ---------------------------------------------------------------------------
+# Include resolution
+# ---------------------------------------------------------------------------
 
-    header_files: dict[str, str] = {}
-    cpp_files: dict[str, str] = {}
+def _parse_includes(content: str) -> list[str]:
+    """Return all quoted #include paths found in content."""
+    return [m.group(1) for m in _INCLUDE_RE.finditer(content)]
+
+
+def _resolve_include(include_path: str, repo_path: str, known_files: set[str]) -> Optional[str]:
+    """
+    Resolve a raw #include path to a normalised repo-relative path that exists
+    in known_files, or None if not found.
+
+    Tries:
+      1. Direct match (include_path is already relative to repo root)
+      2. Basename match — finds the first file in known_files whose filename
+         matches (handles UE-style includes like "MyClass.h" without a path prefix)
+    """
+    repo = Path(repo_path)
+    # Try 1: direct path relative to repo root
+    norm = normalize_path(include_path)
+    if norm in known_files:
+        return norm
+    candidate = repo / include_path
+    if candidate.exists():
+        norm = normalize_path(str(candidate.relative_to(repo)))
+        if norm in known_files:
+            return norm
+
+    # Try 2: match by filename only
+    basename = Path(include_path).name.lower()
+    for known in known_files:
+        if Path(known).name.lower() == basename:
+            return known
+
+    return None
+
+
+def build_include_graph(
+    file_contents: dict[str, str],
+    repo_path: str,
+) -> dict[str, set[str]]:
+    """
+    Build a dependency graph: file -> set of files it #includes (within the
+    known file set only).
+
+    Returns adjacency list keyed by normalised repo-relative path.
+    """
+    known = set(file_contents.keys())
+    graph: dict[str, set[str]] = {f: set() for f in known}
 
     for path, content in file_contents.items():
-        if path.endswith(".h"):
-            header_files[path] = content
-        else:
-            cpp_files[path] = content
+        for raw in _parse_includes(content):
+            resolved = _resolve_include(raw, repo_path, known)
+            if resolved and resolved != path:
+                graph[path].add(resolved)
 
-    header_tokens = sum(estimate_tokens(c) for c in header_files.values())
-    total_tokens = header_tokens + sum(estimate_tokens(c) for c in cpp_files.values())
+    return graph
 
-    if total_tokens <= max_tokens:
-        return [file_contents]
 
-    budget_per_chunk = max_tokens - header_tokens
-    if budget_per_chunk <= 0:
-        log.warning(
-            "Header files alone exceed max_tokens (%d > %d). "
-            "Returning single chunk anyway.",
-            header_tokens,
-            max_tokens,
-        )
-        return [file_contents]
+# ---------------------------------------------------------------------------
+# Semantic neighbourhood (for incremental scans)
+# ---------------------------------------------------------------------------
 
+def build_neighbourhood(
+    changed_files: list[str],
+    all_files: dict[str, str],
+    repo_path: str,
+    max_tokens: int = MAX_TOKENS,
+) -> dict[str, str]:
+    """
+    For a set of changed files, build the minimal context neighbourhood:
+      - The changed files themselves
+      - Headers they #include (direct includes only)
+      - .cpp files that directly #include any of the changed files (reverse deps)
+
+    Then filter out headers that push the total over max_tokens, prioritising
+    headers included by the most changed files.
+    """
+    known = set(all_files.keys())
+    changed_set = set(normalize_path(f) for f in changed_files if normalize_path(f) in known)
+
+    # Forward: headers included by the changed files
+    forward_headers: dict[str, int] = defaultdict(int)  # header -> how many changed files include it
+    for path in changed_set:
+        content = all_files.get(path, "")
+        for raw in _parse_includes(content):
+            resolved = _resolve_include(raw, repo_path, known)
+            if resolved and resolved.endswith(".h"):
+                forward_headers[resolved] += 1
+
+    # Reverse: .cpp files that include any changed file
+    reverse_deps: set[str] = set()
+    for path, content in all_files.items():
+        if path in changed_set or not path.endswith(".cpp"):
+            continue
+        for raw in _parse_includes(content):
+            resolved = _resolve_include(raw, repo_path, known)
+            if resolved in changed_set:
+                reverse_deps.add(path)
+                break
+
+    # Start with changed files
+    neighbourhood: dict[str, str] = {p: all_files[p] for p in changed_set}
+    tokens = sum(estimate_tokens(c) for c in neighbourhood.values())
+
+    # Add reverse deps (other .cpp files that depend on the changed files)
+    for path in sorted(reverse_deps):
+        t = estimate_tokens(all_files[path])
+        if tokens + t <= max_tokens:
+            neighbourhood[path] = all_files[path]
+            tokens += t
+
+    # Add headers sorted by relevance (most-referenced first)
+    for header in sorted(forward_headers, key=lambda h: -forward_headers[h]):
+        if header in neighbourhood:
+            continue
+        t = estimate_tokens(all_files[header])
+        if tokens + t <= max_tokens:
+            neighbourhood[header] = all_files[header]
+            tokens += t
+
+    log.info(
+        "Neighbourhood: %d changed → %d files (%.0f%% of %d token budget used)",
+        len(changed_set), len(neighbourhood),
+        100 * tokens / max_tokens, max_tokens,
+    )
+    return neighbourhood
+
+
+# ---------------------------------------------------------------------------
+# Semantic clustering (for full scans)
+# ---------------------------------------------------------------------------
+
+def _connected_components(graph: dict[str, set[str]]) -> list[set[str]]:
+    """
+    Find connected components in an undirected version of the include graph.
+    Files that include each other (directly or transitively) end up in the
+    same component.
+    """
+    visited: set[str] = set()
+    components: list[set[str]] = []
+
+    # Build undirected adjacency
+    undirected: dict[str, set[str]] = defaultdict(set)
+    for node, neighbours in graph.items():
+        for nb in neighbours:
+            undirected[node].add(nb)
+            undirected[nb].add(node)
+
+    for start in graph:
+        if start in visited:
+            continue
+        component: set[str] = set()
+        stack = [start]
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.add(node)
+            stack.extend(undirected[node] - visited)
+        components.append(component)
+
+    return components
+
+
+def _split_by_tokens(
+    files: dict[str, str],
+    max_tokens: int,
+) -> list[dict[str, str]]:
+    """
+    Fallback splitter: when a semantic cluster is too large, split it by token
+    count while keeping headers together with the first chunk they fit in.
+    """
+    headers = {p: c for p, c in files.items() if p.endswith(".h")}
+    cpps = {p: c for p, c in files.items() if not p.endswith(".h")}
+
+    # Separate headers used by which .cpp (resolved within this cluster only)
     chunks: list[dict[str, str]] = []
-    current_chunk: dict[str, str] = dict(header_files)
-    current_tokens = header_tokens
+    current: dict[str, str] = {}
+    current_tokens = 0
 
-    for path, content in cpp_files.items():
+    for path, content in cpps.items():
         file_tokens = estimate_tokens(content)
-        if current_tokens + file_tokens > max_tokens and current_chunk != header_files:
-            chunks.append(current_chunk)
-            current_chunk = dict(header_files)
-            current_tokens = header_tokens
+        # Headers directly included by this .cpp that fit in scope
+        needed_headers = {}
+        for h_path, h_content in headers.items():
+            if Path(h_path).name in content or h_path in content:
+                needed_headers[h_path] = h_content
 
-        current_chunk[path] = content
+        needed_tokens = sum(estimate_tokens(c) for c in needed_headers.values())
+        total_needed = file_tokens + needed_tokens
+
+        if current and current_tokens + total_needed > max_tokens:
+            chunks.append(current)
+            current = {}
+            current_tokens = 0
+
+        current[path] = content
         current_tokens += file_tokens
+        for h, hc in needed_headers.items():
+            if h not in current:
+                current[h] = hc
+                current_tokens += estimate_tokens(hc)
 
-    if len(current_chunk) > len(header_files) or not chunks:
-        chunks.append(current_chunk)
+    if current:
+        chunks.append(current)
 
-    log.info("Split %d files into %d chunks", len(file_contents), len(chunks))
+    # If no cpps (header-only cluster), send as one chunk
+    if not chunks and headers:
+        chunks.append(headers)
+
     return chunks
 
 
-_INCLUDE_RE = re.compile(r'^\s*#include\s+"([^"]+)"', re.MULTILINE)
+def chunk_system(
+    file_contents: dict[str, str],
+    repo_path: str = "",
+    max_tokens: int = MAX_TOKENS,
+) -> list[dict[str, str]]:
+    """
+    Semantically chunk a file set for a full scan:
 
+    1. Build an include graph across all files
+    2. Find connected components (semantically related clusters)
+    3. For each cluster that fits within max_tokens: emit as one chunk
+       (with only headers included by that cluster's .cpp files)
+    4. For oversized clusters: fall back to token-count splitting
+    """
+    if not file_contents:
+        return []
+
+    total_tokens = sum(estimate_tokens(c) for c in file_contents.values())
+    if total_tokens <= max_tokens:
+        log.info("Files fit in one chunk (%d tokens)", total_tokens)
+        return [file_contents]
+
+    graph = build_include_graph(file_contents, repo_path) if repo_path else {}
+    components = _connected_components(graph) if graph else [set(file_contents.keys())]
+
+    chunks: list[dict[str, str]] = []
+
+    for component in sorted(components, key=lambda c: -len(c)):
+        cluster = {p: file_contents[p] for p in component if p in file_contents}
+        if not cluster:
+            continue
+
+        # Filter headers: only keep those included by a .cpp in this cluster
+        cpps_in_cluster = {p for p in cluster if not p.endswith(".h")}
+        needed_headers: set[str] = set()
+        for cpp_path in cpps_in_cluster:
+            for raw in _parse_includes(cluster.get(cpp_path, "")):
+                resolved = _resolve_include(raw, repo_path, set(cluster.keys()))
+                if resolved and resolved.endswith(".h"):
+                    needed_headers.add(resolved)
+
+        # Build filtered cluster: all .cpp files + only needed headers
+        filtered = {p: c for p, c in cluster.items() if not p.endswith(".h")}
+        for h in needed_headers:
+            if h in cluster:
+                filtered[h] = cluster[h]
+
+        cluster_tokens = sum(estimate_tokens(c) for c in filtered.values())
+
+        if cluster_tokens <= max_tokens:
+            chunks.append(filtered)
+        else:
+            # Too large — fall back to token-count splitting within this cluster
+            sub_chunks = _split_by_tokens(filtered, max_tokens)
+            chunks.extend(sub_chunks)
+            log.info(
+                "Oversized cluster (%d tokens, %d files) split into %d sub-chunks",
+                cluster_tokens, len(filtered), len(sub_chunks),
+            )
+
+    log.info(
+        "Semantic chunking: %d files → %d chunks (was %d tokens total)",
+        len(file_contents), len(chunks), total_tokens,
+    )
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# Legacy resolve_includes (kept for compatibility)
+# ---------------------------------------------------------------------------
 
 def resolve_includes(file_content: str, repo_path: str) -> list[str]:
     repo = Path(repo_path)
     found: list[str] = []
-
     for match in _INCLUDE_RE.finditer(file_content):
         include_path = match.group(1)
         candidate = repo / include_path
         if candidate.exists():
             found.append(str(candidate.relative_to(repo)))
-
     return found

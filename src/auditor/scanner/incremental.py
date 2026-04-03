@@ -21,7 +21,12 @@ from auditor.models import (
     now_iso,
 )
 from auditor.analysis.engine import analyze_system
-from auditor.scanner.chunker import collect_system_files, collect_specific_files, chunk_system
+from auditor.scanner.chunker import (
+    collect_system_files,
+    collect_specific_files,
+    chunk_system,
+    build_neighbourhood,
+)
 from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
@@ -103,18 +108,31 @@ def _process_system(
         return 0
 
     if changed_files is not None:
-        file_contents = collect_specific_files(
-            config.repo_path, changed_files, config.file_extensions
+        # Incremental: collect the whole system so we can resolve include
+        # relationships, then build a semantic neighbourhood around the changed files.
+        all_system_files = collect_system_files(
+            config.repo_path, system, config.file_extensions
         )
+        if not all_system_files:
+            log.info("No files found for system '%s'", system_name)
+            return 0
+        file_contents = build_neighbourhood(
+            changed_files, all_system_files, config.repo_path
+        )
+        if not file_contents:
+            log.info("No neighbourhood files resolved for system '%s'", system_name)
+            return 0
+        # Neighbourhood fits by construction — send as a single chunk
+        chunks = [file_contents]
     else:
+        # Full scan: collect all system files and chunk semantically
         file_contents = collect_system_files(
             config.repo_path, system, config.file_extensions
         )
-    if not file_contents:
-        log.info("No files found for system '%s'", system_name)
-        return 0
-
-    chunks = chunk_system(file_contents)
+        if not file_contents:
+            log.info("No files found for system '%s'", system_name)
+            return 0
+        chunks = chunk_system(file_contents, repo_path=config.repo_path)
     findings_count = 0
     chunks_failed = 0
 
