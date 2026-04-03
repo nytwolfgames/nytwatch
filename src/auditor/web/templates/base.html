@@ -31,8 +31,8 @@
         #scan-banner svg { animation: spin 1s linear infinite; flex-shrink: 0; }
         #scan-banner-sub { margin-left: auto; opacity: .75; font-weight: 400; }
 
-        body.scan-running .main-content button,
-        body.scan-running .main-content a.btn,
+        body.scan-running .main-content button:not(.scan-safe),
+        body.scan-running .main-content a.btn:not(.scan-safe),
         body.scan-running .main-content form { pointer-events: none; opacity: .45; }
 
         body.scan-running .main-content { margin-top: 42px; }
@@ -193,6 +193,9 @@
                     _wasRunning = true;
                     setScanRunning(true, null);
                     startScanPolling();
+                    // Give the background thread ~400ms to insert the scan record,
+                    // then reload so the Scan History page shows it immediately.
+                    setTimeout(() => location.reload(), 400);
                 } else {
                     alert(data.error || 'Failed to start scan');
                     btn.disabled = false;

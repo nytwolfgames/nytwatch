@@ -38,8 +38,8 @@
                 <td class="body-sm text-variant">{{ scan.started_at[:10] }} {{ scan.started_at[11:16] }}</td>
                 <td class="body-sm text-variant">{{ (scan.completed_at[:10] ~ ' ' ~ scan.completed_at[11:16] if scan.completed_at else '-') }}</td>
                 <td>
-                    {% if log_counts.get(scan.id, 0) > 0 %}
-                    <button class="btn btn-sm" onclick="showLog('{{ scan.id }}', '{{ scan.status }}')">Show Log</button>
+                    {% if scan.status == 'running' or log_counts.get(scan.id, 0) > 0 %}
+                    <button class="btn btn-sm scan-safe" onclick="showLog('{{ scan.id }}', '{{ scan.status }}')">Show Log</button>
                     {% else %}
                     <span class="body-sm text-outline">No log</span>
                     {% endif %}
