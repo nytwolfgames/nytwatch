@@ -167,6 +167,12 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_running_scan(self) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT * FROM scans WHERE status = 'running' ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
     # --- Findings ---
 
     def insert_finding(self, finding: Finding):

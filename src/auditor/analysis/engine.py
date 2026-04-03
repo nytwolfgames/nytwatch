@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -32,24 +34,62 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600) -> str:
     log.debug("Running claude CLI (timeout=%ds, prompt_len=%d)", timeout, len(prompt))
     log.info("Claude call %s: prompt_len=%d, timeout=%ds", call_id, len(prompt), timeout)
 
-    t0 = time.time()
+    from auditor.scan_state import canceller
+
+    # Write prompt to a temp file and redirect stdin from it.
+    # On Windows, piping large payloads via subprocess stdin (input=) can
+    # deadlock or hang due to pipe buffer limits. Reading from a file avoids
+    # that entirely — the OS streams directly without Python holding both
+    # ends of a pipe open simultaneously.
+    tf = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, encoding="utf-8"
+    )
     try:
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        elapsed = time.time() - t0
-        log.error("Claude CLI timed out after %ds", timeout)
-        partial = exc.stdout or ""
-        (log_dir / f"{call_id}_timeout.txt").write_text(partial, encoding="utf-8")
-        raise
-    except FileNotFoundError:
-        log.error("Claude CLI not found — is 'claude' on PATH?")
-        raise
+        tf.write(prompt)
+        tf.flush()
+        tf.close()
+
+        t0 = time.time()
+        try:
+            with open(tf.name, "r", encoding="utf-8") as stdin_file:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=stdin_file,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+
+            canceller.register_process(proc)
+            try:
+                try:
+                    stdout, stderr = proc.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()
+                    log.error("Claude CLI timed out after %ds", timeout)
+                    (log_dir / f"{call_id}_timeout.txt").write_text("", encoding="utf-8")
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+            finally:
+                canceller.unregister_process()
+
+            if canceller.is_cancelled:
+                raise InterruptedError("Scan was cancelled")
+
+        except FileNotFoundError:
+            log.error("Claude CLI not found — is 'claude' on PATH?")
+            raise
+    finally:
+        os.unlink(tf.name)
+
+    # Build a result-like object matching what subprocess.run returns
+    class _Result:
+        def __init__(self, returncode, out, err):
+            self.returncode = returncode
+            self.stdout = out
+            self.stderr = err
+
+    result = _Result(proc.returncode, stdout, stderr)
 
     elapsed = time.time() - t0
 

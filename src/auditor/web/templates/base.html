@@ -10,8 +10,44 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/diff.min.js"></script>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #scan-banner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 1000;
+            background: #1d4ed8;
+            color: #fff;
+            padding: 10px 20px;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        }
+        #scan-banner.visible { display: flex; }
+        #scan-banner svg { animation: spin 1s linear infinite; flex-shrink: 0; }
+        #scan-banner-sub { margin-left: auto; opacity: .75; font-weight: 400; }
+
+        body.scan-running .main-content button,
+        body.scan-running .main-content a.btn,
+        body.scan-running .main-content form { pointer-events: none; opacity: .45; }
+
+        body.scan-running .main-content { margin-top: 42px; }
+        body.scan-running #trigger-scan-btn { opacity: .5; cursor: not-allowed; pointer-events: none; }
+    </style>
 </head>
 <body class="app-layout">
+    <!-- Scan in progress banner -->
+    <div id="scan-banner">
+        <svg id="scan-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span id="scan-banner-text">Scan in progress…</span>
+        <span id="scan-banner-sub"></span>
+        <button id="cancel-scan-btn" onclick="cancelScan()" style="margin-left:auto;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500;">Cancel</button>
+    </div>
+
     <aside class="sidebar">
         <a href="/" class="sidebar-brand">
             <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="var(--primary)"/><text x="16" y="23" text-anchor="middle" fill="white" font-family="sans-serif" font-size="18" font-weight="700">CA</text></svg>
@@ -42,8 +78,8 @@
         </nav>
 
         <div class="sidebar-footer">
-            <span id="scan-status" class="body-sm text-outline"></span>
-            <button onclick="triggerScan()" class="btn btn-primary" style="width: 100%;">Trigger Scan</button>
+            <span id="scan-status-text" class="body-sm text-outline"></span>
+            <button id="trigger-scan-btn" onclick="triggerScan()" class="btn btn-primary" style="width: 100%;">Trigger Scan</button>
         </div>
     </aside>
 
@@ -54,22 +90,116 @@
     <script>
         hljs.highlightAll();
 
-        async function triggerScan() {
-            const btn = event.target;
+        // --- Scan state polling ---
+
+        let _scanPolling = null;
+        let _wasRunning = false;
+
+        function setScanRunning(running, scan, cancelling) {
+            const banner = document.getElementById('scan-banner');
+            const bannerText = document.getElementById('scan-banner-text');
+            const bannerSub = document.getElementById('scan-banner-sub');
+            const spinner = document.getElementById('scan-spinner');
+            const cancelBtn = document.getElementById('cancel-scan-btn');
+            const triggerBtn = document.getElementById('trigger-scan-btn');
+            const statusText = document.getElementById('scan-status-text');
+
+            if (running) {
+                banner.classList.add('visible');
+                document.body.classList.add('scan-running');
+                triggerBtn.disabled = true;
+
+                if (cancelling) {
+                    bannerText.textContent = 'Cancelling scan…';
+                    bannerSub.textContent = '';
+                    spinner.style.opacity = '0.5';
+                    cancelBtn.disabled = true;
+                    cancelBtn.textContent = 'Cancelling…';
+                } else {
+                    const system = scan && scan.system_name ? scan.system_name : '';
+                    const type = scan && scan.scan_type ? scan.scan_type : 'incremental';
+                    bannerText.textContent = system
+                        ? `Scanning ${system} (${type})…`
+                        : `Scan in progress (${type})…`;
+                    bannerSub.textContent = scan && scan.started_at
+                        ? 'Started ' + new Date(scan.started_at).toLocaleTimeString()
+                        : '';
+                    spinner.style.opacity = '';
+                    cancelBtn.disabled = false;
+                    cancelBtn.textContent = 'Cancel';
+                }
+                statusText.textContent = cancelling ? 'Cancelling…' : 'Scan running…';
+            } else {
+                banner.classList.remove('visible');
+                document.body.classList.remove('scan-running');
+                triggerBtn.disabled = false;
+                triggerBtn.textContent = 'Trigger Scan';
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Cancel';
+                statusText.textContent = '';
+            }
+        }
+
+        async function checkScanStatus() {
+            try {
+                const res = await fetch('/api/scan-status');
+                const data = await res.json();
+                setScanRunning(data.running, data.scan, data.cancelling);
+
+                if (!data.running && _wasRunning) {
+                    // Scan just finished or was cancelled — reload
+                    clearInterval(_scanPolling);
+                    _scanPolling = null;
+                    location.reload();
+                }
+                _wasRunning = data.running;
+            } catch (e) {
+                // Server unreachable — stop polling silently
+                clearInterval(_scanPolling);
+                _scanPolling = null;
+            }
+        }
+
+        async function cancelScan() {
+            const btn = document.getElementById('cancel-scan-btn');
             btn.disabled = true;
-            btn.textContent = 'Scanning...';
+            btn.textContent = 'Cancelling…';
+            try {
+                await fetch('/scans/cancel', { method: 'POST' });
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Cancel';
+            }
+        }
+
+        function startScanPolling() {
+            if (_scanPolling) return;
+            _scanPolling = setInterval(checkScanStatus, 3000);
+        }
+
+        // Check immediately on page load, then start polling
+        checkScanStatus().then(() => {
+            if (_wasRunning) startScanPolling();
+        });
+
+        async function triggerScan() {
+            const btn = document.getElementById('trigger-scan-btn');
+            btn.disabled = true;
+            btn.textContent = 'Starting…';
             try {
                 const res = await fetch('/scans/trigger', { method: 'POST' });
                 const data = await res.json();
-                if (data.scan_id) {
-                    document.getElementById('scan-status').textContent = 'Scan started: ' + data.scan_id;
-                    setTimeout(() => location.reload(), 2000);
+                if (data.ok) {
+                    _wasRunning = true;
+                    setScanRunning(true, null);
+                    startScanPolling();
                 } else {
-                    alert(data.error || 'Scan failed');
+                    alert(data.error || 'Failed to start scan');
+                    btn.disabled = false;
+                    btn.textContent = 'Trigger Scan';
                 }
             } catch (e) {
                 alert('Failed to trigger scan: ' + e.message);
-            } finally {
                 btn.disabled = false;
                 btn.textContent = 'Trigger Scan';
             }
@@ -89,7 +219,6 @@
         // Column resize for all .data-table instances
         document.querySelectorAll('.data-table').forEach(table => {
             const ths = table.querySelectorAll('thead th');
-            // Only capture natural widths for columns without explicit width in HTML
             const hasExplicitWidths = Array.from(ths).some(th => th.getAttribute('style')?.includes('width'));
             if (!hasExplicitWidths) {
                 const widths = Array.from(ths).map(th => th.offsetWidth);
@@ -97,14 +226,13 @@
             }
             table.style.tableLayout = 'fixed';
 
-            // Add title tooltips to truncated cells
             table.querySelectorAll('td').forEach(td => {
                 const text = td.textContent.trim();
                 if (text) td.setAttribute('title', text);
             });
 
             ths.forEach((th, i) => {
-                if (i === ths.length - 1) return; // skip last column (Actions)
+                if (i === ths.length - 1) return;
 
                 const handle = document.createElement('div');
                 handle.className = 'col-resize';

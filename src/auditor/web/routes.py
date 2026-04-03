@@ -38,8 +38,7 @@ async def dashboard(request: Request):
     db = get_db(request)
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "batches": batches,
     })
@@ -75,8 +74,7 @@ async def findings_list(
         "file_path": file_path,
         "source": source,
     }
-    return templates.TemplateResponse("findings_list.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "findings_list.html", {
         "findings": findings,
         "filters": filters,
         "approved_count": approved_count,
@@ -238,8 +236,7 @@ async def finding_detail(request: Request, finding_id: str):
     finding = db.get_finding(finding_id)
     if not finding:
         return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
-    return templates.TemplateResponse("finding_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "finding_detail.html", {
         "finding": finding,
     })
 
@@ -276,8 +273,7 @@ async def reject_finding(request: Request, finding_id: str):
 async def scans_list(request: Request):
     db = get_db(request)
     scans = db.list_scans()
-    return templates.TemplateResponse("scans.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "scans.html", {
         "scans": scans,
     })
 
@@ -285,19 +281,44 @@ async def scans_list(request: Request):
 @router.post("/scans/trigger")
 async def trigger_scan(request: Request):
     config = get_config(request)
-    db = get_db(request)
+    db_path = get_db(request).db_path
+
+    from auditor.scan_state import canceller
+    canceller.reset()
 
     def _run():
+        from auditor.database import Database
+        from auditor.scanner.scheduler import run_scan
+        thread_db = Database(db_path)
         try:
-            from auditor.scanner.scheduler import run_scan
-            scan_id = run_scan(config, db, scan_type="incremental")
+            scan_id = run_scan(config, thread_db, scan_type="incremental")
             logger.info("Scan completed: %s", scan_id)
         except Exception:
             logger.exception("Scan failed")
+        finally:
+            thread_db.close()
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return JSONResponse({"ok": True, "scan_id": "started"})
+
+
+@router.post("/scans/cancel")
+async def cancel_scan(request: Request):
+    from auditor.scan_state import canceller
+    db = get_db(request)
+
+    if not canceller.is_cancelled:
+        canceller.cancel()
+        logger.info("Scan cancellation requested")
+
+    # Mark any still-running scan record as cancelled
+    running = db.get_running_scan()
+    if running:
+        from auditor.models import ScanStatus, now_iso
+        db.update_scan(running["id"], status=ScanStatus.CANCELLED, completed_at=now_iso())
+
+    return JSONResponse({"ok": True})
 
 
 # --- Settings ---
@@ -309,8 +330,7 @@ async def settings_page(request: Request):
     project_dirs = [d for d in source_dirs if d["source_type"] == "project"]
     plugin_dirs = [d for d in source_dirs if d["source_type"] == "plugin"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
-    return templates.TemplateResponse("settings.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "settings.html", {
         "project_dirs": project_dirs,
         "plugin_dirs": plugin_dirs,
         "ignored_dirs": ignored_dirs,
@@ -348,8 +368,7 @@ async def delete_source_dir(request: Request):
 async def batches_list(request: Request):
     db = get_db(request)
     batches = db.list_batches()
-    return templates.TemplateResponse("batches.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "batches.html", {
         "batches": batches,
     })
 
@@ -362,8 +381,7 @@ async def batch_detail(request: Request, batch_id: str):
         return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
     findings = [db.get_finding(fid) for fid in batch["finding_ids"]]
     findings = [f for f in findings if f]
-    return templates.TemplateResponse("batch_status.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "batch_status.html", {
         "batch": batch,
         "findings": findings,
     })
@@ -388,13 +406,20 @@ async def apply_batch(request: Request):
     for f in approved:
         db.set_finding_batch(f["id"], batch.id)
 
+    db_path = db.db_path
+    batch_id = batch.id
+
     def _run():
+        from auditor.database import Database
+        from auditor.pipeline.batch import run_batch_pipeline
+        thread_db = Database(db_path)
         try:
-            from auditor.pipeline.batch import run_batch_pipeline
-            run_batch_pipeline(config, db, batch.id)
+            run_batch_pipeline(config, thread_db, batch_id)
         except Exception:
-            logger.exception("Batch pipeline failed for %s", batch.id)
-            db.update_batch(batch.id, status=BatchStatus.FAILED)
+            logger.exception("Batch pipeline failed for %s", batch_id)
+            thread_db.update_batch(batch_id, status=BatchStatus.FAILED)
+        finally:
+            thread_db.close()
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
@@ -408,3 +433,15 @@ async def apply_batch(request: Request):
 async def api_stats(request: Request):
     db = get_db(request)
     return JSONResponse(db.get_stats())
+
+
+@router.get("/api/scan-status")
+async def api_scan_status(request: Request):
+    from auditor.scan_state import canceller
+    db = get_db(request)
+    running = db.get_running_scan()
+    return JSONResponse({
+        "running": running is not None,
+        "scan": running,
+        "cancelling": canceller.is_cancelled,
+    })

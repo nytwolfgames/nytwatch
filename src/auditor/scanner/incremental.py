@@ -176,33 +176,43 @@ def _process_system(
 
 
 def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
-    detect_source_dirs(config.repo_path, db)
-
+    # Insert the scan record immediately so the UI can show it as running
+    # before any slow setup work (source detection, git calls) begins.
     scan_id = new_id()
-    current_commit = get_current_commit(config.repo_path)
-    last_commit = db.get_config("last_scan_commit")
-
-    if not last_commit:
-        log.warning("No previous scan commit found. Running against HEAD~20 as baseline.")
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD~20"],
-                cwd=config.repo_path,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            last_commit = result.stdout.strip()
-        except subprocess.CalledProcessError:
-            log.error("Could not determine baseline commit. Aborting incremental scan.")
-            return scan_id
-
     scan = Scan(
         id=scan_id,
         scan_type=ScanType.INCREMENTAL,
-        base_commit=last_commit,
+        base_commit="",
     )
     db.insert_scan(scan)
+
+    try:
+        detect_source_dirs(config.repo_path, db)
+
+        current_commit = get_current_commit(config.repo_path)
+        last_commit = db.get_config("last_scan_commit")
+
+        if not last_commit:
+            log.warning("No previous scan commit found. Running against HEAD~20 as baseline.")
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "HEAD~20"],
+                    cwd=config.repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                last_commit = result.stdout.strip()
+            except subprocess.CalledProcessError:
+                log.error("Could not determine baseline commit. Aborting incremental scan.")
+                db.update_scan(scan_id, status=ScanStatus.FAILED, completed_at=now_iso())
+                return scan_id
+
+        db.update_scan(scan_id, base_commit=last_commit)
+    except Exception:
+        log.exception("Incremental scan %s failed during setup", scan_id)
+        db.update_scan(scan_id, status=ScanStatus.FAILED, completed_at=now_iso())
+        return scan_id
 
     try:
         changed = get_changed_files(
