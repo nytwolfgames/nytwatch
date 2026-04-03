@@ -121,5 +121,116 @@ async function applyBatch() {
         btn.textContent = 'Apply Findings';
     }
 }
+
+// ── Live findings streaming ──────────────────────────────────────────────────
+
+const _activeFilters = {
+    status:     {{ ('"' ~ filters.status ~ '"') | safe if filters.status else 'null' }},
+    severity:   {{ ('"' ~ filters.severity ~ '"') | safe if filters.severity else 'null' }},
+    category:   {{ ('"' ~ filters.category ~ '"') | safe if filters.category else 'null' }},
+    confidence: {{ ('"' ~ filters.confidence ~ '"') | safe if filters.confidence else 'null' }},
+    source:     {{ ('"' ~ filters.source ~ '"') | safe if filters.source else 'null' }},
+    file_path:  {{ ('"' ~ filters.file_path ~ '"') | safe if filters.file_path else 'null' }},
+};
+
+let _streamScanId = null;
+let _streamOffset = 0;
+
+function _matchesFilters(f) {
+    if (_activeFilters.status     && f.status     !== _activeFilters.status)     return false;
+    if (_activeFilters.severity   && f.severity   !== _activeFilters.severity)   return false;
+    if (_activeFilters.category   && f.category   !== _activeFilters.category)   return false;
+    if (_activeFilters.confidence && f.confidence !== _activeFilters.confidence) return false;
+    if (_activeFilters.source     && f.source     !== _activeFilters.source)     return false;
+    if (_activeFilters.file_path  && !(f.file_path || '').includes(_activeFilters.file_path)) return false;
+    return true;
+}
+
+function _severityBadge(sev) {
+    return `<span class="badge badge-${sev}">${sev.toUpperCase()}</span>`;
+}
+
+function _escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _buildRow(f) {
+    const src = f.source || 'project';
+    const actions = f.status === 'pending'
+        ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe">Approve</button>
+           <button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" style="margin-left:var(--sp-2)">Reject</button>`
+        : f.status === 'approved'
+        ? `<button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe">Unapprove</button>`
+        : '';
+    return `<tr data-finding-id="${_escHtml(f.id)}">
+        <td>${_severityBadge(f.severity)}</td>
+        <td><span class="badge badge-source-${_escHtml(src)}">${_escHtml(src.charAt(0).toUpperCase()+src.slice(1))}</span></td>
+        <td><a href="/findings/${_escHtml(f.id)}">${_escHtml(f.title)}</a></td>
+        <td class="mono cell-truncate" style="font-size:.75rem" title="${_escHtml(f.file_path)}:${f.line_start}">${_escHtml(f.file_path)}:${f.line_start}</td>
+        <td><span class="badge badge-category">${_escHtml(f.category)}</span></td>
+        <td class="body-sm text-variant">${_escHtml(f.confidence)}</td>
+        <td><span class="badge status-${_escHtml(f.status)}">${_escHtml(f.status)}</span></td>
+        <td>${actions}</td>
+    </tr>`;
+}
+
+function _ensureTable() {
+    // If the page was showing "No findings", swap in the table shell
+    const empty = document.querySelector('.empty-state');
+    if (empty) {
+        empty.outerHTML = `
+        <div class="card" style="padding:0;">
+          <table class="data-table" style="width:100%;">
+            <thead><tr>
+              <th style="width:90px">Severity</th>
+              <th style="width:80px">Source</th>
+              <th style="width:28%">Title</th>
+              <th style="width:18%">File</th>
+              <th style="width:85px">Category</th>
+              <th style="width:90px">Confidence</th>
+              <th style="width:85px">Status</th>
+              <th style="width:110px">Actions</th>
+            </tr></thead>
+            <tbody id="findings-tbody"></tbody>
+          </table>
+        </div>`;
+    }
+    return document.querySelector('.data-table tbody');
+}
+
+async function _fetchAndAppend(scanId) {
+    try {
+        const res = await fetch(`/api/findings/stream?scan_id=${scanId}&offset=${_streamOffset}`);
+        const data = await res.json();
+        if (!data.findings || data.findings.length === 0) return;
+
+        _streamOffset += data.findings.length;
+        const matching = data.findings.filter(_matchesFilters);
+        if (matching.length === 0) return;
+
+        const tbody = _ensureTable();
+        if (!tbody) return;
+        tbody.insertAdjacentHTML('beforeend', matching.map(_buildRow).join(''));
+    } catch (e) {}
+}
+
+// Listen for findings_update messages from the WS (registered via onWsMessage in base.html)
+onWsMessage('findings_update', (data) => {
+    if (!_streamScanId) {
+        _streamScanId = data.scan_id;
+        _streamOffset = 0;
+    }
+    if (data.chunk_findings > 0) {
+        _fetchAndAppend(data.scan_id);
+    }
+});
+
+// Reset when scan finishes
+onWsMessage('scan_status', (data) => {
+    if (!data.running) {
+        _streamScanId = null;
+        _streamOffset = 0;
+    }
+});
 </script>
 {% endblock %}

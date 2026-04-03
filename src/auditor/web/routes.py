@@ -477,6 +477,14 @@ async def api_scan_logs(request: Request, scan_id: str, offset: int = 0):
     return JSONResponse({"logs": logs, "running": running, "total": len(logs)})
 
 
+@router.get("/api/findings/stream")
+async def api_findings_stream(request: Request, scan_id: str, offset: int = 0):
+    """Return findings for a scan starting from offset N, respecting active filters."""
+    db = get_db(request)
+    findings = db.get_scan_findings_from(scan_id, offset)
+    return JSONResponse({"findings": findings, "total": len(findings)})
+
+
 @router.get("/api/scan-status")
 async def api_scan_status(request: Request):
     from auditor.scan_state import canceller

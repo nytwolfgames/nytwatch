@@ -142,12 +142,29 @@
             }
         }
 
+        let _totalFindings = 0;
+
+        function handleFindingsUpdate(data) {
+            _totalFindings = data.total_findings;
+
+            // Update banner sub-text with live chunk + findings progress
+            const bannerSub = document.getElementById('scan-banner-sub');
+            if (bannerSub) {
+                const chunkInfo = data.total_chunks > 1
+                    ? ` — chunk ${data.chunk}/${data.total_chunks}`
+                    : '';
+                bannerSub.textContent =
+                    `${data.system}${chunkInfo} · ${data.total_findings} finding${data.total_findings !== 1 ? 's' : ''} so far`;
+            }
+        }
+
         function handleScanStatusMessage(data) {
             const wasRunning = _wasRunning;
             setScanRunning(data.running, data.scan, data.cancelling);
             _wasRunning = data.running;
             if (!data.running && wasRunning) {
                 // Scan just finished — reload to refresh tables/findings
+                _totalFindings = 0;
                 setTimeout(() => location.reload(), 300);
             }
         }
@@ -166,6 +183,9 @@
                     const data = JSON.parse(event.data);
                     if (data.type === 'scan_status') {
                         handleScanStatusMessage(data);
+                    }
+                    if (data.type === 'findings_update') {
+                        handleFindingsUpdate(data);
                     }
                     if (_wsHandlers[data.type]) {
                         _wsHandlers[data.type](data);

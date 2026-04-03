@@ -71,6 +71,25 @@ class ConnectionManager:
             },
         })
 
+    def push_findings_update(
+        self,
+        scan_id: str,
+        system: str,
+        chunk: int,
+        total_chunks: int,
+        chunk_findings: int,
+        total_findings: int,
+    ) -> None:
+        self.broadcast_from_thread({
+            "type": "findings_update",
+            "scan_id": scan_id,
+            "system": system,
+            "chunk": chunk,
+            "total_chunks": total_chunks,
+            "chunk_findings": chunk_findings,
+            "total_findings": total_findings,
+        })
+
 
 # Module-level singleton
 manager = ConnectionManager()

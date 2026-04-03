@@ -133,6 +133,8 @@ def _process_system(
             log.info("No files found for system '%s'", system_name)
             return 0
         chunks = chunk_system(file_contents, repo_path=config.repo_path)
+    from auditor.ws_manager import manager as ws_manager
+
     findings_count = 0
     chunks_failed = 0
 
@@ -152,6 +154,7 @@ def _process_system(
             chunks_failed += 1
             continue
 
+        chunk_new = 0
         for fo in result.findings:
             line_range = f"{fo.line_start}-{fo.line_end}"
             fingerprint = _compute_fingerprint(
@@ -185,6 +188,20 @@ def _process_system(
             )
             db.insert_finding(finding)
             findings_count += 1
+            chunk_new += 1
+
+        log.info(
+            "System '%s' chunk %d/%d: %d new finding(s) (%d total so far)",
+            system_name, i + 1, len(chunks), chunk_new, findings_count,
+        )
+        ws_manager.push_findings_update(
+            scan_id=scan_id,
+            system=system_name,
+            chunk=i + 1,
+            total_chunks=len(chunks),
+            chunk_findings=chunk_new,
+            total_findings=findings_count,
+        )
 
     if chunks_failed == len(chunks):
         log.error("ALL chunks failed for system '%s' — returning -1", system_name)

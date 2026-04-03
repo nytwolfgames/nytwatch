@@ -410,6 +410,15 @@ class Database:
         )
         self.conn.commit()
 
+    def get_scan_findings_from(self, scan_id: str, offset: int = 0) -> list[dict]:
+        """Return findings for a scan ordered by rowid, starting from offset."""
+        rows = self.conn.execute(
+            """SELECT * FROM findings WHERE scan_id = ?
+               ORDER BY rowid LIMIT 500 OFFSET ?""",
+            (scan_id, offset),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_scan_log_counts(self) -> dict[str, int]:
         """Return {scan_id: log_line_count} for all scans that have any logs."""
         rows = self.conn.execute(
