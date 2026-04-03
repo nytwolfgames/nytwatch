@@ -79,7 +79,7 @@
 
         <div class="sidebar-footer">
             <span id="scan-status-text" class="body-sm text-outline"></span>
-            <button id="trigger-scan-btn" onclick="triggerScan()" class="btn btn-primary" style="width: 100%;">Trigger Scan</button>
+            <button id="trigger-scan-btn" onclick="triggerScan()" class="btn btn-primary" style="width: 100%;">Full Scan</button>
         </div>
     </aside>
 
@@ -135,7 +135,7 @@
                 banner.classList.remove('visible');
                 document.body.classList.remove('scan-running');
                 triggerBtn.disabled = false;
-                triggerBtn.textContent = 'Trigger Scan';
+                triggerBtn.textContent = 'Full Scan';
                 cancelBtn.disabled = false;
                 cancelBtn.textContent = 'Cancel';
                 statusText.textContent = '';
@@ -242,7 +242,7 @@
         async function triggerScan() {
             const btn = document.getElementById('trigger-scan-btn');
             btn.disabled = true;
-            btn.textContent = 'Starting…';
+            btn.textContent = 'Starting full scan…';
             try {
                 const res = await fetch('/scans/trigger', { method: 'POST' });
                 const data = await res.json();
@@ -255,12 +255,12 @@
                 } else {
                     alert(data.error || 'Failed to start scan');
                     btn.disabled = false;
-                    btn.textContent = 'Trigger Scan';
+                    btn.textContent = 'Full Scan';
                 }
             } catch (e) {
                 alert('Failed to trigger scan: ' + e.message);
                 btn.disabled = false;
-                btn.textContent = 'Trigger Scan';
+                btn.textContent = 'Full Scan';
             }
         }
 

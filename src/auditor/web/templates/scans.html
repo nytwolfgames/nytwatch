@@ -18,11 +18,12 @@
                 <th>Started</th>
                 <th>Completed</th>
                 <th>Log</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for scan in scans %}
-            <tr>
+            <tr id="scan-row-{{ scan.id }}">
                 <td class="mono" style="font-size: 0.75rem; color: var(--on-surface-variant);">{{ scan.id[:8] }}</td>
                 <td><span class="badge badge-category">{{ scan.scan_type }}</span></td>
                 <td class="body-sm">{{ scan.system_name or 'All' }}</td>
@@ -42,6 +43,13 @@
                     <button class="btn btn-sm scan-safe" onclick="showLog('{{ scan.id }}', '{{ scan.status }}')">Show Log</button>
                     {% else %}
                     <span class="body-sm text-outline">No log</span>
+                    {% endif %}
+                </td>
+                <td style="white-space: nowrap;">
+                    {% if scan.status == 'running' %}
+                    <button class="btn btn-sm btn-danger scan-safe" onclick="stopScan('{{ scan.id }}')">Stop</button>
+                    {% else %}
+                    <button class="btn btn-sm btn-danger scan-safe" onclick="deleteScan('{{ scan.id }}')">Delete</button>
                     {% endif %}
                 </td>
             </tr>
@@ -204,5 +212,30 @@
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeLog();
     });
+
+    async function deleteScan(scanId) {
+        if (!confirm('Delete this scan record and all its logs?')) return;
+        try {
+            const res = await fetch(`/scans/${scanId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.ok) {
+                document.getElementById(`scan-row-${scanId}`)?.remove();
+            } else {
+                alert(data.error || 'Failed to delete scan');
+            }
+        } catch (e) {
+            alert('Failed to delete scan: ' + e.message);
+        }
+    }
+
+    async function stopScan(scanId) {
+        try {
+            const res = await fetch('/scans/cancel', { method: 'POST' });
+            const data = await res.json();
+            if (!data.ok) alert(data.error || 'Failed to stop scan');
+        } catch (e) {
+            alert('Failed to stop scan: ' + e.message);
+        }
+    }
 </script>
 {% endblock %}

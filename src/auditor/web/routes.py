@@ -294,16 +294,29 @@ async def trigger_scan(request: Request):
         from auditor.scanner.scheduler import run_scan
         thread_db = Database(db_path)
         try:
-            scan_id = run_scan(config, thread_db, scan_type="incremental")
-            logger.info("Scan completed: %s", scan_id)
+            scan_id = run_scan(config, thread_db, scan_type="full")
+            logger.info("Full scan completed: %s", scan_id)
         except Exception:
-            logger.exception("Scan failed")
+            logger.exception("Full scan failed")
         finally:
             thread_db.close()
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return JSONResponse({"ok": True, "scan_id": "started"})
+
+
+@router.delete("/scans/{scan_id}")
+async def delete_scan(request: Request, scan_id: str):
+    db = get_db(request)
+    scan = db.get_scan(scan_id)
+    if not scan:
+        return JSONResponse({"error": "Scan not found"}, status_code=404)
+    if scan["status"] == "running":
+        return JSONResponse({"error": "Cannot delete a running scan"}, status_code=400)
+    db.delete_scan(scan_id)
+    logger.info("Scan %s deleted", scan_id)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/scans/cancel")

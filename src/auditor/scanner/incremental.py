@@ -101,7 +101,8 @@ def _process_system(
     scan_id: str,
     fast: bool,
     changed_files: Optional[list[str]] = None,
-) -> int:
+) -> tuple[int, int]:
+    """Return (findings_count, files_scanned). findings_count == -1 means total failure."""
     system = next((s for s in config.systems if s.name == system_name), None)
     if system is None:
         log.warning("System '%s' not found in config, skipping", system_name)
@@ -115,13 +116,13 @@ def _process_system(
         )
         if not all_system_files:
             log.info("No files found for system '%s'", system_name)
-            return 0
+            return 0, 0
         file_contents = build_neighbourhood(
             changed_files, all_system_files, config.repo_path
         )
         if not file_contents:
             log.info("No neighbourhood files resolved for system '%s'", system_name)
-            return 0
+            return 0, 0
     else:
         # Full scan: collect all system files
         file_contents = collect_system_files(
@@ -129,7 +130,7 @@ def _process_system(
         )
         if not file_contents:
             log.info("No files found for system '%s'", system_name)
-            return 0
+            return 0, 0
 
     # Always chunk semantically — handles both incremental (neighbourhood may
     # span multiple chunks) and full scans
@@ -204,9 +205,11 @@ def _process_system(
             total_findings=findings_count,
         )
 
+    files_scanned = len(file_contents)
+
     if chunks_failed == len(chunks):
         log.error("ALL chunks failed for system '%s' — returning -1", system_name)
-        return -1
+        return -1, files_scanned
 
     if chunks_failed > 0:
         log.warning(
@@ -214,7 +217,7 @@ def _process_system(
             system_name, chunks_failed, len(chunks), findings_count,
         )
 
-    return findings_count
+    return findings_count, files_scanned
 
 
 def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
@@ -293,7 +296,7 @@ def run_incremental_scan(config: AuditorConfig, db: Database) -> str:
                 log.info("Skipping %d uncategorized files", len(system_map[system_name]))
                 continue
             systems_attempted += 1
-            count = _process_system(
+            count, _files = _process_system(
                 system_name, config, db, scan_id, config.claude_fast_mode,
                 changed_files=system_map[system_name],
             )

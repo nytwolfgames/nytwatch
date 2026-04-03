@@ -12,7 +12,6 @@ from auditor.models import (
     new_id,
     now_iso,
 )
-from auditor.scanner.chunker import collect_system_files, chunk_system
 from auditor.scanner.incremental import run_incremental_scan, get_current_commit, _process_system
 from auditor.scanner.source_detector import detect_source_dirs
 
@@ -42,21 +41,22 @@ def run_full_system_scan(
     db: Database,
     system_name: str,
 ) -> str:
-    detect_source_dirs(config.repo_path, db)
+    from auditor.scan_state import ScanLogHandler
+    from auditor.ws_manager import manager as ws_manager
 
     scan_id = new_id()
 
+    # Insert scan record immediately so the UI shows it as running right away
     system = next((s for s in config.systems if s.name == system_name), None)
     if system is None:
         log.error("System '%s' not found in config", system_name)
-        scan = Scan(
+        db.insert_scan(Scan(
             id=scan_id,
             scan_type=ScanType.FULL,
             system_name=system_name,
             status=ScanStatus.FAILED,
             completed_at=now_iso(),
-        )
-        db.insert_scan(scan)
+        ))
         return scan_id
 
     try:
@@ -65,40 +65,22 @@ def run_full_system_scan(
         current_commit = ""
         log.warning("Could not determine current commit")
 
-    scan = Scan(
+    db.insert_scan(Scan(
         id=scan_id,
         scan_type=ScanType.FULL,
         system_name=system_name,
         base_commit=current_commit,
-    )
-    db.insert_scan(scan)
+    ))
 
-    from auditor.scan_state import ScanLogHandler
-    from auditor.ws_manager import manager as ws_manager
     _log_handler = ScanLogHandler(scan_id, db)
     _log_handler.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger("auditor").addHandler(_log_handler)
-
     ws_manager.push_scan_status(running=True, scan=db.get_scan(scan_id), cancelling=False)
 
     try:
-        file_contents = collect_system_files(
-            config.repo_path, system, config.file_extensions
-        )
-        total_files = len(file_contents)
+        detect_source_dirs(config.repo_path, db)
 
-        if not file_contents:
-            log.info("No files found for system '%s'", system_name)
-            db.update_scan(
-                scan_id,
-                status=ScanStatus.COMPLETED,
-                completed_at=now_iso(),
-                files_scanned=0,
-                findings_count=0,
-            )
-            return scan_id
-
-        findings_count = _process_system(
+        findings_count, files_scanned = _process_system(
             system_name, config, db, scan_id, config.claude_fast_mode
         )
 
@@ -108,7 +90,7 @@ def run_full_system_scan(
                 scan_id,
                 status=ScanStatus.FAILED,
                 completed_at=now_iso(),
-                files_scanned=total_files,
+                files_scanned=files_scanned,
                 findings_count=0,
             )
         else:
@@ -116,28 +98,20 @@ def run_full_system_scan(
                 scan_id,
                 status=ScanStatus.COMPLETED,
                 completed_at=now_iso(),
-                files_scanned=total_files,
+                files_scanned=files_scanned,
                 findings_count=findings_count,
             )
             log.info(
                 "Full scan %s complete for '%s': %d files, %d findings",
-                scan_id, system_name, total_files, findings_count,
+                scan_id, system_name, files_scanned, findings_count,
             )
 
     except InterruptedError:
         log.info("Full scan %s was cancelled", scan_id)
-        db.update_scan(
-            scan_id,
-            status=ScanStatus.CANCELLED,
-            completed_at=now_iso(),
-        )
+        db.update_scan(scan_id, status=ScanStatus.CANCELLED, completed_at=now_iso())
     except Exception:
         log.exception("Full scan %s failed for system '%s'", scan_id, system_name)
-        db.update_scan(
-            scan_id,
-            status=ScanStatus.FAILED,
-            completed_at=now_iso(),
-        )
+        db.update_scan(scan_id, status=ScanStatus.FAILED, completed_at=now_iso())
     finally:
         logging.getLogger("auditor").removeHandler(_log_handler)
         ws_manager.push_scan_status(running=False, scan=db.get_scan(scan_id), cancelling=False)

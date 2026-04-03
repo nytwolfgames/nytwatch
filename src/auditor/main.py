@@ -29,7 +29,38 @@ def create_app(config: AuditorConfig) -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
+        import threading
         ws_manager.set_loop(asyncio.get_event_loop())
+
+        # Auto-trigger incremental scan if new commits arrived since last scan
+        try:
+            from auditor.scanner.incremental import get_current_commit
+            current_commit = get_current_commit(config.repo_path)
+            last_commit = db.get_config("last_scan_commit", "")
+            if current_commit != last_commit:
+                logger.info(
+                    "New commits detected since last scan (%s → %s) — triggering incremental scan",
+                    last_commit or "none", current_commit[:8],
+                )
+                from auditor.scan_state import canceller
+                canceller.reset()
+
+                def _auto_scan():
+                    from auditor.database import Database
+                    from auditor.scanner.scheduler import run_scan
+                    thread_db = Database(get_db_path(config))
+                    try:
+                        run_scan(config, thread_db, scan_type="incremental")
+                    except Exception:
+                        logger.exception("Auto incremental scan failed")
+                    finally:
+                        thread_db.close()
+
+                threading.Thread(target=_auto_scan, daemon=True, name="auto-incremental").start()
+            else:
+                logger.info("No new commits since last scan (%s) — skipping auto scan", last_commit[:8] if last_commit else "none")
+        except Exception:
+            logger.exception("Failed to check for new commits on startup")
 
     db = Database(get_db_path(config))
     db.init_schema()

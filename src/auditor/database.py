@@ -165,6 +165,11 @@ class Database:
         )
         self.conn.commit()
 
+    def delete_scan(self, scan_id: str) -> None:
+        self.conn.execute("DELETE FROM scan_logs WHERE scan_id = ?", (scan_id,))
+        self.conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
+        self.conn.commit()
+
     def get_scan(self, scan_id: str) -> Optional[dict]:
         row = self.conn.execute(
             "SELECT * FROM scans WHERE id = ?", (scan_id,)
