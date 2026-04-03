@@ -40,10 +40,14 @@ async def dashboard(request: Request):
     config = get_config(request)
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
+    systems = [
+        {"name": s.name, "count": db.count_findings_for_path_prefixes(s.paths)}
+        for s in config.systems
+    ]
     return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "batches": batches,
-        "systems": [s.name for s in config.systems],
+        "systems": systems,
     })
 
 
@@ -58,8 +62,17 @@ async def findings_list(
     confidence: Optional[str] = None,
     file_path: Optional[str] = None,
     source: Optional[str] = None,
+    system: Optional[str] = None,
 ):
+    config = get_config(request)
     db = get_db(request)
+
+    path_prefixes = None
+    if system:
+        sys_def = next((s for s in config.systems if s.name == system), None)
+        if sys_def:
+            path_prefixes = sys_def.paths
+
     findings = db.list_findings(
         status=status,
         severity=severity,
@@ -67,6 +80,7 @@ async def findings_list(
         confidence=confidence,
         file_path=file_path,
         source=source,
+        path_prefixes=path_prefixes,
     )
     approved_count = len(db.get_approved_findings())
     filters = {
@@ -76,11 +90,13 @@ async def findings_list(
         "confidence": confidence,
         "file_path": file_path,
         "source": source,
+        "system": system,
     }
     return templates.TemplateResponse(request, "findings_list.html", {
         "findings": findings,
         "filters": filters,
         "approved_count": approved_count,
+        "systems": [s.name for s in config.systems],
     })
 
 

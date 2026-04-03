@@ -67,20 +67,28 @@
         <thead>
             <tr>
                 <th>System</th>
+                <th style="width: 80px;">Findings</th>
                 <th style="width: 220px; text-align: right;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for system in systems %}
-            <tr data-system="{{ system }}">
+            <tr data-system="{{ system.name }}">
                 <td class="body-md">
-                    {{ system }}
+                    <a href="/findings?system={{ system.name }}" style="color: inherit; text-decoration: none;">{{ system.name }}</a>
                     <span class="system-scan-badge" style="display:none; margin-left: var(--sp-2); font-size:0.7rem; background:#1d4ed8; color:#fff; padding:2px 7px; border-radius:4px; font-weight:500; vertical-align:middle;"></span>
+                </td>
+                <td class="body-sm text-variant" style="width: 80px;">
+                    {% if system.count > 0 %}
+                    <a href="/findings?system={{ system.name }}" style="font-weight: 600; color: var(--on-surface);">{{ system.count }}</a>
+                    {% else %}
+                    <span class="text-outline">0</span>
+                    {% endif %}
                 </td>
                 <td style="text-align: right; white-space: nowrap;">
                     <span class="system-actions">
-                        <button class="btn btn-sm" onclick="triggerScan('{{ system }}', 'incremental')">Incremental</button>
-                        <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system }}', 'full')" style="margin-left: var(--sp-2);">Full Scan</button>
+                        <button class="btn btn-sm" onclick="triggerScan('{{ system.name }}', 'incremental')">Incremental</button>
+                        <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system.name }}', 'full')" style="margin-left: var(--sp-2);">Full Scan</button>
                     </span>
                     <button class="btn btn-sm btn-danger system-stop-btn scan-safe" onclick="cancelScan()" style="display:none;">Stop</button>
                 </td>

@@ -234,6 +234,7 @@ class Database:
         confidence: Optional[str] = None,
         file_path: Optional[str] = None,
         source: Optional[str] = None,
+        path_prefixes: Optional[list[str]] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]:
@@ -258,6 +259,11 @@ class Database:
         if source:
             where.append("source = ?")
             params.append(source)
+        if path_prefixes:
+            clauses = " OR ".join("file_path LIKE ?" for _ in path_prefixes)
+            where.append(f"({clauses})")
+            for p in path_prefixes:
+                params.append(p.replace("\\", "/").rstrip("/") + "/%")
 
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         params.extend([limit, offset])
@@ -290,6 +296,16 @@ class Database:
             (batch_id, finding_id),
         )
         self.conn.commit()
+
+    def count_findings_for_path_prefixes(self, path_prefixes: list[str]) -> int:
+        if not path_prefixes:
+            return 0
+        clauses = " OR ".join("file_path LIKE ?" for _ in path_prefixes)
+        params = [p.replace("\\", "/").rstrip("/") + "/%" for p in path_prefixes]
+        row = self.conn.execute(
+            f"SELECT COUNT(*) as cnt FROM findings WHERE ({clauses})", params
+        ).fetchone()
+        return row["cnt"]
 
     def has_fingerprint(self, fingerprint: str) -> bool:
         row = self.conn.execute(

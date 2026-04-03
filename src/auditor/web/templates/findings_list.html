@@ -46,6 +46,12 @@
             <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ s|title }}</option>
             {% endfor %}
         </select>
+        <select name="system" class="input">
+            <option value="">All systems</option>
+            {% for s in systems %}
+            <option value="{{ s }}" {% if filters.system == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
         <input type="text" name="file_path" value="{{ filters.file_path or '' }}" placeholder="Filter by file path..." class="input" style="min-width: 12rem;">
         <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
         <a href="/findings" class="link-subtle body-sm">Clear</a>
