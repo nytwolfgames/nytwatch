@@ -108,8 +108,8 @@ def _process_system(
         return 0
 
     if changed_files is not None:
-        # Incremental: collect the whole system so we can resolve include
-        # relationships, then build a semantic neighbourhood around the changed files.
+        # Incremental: collect whole system for include resolution, build
+        # neighbourhood around changed files, then chunk semantically.
         all_system_files = collect_system_files(
             config.repo_path, system, config.file_extensions
         )
@@ -122,17 +122,18 @@ def _process_system(
         if not file_contents:
             log.info("No neighbourhood files resolved for system '%s'", system_name)
             return 0
-        # Neighbourhood fits by construction — send as a single chunk
-        chunks = [file_contents]
     else:
-        # Full scan: collect all system files and chunk semantically
+        # Full scan: collect all system files
         file_contents = collect_system_files(
             config.repo_path, system, config.file_extensions
         )
         if not file_contents:
             log.info("No files found for system '%s'", system_name)
             return 0
-        chunks = chunk_system(file_contents, repo_path=config.repo_path)
+
+    # Always chunk semantically — handles both incremental (neighbourhood may
+    # span multiple chunks) and full scans
+    chunks = chunk_system(file_contents, repo_path=config.repo_path)
     from auditor.ws_manager import manager as ws_manager
 
     findings_count = 0

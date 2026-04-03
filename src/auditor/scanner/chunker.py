@@ -159,64 +159,67 @@ def build_neighbourhood(
     changed_files: list[str],
     all_files: dict[str, str],
     repo_path: str,
-    max_tokens: int = MAX_TOKENS,
+    context_budget: int = MAX_TOKENS,
 ) -> dict[str, str]:
     """
-    For a set of changed files, build the minimal context neighbourhood:
-      - The changed files themselves
-      - Headers they #include (direct includes only)
-      - .cpp files that directly #include any of the changed files (reverse deps)
+    Build a context neighbourhood around the changed files:
+      - ALL changed files are always included (they must be analysed)
+      - Headers they #include and .cpp files that depend on them are added
+        until the extra context budget is exhausted
 
-    Then filter out headers that push the total over max_tokens, prioritising
-    headers included by the most changed files.
+    The result may exceed one chunk — callers should pass it through
+    chunk_system() for splitting.
     """
     known = set(all_files.keys())
     changed_set = set(normalize_path(f) for f in changed_files if normalize_path(f) in known)
 
-    # Forward: headers included by the changed files
-    forward_headers: dict[str, int] = defaultdict(int)  # header -> how many changed files include it
+    if not changed_set:
+        return {}
+
+    # Start with ALL changed files — no token cap, they are the primary focus
+    neighbourhood: dict[str, str] = {p: all_files[p] for p in changed_set}
+    changed_tokens = sum(estimate_tokens(c) for c in neighbourhood.values())
+
+    # Forward: headers included by the changed files, ranked by reference count
+    forward_headers: dict[str, int] = defaultdict(int)
     for path in changed_set:
-        content = all_files.get(path, "")
-        for raw in _parse_includes(content):
+        for raw in _parse_includes(all_files.get(path, "")):
             resolved = _resolve_include(raw, repo_path, known)
-            if resolved and resolved.endswith(".h"):
+            if resolved and resolved.endswith(".h") and resolved not in changed_set:
                 forward_headers[resolved] += 1
 
-    # Reverse: .cpp files that include any changed file
+    # Reverse: .cpp files that directly include any changed file
     reverse_deps: set[str] = set()
     for path, content in all_files.items():
         if path in changed_set or not path.endswith(".cpp"):
             continue
         for raw in _parse_includes(content):
-            resolved = _resolve_include(raw, repo_path, known)
-            if resolved in changed_set:
+            if _resolve_include(raw, repo_path, known) in changed_set:
                 reverse_deps.add(path)
                 break
 
-    # Start with changed files
-    neighbourhood: dict[str, str] = {p: all_files[p] for p in changed_set}
-    tokens = sum(estimate_tokens(c) for c in neighbourhood.values())
-
-    # Add reverse deps (other .cpp files that depend on the changed files)
+    # Fill context budget with extra files (reverse deps first, then headers)
+    context_tokens = 0
     for path in sorted(reverse_deps):
         t = estimate_tokens(all_files[path])
-        if tokens + t <= max_tokens:
+        if context_tokens + t <= context_budget:
             neighbourhood[path] = all_files[path]
-            tokens += t
+            context_tokens += t
 
-    # Add headers sorted by relevance (most-referenced first)
     for header in sorted(forward_headers, key=lambda h: -forward_headers[h]):
         if header in neighbourhood:
             continue
         t = estimate_tokens(all_files[header])
-        if tokens + t <= max_tokens:
+        if context_tokens + t <= context_budget:
             neighbourhood[header] = all_files[header]
-            tokens += t
+            context_tokens += t
 
+    total_tokens = changed_tokens + context_tokens
     log.info(
-        "Neighbourhood: %d changed → %d files (%.0f%% of %d token budget used)",
-        len(changed_set), len(neighbourhood),
-        100 * tokens / max_tokens, max_tokens,
+        "Neighbourhood: %d changed files (%d tokens) + %d context files (%d tokens) = %d total",
+        len(changed_set), changed_tokens,
+        len(neighbourhood) - len(changed_set), context_tokens,
+        total_tokens,
     )
     return neighbourhood
 
