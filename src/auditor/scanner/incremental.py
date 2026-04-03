@@ -59,28 +59,32 @@ def get_changed_files(
     return [f for f in files if any(f.endswith(ext) for ext in extensions)]
 
 
+def find_owning_system(file_path: str, systems: list[SystemDef]) -> Optional[str]:
+    """Return the system name whose path prefix most specifically matches file_path.
+
+    When multiple systems match (e.g. Campaign-Core covers Campaign/ and
+    Campaign-AI covers Campaign/AI/), the one with the longest prefix wins.
+    """
+    norm_file = normalize_path(file_path)
+    best_system: Optional[str] = None
+    best_len = -1
+    for system in systems:
+        for prefix in system.paths:
+            norm_prefix = normalize_path(prefix).rstrip("/") + "/"
+            if norm_file.startswith(norm_prefix) and len(norm_prefix) > best_len:
+                best_len = len(norm_prefix)
+                best_system = system.name
+    return best_system
+
+
 def map_files_to_systems(
     changed_files: list[str],
     systems: list[SystemDef],
 ) -> dict[str, list[str]]:
     mapping: dict[str, list[str]] = {}
-
     for fpath in changed_files:
-        norm_fpath = normalize_path(fpath)
-        matched = False
-        for system in systems:
-            for prefix in system.paths:
-                norm_prefix = normalize_path(prefix)
-                normalized = norm_prefix.rstrip("/") + "/"
-                if norm_fpath.startswith(normalized) or norm_fpath.startswith(norm_prefix):
-                    mapping.setdefault(system.name, []).append(fpath)
-                    matched = True
-                    break
-            if matched:
-                break
-        if not matched:
-            mapping.setdefault("__uncategorized", []).append(fpath)
-
+        owner = find_owning_system(fpath, systems)
+        mapping.setdefault(owner or "__uncategorized", []).append(fpath)
     return mapping
 
 
@@ -124,12 +128,22 @@ def _process_system(
             log.info("No neighbourhood files resolved for system '%s'", system_name)
             return 0, 0
     else:
-        # Full scan: collect all system files
+        # Full scan: collect all files under this system's paths, then drop any
+        # that are more specifically owned by a sub-system (longest-prefix wins).
         file_contents = collect_system_files(
             config.repo_path, system, config.file_extensions
         )
         if not file_contents:
             log.info("No files found for system '%s'", system_name)
+            return 0, 0
+        owned = {p: c for p, c in file_contents.items()
+                 if find_owning_system(p, config.systems) == system_name}
+        excluded = len(file_contents) - len(owned)
+        if excluded:
+            log.info("System '%s': excluded %d file(s) owned by a more specific system", system_name, excluded)
+        file_contents = owned
+        if not file_contents:
+            log.info("No files remain for system '%s' after ownership filter", system_name)
             return 0, 0
 
     # Always chunk semantically — handles both incremental (neighbourhood may
