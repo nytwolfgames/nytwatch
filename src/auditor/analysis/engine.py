@@ -134,11 +134,18 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600) -> str:
 
     elapsed = time.time() - t0
 
+    # Surface stderr from the Claude CLI into the Python logger so it appears
+    # in the per-scan log viewer regardless of exit code.
+    if result.stderr and result.stderr.strip():
+        for line in result.stderr.strip().splitlines():
+            if line.strip():
+                log.info("[claude] %s", line.strip())
+
     if result.returncode != 0:
         log.error(
-            "Claude CLI exited %d: %s",
+            "Claude CLI exited %d (call %s)",
             result.returncode,
-            result.stderr[:500] if result.stderr else "(no stderr)",
+            call_id,
         )
         raise subprocess.CalledProcessError(
             result.returncode, cmd, result.stdout, result.stderr
