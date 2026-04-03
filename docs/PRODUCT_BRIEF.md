@@ -298,6 +298,7 @@ Morning: Open http://127.0.0.1:8420
 | **Version control** | Git + GitHub CLI (`gh`) | Branch management, patch application, PR creation |
 | **Export** | openpyxl | Excel generation with formatting, color-coded severity cells |
 | **Packaging** | Hatchling | Modern Python build system, `pip install -e .` for development |
+| **Platform support** | macOS, Linux, Windows | Cross-platform with automatic path normalization (`auditor.paths`). All internal paths use POSIX forward slashes regardless of host OS. |
 
 ---
 

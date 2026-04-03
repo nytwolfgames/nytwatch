@@ -1225,6 +1225,17 @@ If persistent, check `~/.code-auditor/logs/<id>_response.txt` for the raw respon
 
 ---
 
+**Windows backslash paths**
+
+No action needed. All internal path handling automatically converts Windows backslashes (`\`) to forward slashes (`/`). The `auditor.paths.normalize_path()` function handles this at every point where `pathlib.Path.relative_to()` produces OS-specific separators. Git output, database storage, source classification, and system prefix matching all use normalized POSIX-style paths regardless of the host OS.
+
+This means:
+- Config paths can use either `Source/MyGame/` or `Source\MyGame\` — both work
+- Findings stored on Windows will match correctly when the database is moved to macOS/Linux
+- The Settings page directory classifications are portable across platforms
+
+---
+
 ### How to check logs
 
 All Claude prompt/response pairs are logged to `~/.code-auditor/logs/`:
