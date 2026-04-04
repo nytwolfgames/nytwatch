@@ -32,19 +32,29 @@ def notify(
 
 def _desktop_notify(title: str, message: str) -> None:
     try:
-        if platform.system() == "Darwin":
+        system = platform.system()
+        if system == "Darwin":
             script = f'display notification "{message}" with title "{title}"'
-            subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True,
-                text=True,
+            subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        elif system == "Windows":
+            # Use PowerShell's BurntToast module if available; otherwise fall
+            # back to a simple balloon via the Windows Script Host.
+            ps_script = (
+                f"Add-Type -AssemblyName System.Windows.Forms; "
+                f"$n = New-Object System.Windows.Forms.NotifyIcon; "
+                f"$n.Icon = [System.Drawing.SystemIcons]::Information; "
+                f"$n.Visible = $true; "
+                f"$n.ShowBalloonTip(5000, '{title}', '{message}', "
+                f"[System.Windows.Forms.ToolTipIcon]::Info); "
+                f"Start-Sleep -Seconds 6; $n.Dispose()"
+            )
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-WindowStyle", "Hidden",
+                 "-Command", ps_script],
+                creationflags=0x08000000,  # CREATE_NO_WINDOW
             )
         else:
-            subprocess.run(
-                ["notify-send", title, message],
-                capture_output=True,
-                text=True,
-            )
+            subprocess.run(["notify-send", title, message], capture_output=True, text=True)
         log.debug("Desktop notification sent")
     except Exception:
         log.warning("Failed to send desktop notification", exc_info=True)

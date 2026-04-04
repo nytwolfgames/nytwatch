@@ -13,6 +13,50 @@ def _run(args: list[str], cwd: str, **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, **kwargs)
 
 
+def get_default_branch(repo_path: str) -> str:
+    """Return the configured default branch for the repo.
+
+    Tries (in order):
+      1. The symbolic ref of origin/HEAD (set when the repo was cloned)
+      2. The name of the currently checked-out branch
+      3. Falls back to "main"
+    """
+    # Try origin/HEAD first — most reliable for cloned repos
+    result = _run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=repo_path,
+    )
+    if result.returncode == 0:
+        ref = result.stdout.strip()
+        # Returns "origin/main" — strip the remote prefix
+        return ref.split("/", 1)[-1] if "/" in ref else ref
+
+    # Fall back to the current branch name
+    result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_path)
+    if result.returncode == 0:
+        branch = result.stdout.strip()
+        if branch and branch != "HEAD":
+            return branch
+
+    return "main"
+
+
+def get_local_branches(repo_path: str) -> list[str]:
+    """Return all local branch names, current branch first."""
+    result = _run(["git", "branch", "--format=%(refname:short)"], cwd=repo_path)
+    if result.returncode != 0:
+        return []
+    branches = [b.strip() for b in result.stdout.splitlines() if b.strip()]
+
+    # Put the current branch first
+    current = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_path)
+    current_branch = current.stdout.strip() if current.returncode == 0 else ""
+    if current_branch and current_branch in branches:
+        branches = [current_branch] + [b for b in branches if b != current_branch]
+
+    return branches
+
+
 def stash_changes(repo_path: str) -> bool:
     result = _run(["git", "stash"], cwd=repo_path)
     stashed = "No local changes" not in result.stdout
@@ -27,17 +71,18 @@ def stash_pop(repo_path: str) -> None:
         log.warning("stash pop warning: %s", result.stderr.strip())
 
 
-def create_branch(repo_path: str, branch_name: str) -> None:
-    result = _run(["git", "checkout", "-b", branch_name, "main"], cwd=repo_path)
+def create_branch(repo_path: str, branch_name: str, from_branch: str) -> None:
+    result = _run(["git", "checkout", "-b", branch_name, from_branch], cwd=repo_path)
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create branch {branch_name}: {result.stderr.strip()}")
-    log.info("Created branch %s", branch_name)
+    log.info("Created branch %s from %s", branch_name, from_branch)
 
 
-def checkout_main(repo_path: str) -> None:
-    result = _run(["git", "checkout", "main"], cwd=repo_path)
+def checkout_branch(repo_path: str, branch_name: str) -> None:
+    """Check out an existing branch. Logs a warning if it fails (non-fatal)."""
+    result = _run(["git", "checkout", branch_name], cwd=repo_path)
     if result.returncode != 0:
-        log.warning("checkout main: %s", result.stderr.strip())
+        log.warning("checkout %s: %s", branch_name, result.stderr.strip())
 
 
 def delete_branch(repo_path: str, branch_name: str) -> None:
@@ -49,8 +94,10 @@ def delete_branch(repo_path: str, branch_name: str) -> None:
 
 
 def apply_patch(repo_path: str, patch_content: str) -> tuple[bool, str]:
+    # Write to the system temp dir, NOT inside the repo, so git status/apply
+    # never accidentally picks up the patch file as an untracked change.
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".patch", delete=False, dir=repo_path
+        mode="w", suffix=".patch", delete=False, dir=tempfile.gettempdir()
     ) as f:
         f.write(patch_content)
         patch_path = f.name

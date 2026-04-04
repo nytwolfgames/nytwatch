@@ -882,6 +882,69 @@ async def init_project(request: Request):
     return JSONResponse({"ok": True, "config_path": str(config_path).replace("\\", "/")})
 
 
+@router.get("/api/git/branches")
+async def git_branches_api(request: Request):
+    """Return all local git branches for the configured repo, current branch first."""
+    config = get_config(request)
+    if not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    from auditor.pipeline.git_ops import get_local_branches, get_default_branch
+    branches = get_local_branches(config.repo_path)
+    if not branches:
+        return JSONResponse({"error": "Could not list git branches — is this a git repo?"}, status_code=400)
+    configured = config.git_branch or get_default_branch(config.repo_path)
+    return JSONResponse({"branches": branches, "configured": configured})
+
+
+@router.post("/api/config/branch")
+async def set_branch_api(request: Request):
+    """Change the configured git branch.
+
+    Wipes all findings + batches + last_scan_commit so the new branch starts
+    with a clean slate.  The server does NOT checkout the branch — the user
+    controls their working tree.
+    """
+    from auditor.config import save_full_config
+    from auditor.pipeline.git_ops import get_local_branches
+
+    body = await request.json()
+    branch = (body.get("branch") or "").strip()
+    if not branch:
+        return JSONResponse({"error": "branch is required"}, status_code=400)
+
+    config = get_config(request)
+    if not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+
+    # Validate the branch actually exists locally
+    branches = get_local_branches(config.repo_path)
+    if branch not in branches:
+        return JSONResponse(
+            {"error": f"Branch '{branch}' not found in local repository"},
+            status_code=400,
+        )
+
+    db = get_db(request)
+
+    # Wipe findings, batches, and scan baseline — fresh start on the new branch
+    wiped = db.wipe_findings()
+    db.set_config("last_scan_commit", "")
+    logger.info("Branch changed to '%s': wiped %d finding(s) and cleared scan baseline", branch, wiped)
+
+    # Persist the new branch to YAML and update in-memory state
+    from pydantic import BaseModel
+    new_config = config.model_copy(update={"git_branch": branch})
+    config_path_str = getattr(request.app.state, "config_path", "")
+    if config_path_str:
+        try:
+            save_full_config(new_config, Path(config_path_str))
+        except Exception as e:
+            return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
+    request.app.state.config = new_config
+
+    return JSONResponse({"ok": True, "branch": branch, "wiped_findings": wiped})
+
+
 @router.get("/api/detect-systems")
 async def detect_systems_api(request: Request, repo_path: str = ""):
     from auditor.config import detect_systems_from_repo
@@ -1344,11 +1407,19 @@ async def settings_page(request: Request):
         d["system_count"] = sys_count.get(d["path"], 0)
 
     config_path = getattr(request.app.state, "config_path", "") or ""
+
+    # Resolve the currently active branch for display
+    configured_branch = ""
+    if config.repo_path:
+        from auditor.pipeline.git_ops import get_default_branch
+        configured_branch = config.git_branch or get_default_branch(config.repo_path)
+
     return templates.TemplateResponse(request, "settings.html", {
         "active_dirs": active_dirs,
         "ignored_dirs": ignored_dirs,
         "config": config,
         "config_path": config_path,
+        "configured_branch": configured_branch,
     })
 
 

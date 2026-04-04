@@ -48,6 +48,9 @@ class AuditorConfig(BaseModel):
     claude_fast_mode: bool = True
     min_confidence: str = "medium"
     file_extensions: list[str] = Field(default_factory=lambda: [".h", ".cpp"])
+    # The git branch the auditor operates on.  Empty string means auto-detect
+    # from the repo's origin/HEAD at runtime (see git_ops.get_default_branch).
+    git_branch: str = ""
 
 
 DEFAULT_CONFIG_PATH = Path("~/.code-auditor/config.yaml").expanduser()
@@ -118,6 +121,7 @@ def save_full_config(config: AuditorConfig, path: Optional[Path] = None) -> None
         "claude_fast_mode": config.claude_fast_mode,
         "min_confidence": config.min_confidence,
         "file_extensions": list(config.file_extensions),
+        "git_branch": config.git_branch,
     }
     if config.notifications.slack_webhook:
         raw["notifications"]["slack_webhook"] = config.notifications.slack_webhook

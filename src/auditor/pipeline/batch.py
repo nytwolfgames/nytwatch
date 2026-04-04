@@ -8,11 +8,12 @@ from auditor.models import BatchStatus, FindingStatus, now_iso
 from auditor.pipeline.applicator import apply_batch_fixes
 from auditor.pipeline.builder import run_ue_build
 from auditor.pipeline.git_ops import (
-    checkout_main,
+    checkout_branch,
     commit_changes,
     create_branch,
     create_pr,
     delete_branch,
+    get_default_branch,
     stash_changes,
     stash_pop,
 )
@@ -38,6 +39,7 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
         return
 
     repo_path = config.repo_path
+    base_branch = config.git_branch or get_default_branch(repo_path)
     branch_name = f"auditor/batch-{batch_id}"
     db.update_batch(batch_id, branch_name=branch_name)
 
@@ -46,11 +48,11 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
 
     try:
         # Step 1: Prepare branch
-        logger.info("Batch %s: preparing branch %s", batch_id, branch_name)
+        logger.info("Batch %s: preparing branch %s from %s", batch_id, branch_name, base_branch)
         db.update_batch(batch_id, status=BatchStatus.APPLYING)
 
         stashed = stash_changes(repo_path)
-        create_branch(repo_path, branch_name)
+        create_branch(repo_path, branch_name, from_branch=base_branch)
         branch_created = True
 
         # Step 2: Collect the repo-relative paths of affected files.
@@ -72,7 +74,7 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
                 build_log=f"Patch apply failed:\n{patch_or_error}",
                 completed_at=now_iso(),
             )
-            _cleanup(repo_path, branch_name, branch_created, stashed)
+            _cleanup(repo_path, base_branch, branch_name, branch_created, stashed)
             for f in findings:
                 db.update_finding_status(f["id"], FindingStatus.FAILED)
             return
@@ -97,7 +99,7 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
                 completed_at=now_iso(),
             )
             cleanup_test_files(repo_path, findings)
-            _cleanup(repo_path, branch_name, branch_created, stashed)
+            _cleanup(repo_path, base_branch, branch_name, branch_created, stashed)
             for f in findings:
                 db.update_finding_status(f["id"], FindingStatus.FAILED)
             return
@@ -117,7 +119,7 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
                 completed_at=now_iso(),
             )
             cleanup_test_files(repo_path, findings)
-            _cleanup(repo_path, branch_name, branch_created, stashed)
+            _cleanup(repo_path, base_branch, branch_name, branch_created, stashed)
             for f in findings:
                 db.update_finding_status(f["id"], FindingStatus.FAILED)
             return
@@ -166,7 +168,7 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
         notify(config, title, message, pr_url=pr_url)
 
         # Step 10: Return to main
-        checkout_main(repo_path)
+        checkout_branch(repo_path, base_branch)
         if stashed:
             stash_pop(repo_path)
             stashed = False
@@ -182,12 +184,12 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
         )
         for f in findings:
             db.update_finding_status(f["id"], FindingStatus.FAILED)
-        _cleanup(repo_path, branch_name, branch_created, stashed)
+        _cleanup(repo_path, base_branch, branch_name, branch_created, stashed)
 
 
-def _cleanup(repo_path: str, branch_name: str, branch_created: bool, stashed: bool):
+def _cleanup(repo_path: str, base_branch: str, branch_name: str, branch_created: bool, stashed: bool):
     try:
-        checkout_main(repo_path)
+        checkout_branch(repo_path, base_branch)
     except Exception:
         pass
     if branch_created:

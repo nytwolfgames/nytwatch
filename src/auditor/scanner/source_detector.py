@@ -133,7 +133,7 @@ def _ai_classify(repo: Path, dirs: list[str]) -> dict[str, str]:
 
     try:
         from auditor.analysis.engine import call_claude, _extract_json
-        raw = call_claude(prompt, fast=True, timeout=60)
+        raw = call_claude(prompt, fast=True, timeout=60, use_tools=False)
         data = _extract_json(raw)
 
         results: dict[str, str] = {}

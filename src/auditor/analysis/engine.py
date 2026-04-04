@@ -14,7 +14,7 @@ from typing import Optional
 from pydantic import ValidationError
 
 from auditor.analysis.schemas import ScanResult, BatchApplyResult
-from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt  # noqa: F401
+from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt
 from auditor.models import new_id
 
 log = logging.getLogger(__name__)

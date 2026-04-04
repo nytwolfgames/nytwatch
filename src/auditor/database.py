@@ -373,6 +373,15 @@ class Database:
         ).fetchall()
         return {row["fingerprint"] for row in rows}
 
+    def wipe_findings(self) -> int:
+        """Delete ALL findings (and their associated batch links). Returns row count deleted."""
+        with self._lock:
+            cursor = self.conn.execute("DELETE FROM findings")
+            # Orphaned batches are harmless but tidy to remove
+            self.conn.execute("DELETE FROM batches")
+            self.conn.commit()
+        return cursor.rowcount
+
     def get_approved_findings(self) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM findings WHERE status = 'approved' ORDER BY file_path, line_start"

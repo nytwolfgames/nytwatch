@@ -39,6 +39,27 @@
     {% endif %}
 </div>
 
+<!-- Git Branch -->
+{% if config.repo_path %}
+<div class="card mb-6">
+    <div class="flex items-center gap-3 mb-3">
+        <div class="section-label" style="flex:1;">Git Branch</div>
+    </div>
+    <p class="body-sm text-variant mb-3">
+        The branch the auditor scans against and creates fix branches from.
+        Changing it wipes all findings — you will need to re-run a full scan.
+    </p>
+    <div class="flex items-center gap-3 flex-wrap">
+        <select id="branch-select" class="input" style="min-width:220px;">
+            <option value="{{ configured_branch }}">{{ configured_branch }}</option>
+        </select>
+        <button onclick="loadBranches()" class="btn btn-sm scan-safe" id="branch-load-btn">Load branches</button>
+        <button onclick="confirmBranchChange()" class="btn btn-sm btn-primary scan-safe" id="branch-save-btn" disabled>Change Branch</button>
+        <span id="branch-status" class="body-sm text-variant"></span>
+    </div>
+</div>
+{% endif %}
+
 <!-- Config Health -->
 <div class="card mb-6">
     <div class="flex items-center gap-3 mb-3">
@@ -1944,6 +1965,92 @@ document.addEventListener('keydown', e => {
     if (document.getElementById('sp-picker')?.style.display !== 'none') { spClose(); return; }
     if (document.getElementById('wizard-overlay')?.style.display !== 'none') closeWizard();
 });
+
+// ── Git Branch ───────────────────────────────────────────────────────────────
+
+let _branchesLoaded = false;
+
+async function loadBranches() {
+    const sel = document.getElementById('branch-select');
+    const btn = document.getElementById('branch-load-btn');
+    const saveBtn = document.getElementById('branch-save-btn');
+    const status = document.getElementById('branch-status');
+    if (!sel) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    status.textContent = '';
+
+    try {
+        const res = await fetch('/api/git/branches');
+        const data = await res.json();
+        if (data.error) { status.textContent = data.error; return; }
+
+        const current = sel.value; // what was server-rendered
+        sel.innerHTML = '';
+        for (const b of data.branches) {
+            const opt = document.createElement('option');
+            opt.value = b;
+            opt.textContent = b;
+            if (b === data.configured) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        _branchesLoaded = true;
+        saveBtn.disabled = false;
+        status.textContent = '';
+    } catch (e) {
+        status.textContent = 'Failed to load branches';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reload';
+    }
+}
+
+function confirmBranchChange() {
+    const sel = document.getElementById('branch-select');
+    const status = document.getElementById('branch-status');
+    if (!sel || !_branchesLoaded) {
+        status.textContent = 'Load branches first.';
+        return;
+    }
+    const branch = sel.value;
+    const confirmed = confirm(
+        `Change the active git branch to "${branch}"?\n\n` +
+        `⚠️  ALL findings and batches will be permanently deleted.\n` +
+        `You will need to run a full scan after switching.\n\n` +
+        `This cannot be undone. Continue?`
+    );
+    if (!confirmed) return;
+    applyBranchChange(branch);
+}
+
+async function applyBranchChange(branch) {
+    const saveBtn = document.getElementById('branch-save-btn');
+    const status = document.getElementById('branch-status');
+    saveBtn.disabled = true;
+    status.textContent = 'Changing…';
+
+    try {
+        const res = await fetch('/api/config/branch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({branch}),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            status.textContent = `✓ Branch set to "${branch}". ${data.wiped_findings} finding(s) deleted. Run a full scan to repopulate.`;
+            status.style.color = 'var(--primary, #004ac6)';
+        } else {
+            status.textContent = data.error || 'Failed to change branch.';
+            status.style.color = '#ef4444';
+        }
+    } catch (e) {
+        status.textContent = 'Request failed: ' + e.message;
+        status.style.color = '#ef4444';
+    } finally {
+        saveBtn.disabled = false;
+    }
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadProjects();
