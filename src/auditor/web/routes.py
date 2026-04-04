@@ -124,10 +124,6 @@ async def dashboard(request: Request):
             "count": db.count_findings_for_path_prefixes(s["paths"]),
         })
 
-    # Include classified source dirs that have no systems yet
-    for sd in source_dir_map:
-        sys_by_dir.setdefault(sd, [])
-
     # Sort groups: active before ignored, then alphabetically by source_dir name
     all_source_dirs = list(sys_by_dir.keys())
     all_source_dirs.sort(key=lambda sd: (
@@ -689,6 +685,100 @@ async def switch_project(request: Request):
     return JSONResponse({"ok": True, "repo_path": new_config.repo_path})
 
 
+@router.delete("/api/projects")
+async def delete_project(request: Request):
+    """Delete the specified project config YAML and its SQLite database.
+
+    If the deleted project is currently active, the server switches to the next
+    available project (or a blank state) so it remains operational.
+    """
+    from auditor.config import (
+        AuditorConfig, ACTIVE_POINTER_PATH, list_project_configs,
+        set_active_config_path, get_db_path,
+    )
+    body = await request.json()
+    config_path_str = body.get("path", "").strip()
+    if not config_path_str:
+        return JSONResponse({"error": "No config path provided"}, status_code=400)
+
+    target = Path(config_path_str)
+    if not target.exists():
+        return JSONResponse({"error": f"Config file not found: {config_path_str}"}, status_code=404)
+
+    current_path = getattr(request.app.state, "config_path", "")
+    is_active = str(target) == current_path or target.resolve() == Path(current_path).resolve()
+
+    # Determine the DB path before we delete the YAML
+    try:
+        from auditor.config import load_config
+        target_config = load_config(target)
+        target_db_path = get_db_path(target_config)
+    except Exception:
+        target_db_path = None
+
+    # Close current DB if we're deleting the active project
+    if is_active:
+        try:
+            request.app.state.db.close()
+        except Exception:
+            pass
+
+    # Delete YAML config
+    try:
+        target.unlink()
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to delete config file: {e}"}, status_code=500)
+
+    # Delete associated SQLite database
+    if target_db_path:
+        db_path = Path(target_db_path)
+        for suffix in ["", "-shm", "-wal"]:
+            try:
+                Path(str(db_path) + suffix).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    if is_active:
+        # Clear active pointer if it pointed to this file
+        try:
+            if ACTIVE_POINTER_PATH.exists():
+                ACTIVE_POINTER_PATH.unlink()
+        except Exception:
+            pass
+
+        # Switch to another available project, or start blank
+        remaining = [p for p in list_project_configs() if p["path"] != config_path_str]
+        if remaining:
+            try:
+                new_config = load_config(Path(remaining[0]["path"]))
+                new_db_path = get_db_path(new_config)
+                from auditor.database import Database
+                new_db = Database(new_db_path)
+                new_db.init_schema()
+                request.app.state.config = new_config
+                request.app.state.config_path = remaining[0]["path"]
+                request.app.state.db = new_db
+                set_active_config_path(Path(remaining[0]["path"]))
+                logger.info("Deleted project, switched to: %s", new_config.repo_path)
+                return JSONResponse({"ok": True, "switched_to": remaining[0]["path"]})
+            except Exception as e:
+                logger.warning("Could not switch to remaining project after delete: %s", e)
+
+        # No remaining projects — go blank
+        from auditor.database import Database
+        blank_config = AuditorConfig()
+        blank_db = Database(get_db_path(blank_config))
+        blank_db.init_schema()
+        request.app.state.config = blank_config
+        request.app.state.config_path = ""
+        request.app.state.db = blank_db
+        logger.info("Deleted last project, server is now unconfigured")
+        return JSONResponse({"ok": True, "switched_to": None})
+
+    logger.info("Deleted project config: %s", config_path_str)
+    return JSONResponse({"ok": True})
+
+
 def _make_build_config(build_data: dict):
     from auditor.config import BuildConfig
     from pathlib import Path as _Path
@@ -1160,7 +1250,17 @@ async def trigger_scan(request: Request):
 
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     scan_type = body.get("scan_type", "full")
-    system_name = body.get("system_name") or None
+
+    # Accept system_id (preferred) or legacy system_name
+    system_name: str | None = None
+    system_id = body.get("system_id")
+    if system_id is not None:
+        matched = next((s for s in db.list_systems() if s["id"] == system_id), None)
+        if matched is None:
+            return JSONResponse({"error": f"System id {system_id!r} not found"}, status_code=404)
+        system_name = matched["name"]
+    else:
+        system_name = body.get("system_name") or None
 
     # Reject if a scan is already running
     running = db.get_running_scan()

@@ -28,6 +28,15 @@
             </select>
         </div>
     </div>
+    {% if config.repo_path %}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--outline-variant);">
+        <button onclick="confirmDeleteProject()" class="btn btn-sm btn-danger scan-safe"
+                id="delete-project-btn">Delete Project</button>
+        <span class="body-sm text-variant" style="margin-left:10px;">
+            Removes the config file and all scan data for this project.
+        </span>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Config Health -->
@@ -868,6 +877,35 @@ async function switchProject(path) {
     } catch (e) {
         alert('Failed: ' + e.message);
         sel.disabled = false;
+    }
+}
+
+async function confirmDeleteProject() {
+    const configPath = {{ config_path | tojson }};
+    const repoPath   = {{ config.repo_path | tojson }};
+    if (!confirm(`Delete project "${repoPath}"?\n\nThis will permanently remove the config file and all scan data. This cannot be undone.`)) return;
+
+    const btn = document.getElementById('delete-project-btn');
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    try {
+        const r = await fetch('/api/projects', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: configPath}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            location.reload();
+        } else {
+            alert(d.error || 'Failed to delete project');
+            btn.disabled = false;
+            btn.textContent = 'Delete Project';
+        }
+    } catch (e) {
+        alert('Failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Delete Project';
     }
 }
 

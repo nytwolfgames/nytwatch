@@ -129,18 +129,8 @@
             </tr>
             {% endif %}
 
-            {% if not group.systems %}
-            <tr class="sys-row" data-group="{{ group_key }}">
-                <td colspan="3" style="padding:8px var(--sp-5) 8px 28px;">
-                    <span class="body-sm text-variant" style="font-style:italic;">
-                        No systems — <a href="/settings" style="color:var(--primary);">add one in Settings</a>
-                    </span>
-                </td>
-            </tr>
-            {% endif %}
-
             {% for system in group.systems %}
-            <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.name }}" data-group="{{ group_key }}">
+            <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.id }}" data-system-name="{{ system.name }}" data-group="{{ group_key }}">
                 <td>
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
                         <span onclick="location.href='/findings?system={{ system.name | urlencode }}'"
@@ -168,8 +158,8 @@
                 <td style="text-align:right;">
                     {% if not group.ignored %}
                     <span class="system-actions">
-                        <button class="btn btn-sm" onclick="triggerScan('{{ system.name }}', 'incremental')">Incremental</button>
-                        <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system.name }}', 'full')"
+                        <button class="btn btn-sm" onclick="triggerScan({{ system.id }}, 'incremental')">Incremental</button>
+                        <button class="btn btn-sm btn-primary" onclick="triggerScan({{ system.id }}, 'full')"
                                 style="margin-left:var(--sp-2);">Full Scan</button>
                     </span>
                     {% endif %}
@@ -882,7 +872,7 @@ function highlightScannedSystem(data) {
         const actions = row.querySelector('.system-actions');
         const stopBtn = row.querySelector('.system-stop-btn');
         if (!badge) return;
-        if (activeSystem && activeSystem === row.dataset.system) {
+        if (activeSystem && activeSystem === row.dataset.systemName) {
             const label = data.cancelling ? 'cancelling' : (data.scan.scan_type || 'scanning');
             badge.textContent = label;
             badge.style.display = '';
@@ -902,12 +892,12 @@ function highlightScannedSystem(data) {
 onWsMessage('scan_status', highlightScannedSystem);
 
 // ── Scan triggers ─────────────────────────────────────────────────────────────
-async function triggerScan(systemName, scanType) {
+async function triggerScan(systemId, scanType) {
     try {
         const r = await fetch('/scans/trigger', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_name: systemName, scan_type: scanType }),
+            body: JSON.stringify({ system_id: systemId, scan_type: scanType }),
         });
         const d = await r.json();
         if (!r.ok || !d.ok) alert(d.error || 'Failed to start scan');

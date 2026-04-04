@@ -361,11 +361,6 @@
             }
             table.style.tableLayout = 'fixed';
 
-            table.querySelectorAll('td').forEach(td => {
-                const text = td.textContent.trim();
-                if (text) td.setAttribute('title', text);
-            });
-
             ths.forEach((th, i) => {
                 if (i === ths.length - 1) return;
 
