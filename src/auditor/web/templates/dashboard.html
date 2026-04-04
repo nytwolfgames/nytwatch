@@ -202,29 +202,52 @@ let _pickerForPath = -1;
 let _pickerCurrent = '';
 
 // Boot: load current systems from API
+let _sysReady = false;
 (async () => {
     try {
         const r = await fetch('/api/systems');
-        _sys = (await r.json()).systems;
-    } catch {}
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        _sys = (await r.json()).systems || [];
+    } catch (e) {
+        console.warn('Failed to load systems from API:', e.message);
+        _sys = [];
+    } finally {
+        _sysReady = true;
+    }
 })();
 
 // ── Drawer open / close ───────────────────────────────────────────────────────
-function openDrawer(idx) {
-    _origSys = JSON.parse(JSON.stringify(_sys));
-    if (idx === null) {
-        _sys.push({ name: '', paths: [] });
-        _editIdx = _sys.length - 1;
-    } else {
-        _editIdx = idx;
+async function openDrawer(idx) {
+    // If the API hasn't responded yet, wait briefly
+    if (!_sysReady) {
+        const waited = await new Promise(resolve => {
+            let tries = 0;
+            const t = setInterval(() => {
+                if (_sysReady || ++tries > 20) { clearInterval(t); resolve(_sysReady); }
+            }, 100);
+        });
+        if (!waited) { alert('Systems not loaded yet — please try again.'); return; }
     }
-    const isNew = idx === null;
-    document.getElementById('drawer-title').textContent = isNew ? 'New System' : 'Edit System';
-    document.getElementById('drawer-delete-btn').style.display = isNew ? 'none' : '';
-    document.getElementById('drawer-name').value = _sys[_editIdx].name;
-    renderPaths();
-    document.getElementById('drawer-backdrop').style.display = '';
-    document.getElementById('system-drawer').style.display = 'flex';
+
+    try {
+        _origSys = JSON.parse(JSON.stringify(_sys));
+        if (idx === null) {
+            _sys.push({ name: '', paths: [] });
+            _editIdx = _sys.length - 1;
+        } else {
+            _editIdx = idx;
+        }
+        const isNew = idx === null;
+        document.getElementById('drawer-title').textContent = isNew ? 'New System' : 'Edit System';
+        document.getElementById('drawer-delete-btn').style.display = isNew ? 'none' : '';
+        document.getElementById('drawer-name').value = _sys[_editIdx].name;
+        renderPaths();
+        document.getElementById('drawer-backdrop').style.display = '';
+        document.getElementById('system-drawer').style.display = 'flex';
+    } catch (e) {
+        console.error('openDrawer failed:', e);
+        alert('Could not open system editor: ' + e.message);
+    }
 }
 
 function closeDrawer() {

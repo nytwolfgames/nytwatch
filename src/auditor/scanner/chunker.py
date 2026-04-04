@@ -13,7 +13,7 @@ from auditor.paths import normalize_path
 log = logging.getLogger(__name__)
 
 MAX_FILE_SIZE = 500 * 1024  # 500 KB
-MAX_TOKENS = 70_000          # Hard ceiling per chunk (leaves room for prompt + output)
+MAX_TOKENS = 35_000          # Hard ceiling per chunk (leaves room for prompt + output)
 _INCLUDE_RE = re.compile(r'^\s*#include\s+"([^"]+)"', re.MULTILINE)
 
 
@@ -87,7 +87,9 @@ def collect_specific_files(
 # ---------------------------------------------------------------------------
 
 def estimate_tokens(text: str) -> int:
-    return int(len(text) / 3.5)
+    # C++ is token-dense (templates, macros, symbols) — use 3.0 chars/token
+    # rather than the natural-language default of ~4, to avoid underestimating.
+    return int(len(text) / 3.0)
 
 
 # ---------------------------------------------------------------------------
