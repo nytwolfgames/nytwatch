@@ -124,6 +124,10 @@ async def dashboard(request: Request):
             "count": db.count_findings_for_path_prefixes(s["paths"]),
         })
 
+    # Include classified source dirs that have no systems yet
+    for sd in source_dir_map:
+        sys_by_dir.setdefault(sd, [])
+
     # Sort groups: active before ignored, then alphabetically by source_dir name
     all_source_dirs = list(sys_by_dir.keys())
     all_source_dirs.sort(key=lambda sd: (
@@ -566,6 +570,36 @@ async def get_all_source_dirs_api(request: Request):
     """Return all source directories (active + ignored) from the DB."""
     db = get_db(request)
     return JSONResponse({"source_dirs": db.list_source_dirs()})
+
+
+@router.post("/api/systems/append")
+async def append_systems_api(request: Request):
+    """Add new systems without touching existing ones."""
+    db = get_db(request)
+    body = await request.json()
+    new_systems = body.get("systems", [])
+    for s in new_systems:
+        if not s.get("name", "").strip():
+            return JSONResponse({"error": "System name cannot be empty"}, status_code=400)
+        if not s.get("paths"):
+            return JSONResponse({"error": f"System '{s['name']}' has no paths"}, status_code=400)
+
+    existing = db.list_systems()
+    existing_names = {s["name"] for s in existing}
+    combined = list(existing) + [
+        {
+            "name": s["name"].strip(),
+            "source_dir": s.get("source_dir") or "",
+            "paths": s["paths"],
+            "min_confidence": s.get("min_confidence") or None,
+            "file_extensions": s.get("file_extensions") or None,
+            "claude_fast_mode": s.get("claude_fast_mode"),
+        }
+        for s in new_systems
+        if s["name"].strip() not in existing_names
+    ]
+    db.replace_systems(combined)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/api/systems")

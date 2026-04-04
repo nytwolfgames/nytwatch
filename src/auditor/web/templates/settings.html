@@ -261,6 +261,37 @@
     </div>
 </div>
 
+<!-- ── Configure Systems Modal (post auto-detect) ────────────────────────── -->
+<div id="cfg-systems-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:700px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto;">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;gap:12px;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Configure Systems</span>
+            <button onclick="closeCfgSystems()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 0;">
+            <p class="body-sm text-variant" style="margin:0 0 16px;">
+                New source directories were added. Set up systems for each one — or skip and add them later.
+            </p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+                <button onclick="cfgSyssSuggest(this)" id="cfg-sys-suggest-btn"
+                        class="btn btn-sm scan-safe">✨ Suggest with Claude</button>
+            </div>
+            <div id="cfg-sys-list" style="max-height:420px;overflow-y:auto;"></div>
+            <div id="cfg-sys-overlaps" style="margin-top:8px;"></div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;margin-top:16px;">
+            <span id="cfg-sys-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="closeCfgSystems()" class="btn btn-sm scan-safe">Skip</button>
+            <button onclick="saveCfgSystems()" id="cfg-sys-save-btn" class="btn btn-sm btn-primary scan-safe">Save Systems</button>
+        </div>
+    </div>
+</div>
+
 <!-- ── Setup Wizard Modal ───────────────────────────────────────────────────── -->
 <div id="wizard-overlay"
      style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
@@ -600,17 +631,7 @@ async function applyAutoDetect() {
         closeAutoDetect();
 
         if (newActiveDirs.length) {
-            // Open the wizard at the systems step, pre-seeded with only the new active dirs
-            _wzReset();
-            _wz.repo_path = {{ config.repo_path | tojson }};
-            _wz.source_dirs = newActiveDirs;
-            _wz._sourceDetectedFor = _wz.repo_path;
-            // Jump straight to systems step
-            const systemsIdx = WZ_STEPS.findIndex(s => s.id === 'systems');
-            _wz.step = systemsIdx >= 0 ? systemsIdx : 2;
-            document.getElementById('wizard-overlay').style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-            wzRender();
+            openCfgSystems(newActiveDirs);
         } else {
             location.reload();
         }
@@ -618,6 +639,134 @@ async function applyAutoDetect() {
         errEl.textContent = 'Failed: ' + e.message;
         btn.disabled = false;
         btn.textContent = 'Apply Changes';
+    }
+}
+
+// ── Configure Systems (standalone, post auto-detect) ─────────────────────────
+// Reuses _wz state + wzRenderSysList / wzSuggestAll / wzCheckOverlaps from the
+// wizard, but renders inside #cfg-systems-overlay instead of the wizard UI.
+
+function openCfgSystems(newActiveDirs) {
+    // Seed just enough wizard state for the shared render helpers
+    _wz.repo_path = {{ config.repo_path | tojson }};
+    _wz.source_dirs = newActiveDirs;
+    _wz.systems = [];
+    document.getElementById('cfg-sys-err').textContent = '';
+    document.getElementById('cfg-systems-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    _cfgSysRender();
+}
+
+function closeCfgSystems() {
+    document.getElementById('cfg-systems-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    location.reload();
+}
+
+function _cfgSysRender() {
+    wzRenderSysList(document.getElementById('cfg-sys-list'));
+    // wzCheckOverlaps targets #wz-overlaps which doesn't exist here — replicate inline
+    const el = document.getElementById('cfg-sys-overlaps');
+    if (!el) return;
+    const all = [];
+    for (const s of _wz.systems) {
+        for (const p of s.paths) {
+            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/, '/')});
+        }
+    }
+    const warns = [];
+    for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+            if (all[i].path === all[j].path) {
+                const msg = `Duplicate path: "${all[i].path}" is used by both "${all[i].sys}" and "${all[j].sys}"`;
+                if (!warns.includes(msg)) warns.push(msg);
+            }
+        }
+    }
+    el.innerHTML = warns.map(w =>
+        `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
+                     background:rgba(245,158,11,.1);border-radius:6px;margin-top:6px;">
+            <span style="color:#f59e0b;flex-shrink:0;">⚠</span>
+            <span class="body-sm">${escH(w)}</span>
+        </div>`
+    ).join('');
+}
+
+async function cfgSyssSuggest(btn) {
+    const errEl  = document.getElementById('cfg-sys-err');
+    const listEl = document.getElementById('cfg-sys-list');
+    if (btn) { btn.disabled = true; btn.textContent = 'Asking Claude…'; }
+
+    if (listEl && !_wz.systems.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            <span style="display:inline-block;animation:spin 1s linear infinite;">⟳</span>
+            Claude is analysing your source structure…
+        </div>`;
+    }
+
+    try {
+        const r = await fetch('/api/suggest-systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({repo_path: _wz.repo_path, source_dirs: _wz.source_dirs}),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        if (!d.systems.length) {
+            errEl.textContent = 'Claude returned no suggestions — add systems manually';
+            _cfgSysRender();
+        } else {
+            const existing = new Set(_wz.systems.map(s => s.name));
+            for (const s of d.systems) {
+                if (!existing.has(s.name)) {
+                    _wz.systems.push({name: s.name, paths: s.paths || [], source_dir: s.source_dir || '', hint: ''});
+                }
+            }
+            errEl.textContent = '';
+            _cfgSysRender();
+        }
+    } catch (e) {
+        errEl.textContent = 'Suggestion failed: ' + e.message;
+        _cfgSysRender();
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
+    }
+}
+
+async function saveCfgSystems() {
+    const btn   = document.getElementById('cfg-sys-save-btn');
+    const errEl = document.getElementById('cfg-sys-err');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    errEl.textContent = '';
+
+    const valid = _wz.systems.filter(s => s.name.trim() && s.paths.filter(p => p.trim()).length);
+    if (!valid.length) {
+        errEl.textContent = 'Add at least one system with a name and at least one path';
+        btn.disabled = false;
+        btn.textContent = 'Save Systems';
+        return;
+    }
+
+    try {
+        const r = await fetch('/api/systems/append', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                systems: valid.map(s => ({
+                    name: s.name.trim(),
+                    source_dir: s.source_dir || '',
+                    paths: s.paths.filter(p => p.trim()),
+                })),
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) { closeCfgSystems(); }
+        else { errEl.textContent = d.error || 'Failed to save'; btn.disabled = false; btn.textContent = 'Save Systems'; }
+    } catch (e) {
+        errEl.textContent = 'Failed: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = 'Save Systems';
     }
 }
 
@@ -1127,12 +1276,6 @@ function wzRenderSystems(el) {
 
     wzRenderSysList(document.getElementById('wz-sys-list'));
     wzCheckOverlaps();
-
-    // Auto-trigger suggestion if no systems yet and there are active dirs
-    if (!_wz.systems.length && activeDirs.length) {
-        const suggestBtn = document.getElementById('wz-suggest-btn');
-        if (suggestBtn) wzSuggestAll(suggestBtn);
-    }
 }
 
 function wzRenderSysList(listEl) {
@@ -1237,9 +1380,10 @@ function wzSysCard(s, i) {
 }
 
 function wzPathRow(si, pi, path, srcDir) {
-    const _srcDirJs = JSON.stringify(srcDir || '');
+    // Use single-quoted JS string so it's safe inside a double-quoted HTML attribute
+    const _srcDirQ = (srcDir || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" id="wz-pr-${si}-${pi}">
-        <button onclick="spOpen({si:${si},pi:${pi},srcDir:${_srcDirJs}},this)" class="scan-safe"
+        <button onclick="spOpen({si:${si},pi:${pi},srcDir:'${_srcDirQ}'},this)" class="scan-safe"
             style="flex:1;text-align:left;background:var(--surface-container-low);border:1px solid var(--outline);
                    border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.78rem;font-family:monospace;
                    color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
@@ -1253,11 +1397,20 @@ function wzPathRow(si, pi, path, srcDir) {
 }
 
 function wzRerender() {
-    wzRenderSysList(document.getElementById('wz-sys-list'));
-    wzCheckOverlaps();
+    const cfgOpen = document.getElementById('cfg-systems-overlay')?.style.display === 'flex';
+    if (cfgOpen) {
+        _cfgSysRender();
+    } else {
+        wzRenderSysList(document.getElementById('wz-sys-list'));
+        wzCheckOverlaps();
+    }
 }
 
-function wzSysName(i, v) { _wz.systems[i].name = v; wzCheckOverlaps(); }
+function wzSysName(i, v) {
+    _wz.systems[i].name = v;
+    const cfgOpen = document.getElementById('cfg-systems-overlay')?.style.display === 'flex';
+    if (cfgOpen) _cfgSysRender(); else wzCheckOverlaps();
+}
 function wzAddSysUnder(srcDir) {
     const existingUnder = _wz.systems.filter(s => s.source_dir === srcDir);
     // First system under a source dir defaults to the root path (scan everything).
@@ -1281,10 +1434,13 @@ function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
 function wzAddPath(si) {
     _wz.systems[si].paths.push('');
     wzRerender();
-    // Auto-open browser for the new blank path
+    // Auto-open browser for the new blank path — defer one frame so layout is settled
     const srcDir = _wz.systems[si]?.source_dir || '';
-    const btn = document.querySelector(`#wz-pr-${si}-${_wz.systems[si].paths.length - 1} button`);
-    if (btn) spOpen({si, pi: _wz.systems[si].paths.length - 1, srcDir}, btn);
+    const pi = _wz.systems[si].paths.length - 1;
+    requestAnimationFrame(() => {
+        const btn = document.querySelector(`#wz-pr-${si}-${pi} button`);
+        if (btn) spOpen({si, pi, srcDir}, btn);
+    });
 }
 
 function wzRemovePath(si, pi) {

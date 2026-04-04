@@ -129,6 +129,16 @@
             </tr>
             {% endif %}
 
+            {% if not group.systems %}
+            <tr class="sys-row" data-group="{{ group_key }}">
+                <td colspan="3" style="padding:8px var(--sp-5) 8px 28px;">
+                    <span class="body-sm text-variant" style="font-style:italic;">
+                        No systems — <a href="/settings" style="color:var(--primary);">add one in Settings</a>
+                    </span>
+                </td>
+            </tr>
+            {% endif %}
+
             {% for system in group.systems %}
             <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.name }}" data-group="{{ group_key }}">
                 <td>
@@ -241,7 +251,7 @@
             <div style="display:flex;align-items:center;margin-bottom:8px;">
                 <label class="body-sm text-outline" style="flex:1;">Paths</label>
                 <button id="drawer-suggest-btn" onclick="suggestDrawerPaths(this)" class="btn btn-sm scan-safe"
-                        style="font-size:0.75rem;padding:2px 8px;">✨ Auto-detect</button>
+                        style="font-size:0.75rem;padding:2px 8px;">✨ Suggest with Claude</button>
             </div>
             <div id="drawer-suggest-status" style="display:none;font-size:0.78rem;color:var(--on-surface-variant);margin-bottom:6px;"></div>
             <div id="drawer-paths"></div>
