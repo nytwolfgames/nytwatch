@@ -116,7 +116,7 @@ def create_app(config: AuditorConfig) -> FastAPI:
     @app.on_event("shutdown")
     def shutdown():
         from auditor.scan_state import canceller
-        if canceller.is_cancelled is False:
+        if not canceller.is_cancelled:
             # Kill any active Claude subprocess and signal scan threads to stop
             canceller.cancel()
         stale = db.fail_stale_scans()

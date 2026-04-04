@@ -33,7 +33,7 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600, repo_path: s
     cmd = [
         "claude", "-p", "-",
         "--output-format", "json",
-        "--allowedTools", "Read,Glob,Grep",
+        "--dangerouslySkipPermissions",
     ]
 
     log.debug("Running claude CLI (timeout=%ds, prompt_len=%d)", timeout, len(prompt))

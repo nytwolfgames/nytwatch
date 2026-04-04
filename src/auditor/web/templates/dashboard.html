@@ -538,7 +538,7 @@ async function triggerScan(systemName, scanType) {
             body: JSON.stringify({ system_name: systemName, scan_type: scanType }),
         });
         const d = await r.json();
-        if (!d.ok) alert(d.error || 'Failed to start scan');
+        if (!r.ok || !d.ok) alert(d.error || 'Failed to start scan');
     } catch (e) {
         alert('Failed to trigger scan: ' + e.message);
     }

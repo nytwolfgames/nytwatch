@@ -360,11 +360,21 @@ async def save_systems_api(request: Request):
 @router.post("/scans/trigger")
 async def trigger_scan(request: Request):
     config = get_config(request)
-    db_path = get_db(request).db_path
+    db = get_db(request)
+    db_path = db.db_path
 
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     scan_type = body.get("scan_type", "full")
     system_name = body.get("system_name") or None
+
+    # Reject if a scan is already running — avoids double-scan and protects the
+    # canceller singleton from being reset mid-flight.
+    running = db.get_running_scan()
+    if running:
+        return JSONResponse(
+            {"error": "A scan is already running", "scan_id": running["id"]},
+            status_code=409,
+        )
 
     from auditor.scan_state import canceller
     canceller.reset()

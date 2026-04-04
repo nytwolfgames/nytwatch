@@ -27,11 +27,12 @@ def run_scan(
     if scan_type == "incremental":
         log.info("Starting incremental scan%s", f" for '{system_name}'" if system_name else "")
         return run_incremental_scan(config, db, system_name=system_name)
-    elif scan_type == "full":
-        log.info("Starting full scan")
+    elif scan_type in ("full", "rotation"):
+        # "rotation" is an alias for a scheduled full scan
+        log.info("Starting %s scan%s", scan_type, f" for '{system_name}'" if system_name else "")
         return run_full_scan(config, db, system_name=system_name)
     else:
-        raise ValueError(f"Unknown scan_type: {scan_type!r}. Expected 'incremental' or 'full'.")
+        raise ValueError(f"Unknown scan_type: {scan_type!r}. Expected 'incremental', 'full', or 'rotation'.")
 
 
 def run_full_scan(
