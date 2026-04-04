@@ -118,6 +118,7 @@ async def dashboard(request: Request):
     for s in db_systems:
         sd = s.get("source_dir") or ""
         sys_by_dir.setdefault(sd, []).append({
+            "id": s["id"],
             "name": s["name"],
             "source_dir": sd,
             "count": db.count_findings_for_path_prefixes(s["paths"]),
@@ -558,6 +559,13 @@ async def get_source_dirs_api(request: Request):
     dirs = db.list_source_dirs()
     active = [d for d in dirs if d["source_type"] != "ignored"]
     return JSONResponse({"source_dirs": active})
+
+
+@router.get("/api/source-dirs-all")
+async def get_all_source_dirs_api(request: Request):
+    """Return all source directories (active + ignored) from the DB."""
+    db = get_db(request)
+    return JSONResponse({"source_dirs": db.list_source_dirs()})
 
 
 @router.post("/api/systems")
@@ -1233,6 +1241,40 @@ async def delete_source_dir(request: Request):
     db.delete_source_dir(path)
     logger.info("Source dir deleted: '%s'", path)
     return JSONResponse({"ok": True, "path": path})
+
+
+@router.post("/settings/source-dirs/bulk")
+async def bulk_update_source_dirs(request: Request):
+    """Apply a batch of upserts and deletes to source_dirs in one request.
+
+    Body: {
+        "upsert": [{"path": "...", "source_type": "active"|"ignored"}, ...],
+        "delete": ["path1", "path2", ...]
+    }
+    """
+    db = get_db(request)
+    body = await request.json()
+    valid_types = {"active", "ignored"}
+
+    upserted = []
+    for entry in body.get("upsert", []):
+        path = (entry.get("path") or "").strip()
+        stype = (entry.get("source_type") or "active").strip()
+        if not path or stype not in valid_types:
+            continue
+        db.upsert_source_dir(path, stype)
+        upserted.append(path)
+
+    deleted = []
+    for path in body.get("delete", []):
+        path = (path or "").strip()
+        if not path:
+            continue
+        db.delete_source_dir(path)
+        deleted.append(path)
+
+    logger.info("Bulk source-dirs: upserted %d, deleted %d", len(upserted), len(deleted))
+    return JSONResponse({"ok": True, "upserted": upserted, "deleted": deleted})
 
 
 # --- Batches ---

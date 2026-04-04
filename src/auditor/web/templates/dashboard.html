@@ -105,7 +105,7 @@
             </tr>
         </thead>
         <tbody>
-            {% set ns = namespace(idx=0) %}
+
             {% for group in grouped_systems %}
             {% set group_key = loop.index0 %}
 
@@ -117,7 +117,8 @@
                 <td colspan="3" style="padding: 10px var(--sp-5) 7px; border-top: 1px solid var(--outline-variant);">
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
                         <span class="group-arrow" style="font-size:0.9rem; color:var(--primary); transition:transform 0.15s; flex-shrink:0; opacity:0.7;">▾</span>
-                        <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em; margin-left:5px;">
+                        <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em; margin-left:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                              title="{{ group.source_dir if group.source_dir else 'Ungrouped' }}">
                             {{ group.source_dir if group.source_dir else 'Ungrouped' }}
                         </span>
                         {% if group.ignored %}
@@ -132,12 +133,16 @@
             <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.name }}" data-group="{{ group_key }}">
                 <td>
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
-                        <a href="/findings?system={{ system.name }}"
-                           style="color:var(--on-surface); font-weight:500; text-decoration:none;">{{ system.name }}</a>
-                        <button onclick="openDrawer({{ ns.idx }})" class="sys-edit-btn scan-safe" title="Edit system"
+                        <span onclick="location.href='/findings?system={{ system.name | urlencode }}'"
+                              style="color:var(--on-surface); font-weight:500; cursor:pointer;">{{ system.name }}</span>
+                        <button onclick="openDrawer({{ system.id }})" class="sys-edit-btn scan-safe" title="Edit system"
                                 style="background:none; border:none; cursor:pointer; color:var(--outline);
-                                       font-size:0.75rem; padding:1px 5px; opacity:0; transition:opacity 0.15s;
-                                       line-height:1; border-radius:var(--radius-sm);">✏</button>
+                                       padding:2px 4px; opacity:0; transition:opacity 0.15s; display:flex;
+                                       align-items:center; border-radius:var(--radius-sm);">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
+                            </svg>
+                        </button>
                         <span class="system-scan-badge badge"
                               style="display:none; background:var(--status-approved-bg); color:var(--status-approved-fg);"></span>
                     </div>
@@ -162,7 +167,7 @@
                             onclick="cancelScan()" style="display:none;">Stop</button>
                 </td>
             </tr>
-            {% set ns.idx = ns.idx + 1 %}
+
             {% endfor %}
 
             {% endfor %}
@@ -341,7 +346,7 @@ let _sysReady = false;
 })();
 
 // ── Drawer open / close ───────────────────────────────────────────────────────
-async function openDrawer(idx) {
+async function openDrawer(idOrNull) {
     // If the API hasn't responded yet, wait briefly
     if (!_sysReady) {
         const waited = await new Promise(resolve => {
@@ -355,14 +360,17 @@ async function openDrawer(idx) {
 
     try {
         _origSys = JSON.parse(JSON.stringify(_sys));
-        if (idx === null) {
+        const isNew = idOrNull === null;
+        if (isNew) {
             _sys.push({ name: '', paths: [], source_dir: '' });
             _editIdx = _sys.length - 1;
         } else {
-            _editIdx = idx;
+            _editIdx = _sys.findIndex(s => s.id === idOrNull);
+            if (_editIdx < 0) {
+                alert('System not found (id=' + idOrNull + ')');
+                return;
+            }
         }
-
-        const isNew = idx === null;
         document.getElementById('drawer-title').textContent = isNew ? 'New System' : 'Edit System';
         document.getElementById('drawer-delete-btn').style.display = isNew ? 'none' : '';
         document.getElementById('drawer-name').value = _sys[_editIdx].name;

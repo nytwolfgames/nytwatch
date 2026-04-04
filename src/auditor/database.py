@@ -457,7 +457,7 @@ class Database:
     def list_systems(self) -> list[dict]:
         """Return all systems ordered by source_dir then sort_order, as plain dicts."""
         rows = self.conn.execute(
-            "SELECT name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode "
+            "SELECT rowid AS id, name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode "
             "FROM systems ORDER BY source_dir, sort_order, name"
         ).fetchall()
         result = []
