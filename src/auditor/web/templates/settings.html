@@ -46,71 +46,50 @@
 <!-- Source Directory Classification -->
 <h2 class="headline-md mb-2 mt-8">Source Directory Classification</h2>
 <p class="body-md text-variant mb-6">
-    Directories are auto-detected as Project or Plugin using Unreal Engine heuristics and AI classification.
+    Directories are auto-detected on each scan. <strong>Ignored</strong> directories are completely skipped — no findings are generated from them.
     You can override any classification below. Changes take effect on the next scan.
 </p>
 
 <div class="grid grid-2 gap-6">
     <div class="card">
-        <div class="section-label mb-4">Project Directories</div>
-        {% if project_dirs %}
+        <div class="section-label mb-4">Active Directories</div>
+        <p class="body-sm text-variant mb-3">Scanned and included in findings.</p>
+        {% if active_dirs %}
         <div class="dir-list">
-            {% for d in project_dirs %}
+            {% for d in active_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
                 <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
-                    <option value="project" selected>Project</option>
-                    <option value="plugin">Plugin</option>
+                    <option value="active" selected>Active</option>
                     <option value="ignored">Ignored</option>
                 </select>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <p class="body-sm text-variant">No project directories classified yet.</p>
+        <p class="body-sm text-variant">No active directories classified yet.</p>
         {% endif %}
     </div>
 
     <div class="card">
-        <div class="section-label mb-4">Plugin Directories</div>
-        {% if plugin_dirs %}
+        <div class="section-label mb-2">Ignored Directories</div>
+        <p class="body-sm text-variant mb-3">Completely skipped during scanning.</p>
+        {% if ignored_dirs %}
         <div class="dir-list">
-            {% for d in plugin_dirs %}
-            <div class="dir-item" data-path="{{ d.path }}">
-                <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
+            {% for d in ignored_dirs %}
+            <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
+                <span class="mono body-sm" style="flex:1;word-break:break-all;opacity:0.6;">{{ d.path }}</span>
                 <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
-                    <option value="project">Project</option>
-                    <option value="plugin" selected>Plugin</option>
-                    <option value="ignored">Ignored</option>
+                    <option value="active">Active</option>
+                    <option value="ignored" selected>Ignored</option>
                 </select>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <p class="body-sm text-variant">No plugin directories classified yet.</p>
+        <p class="body-sm text-variant">No ignored directories.</p>
         {% endif %}
     </div>
-</div>
-
-<div class="card mt-6">
-    <div class="section-label mb-2">Ignored Directories</div>
-    <p class="body-sm text-variant mb-4">These directories contain no scannable C++ code and are skipped during analysis.</p>
-    {% if ignored_dirs %}
-    <div class="dir-list">
-        {% for d in ignored_dirs %}
-        <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
-            <span class="mono body-sm" style="flex:1;word-break:break-all;opacity:0.6;">{{ d.path }}</span>
-            <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
-                <option value="project">Project</option>
-                <option value="plugin">Plugin</option>
-                <option value="ignored" selected>Ignored</option>
-            </select>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <p class="body-sm text-variant">No ignored directories.</p>
-    {% endif %}
 </div>
 
 <div class="card mt-6">
@@ -118,8 +97,7 @@
     <div class="flex gap-3 items-center">
         <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex:1;">
         <select id="new-dir-type" class="input" style="width:10rem;">
-            <option value="project">Project</option>
-            <option value="plugin">Plugin</option>
+            <option value="active">Active</option>
             <option value="ignored">Ignored</option>
         </select>
         <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
@@ -600,7 +578,9 @@ function wzRenderSources(el) {
 async function wzDetectSources(btn) {
     const listEl = document.getElementById('wz-src-list');
     const detectBtn = document.getElementById('wz-src-detect-btn');
+    const nextBtn = document.getElementById('wz-next-btn');
     if (detectBtn) { detectBtn.disabled = true; detectBtn.textContent = 'Detecting…'; }
+    if (nextBtn) nextBtn.disabled = true;
 
     try {
         const r = await fetch('/api/detect-source-dirs?repo_path=' + encodeURIComponent(_wz.repo_path));
@@ -624,6 +604,7 @@ async function wzDetectSources(btn) {
              <p class="body-sm text-variant mt-2">You can continue and add systems manually in the next step.</p>`;
     } finally {
         if (detectBtn) { detectBtn.disabled = false; detectBtn.textContent = 'Re-detect'; }
+        if (nextBtn) nextBtn.disabled = false;
     }
 }
 
@@ -637,7 +618,7 @@ function wzRenderSourceList() {
         return;
     }
     const rows = _wz.source_dirs.map((dir, idx) => {
-        const typeOpts = ['project','plugin','ignored'].map(t =>
+        const typeOpts = ['active','ignored'].map(t =>
             `<option value="${t}" ${dir.source_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`
         ).join('');
         const badge = dir.auto ? '' :
@@ -694,7 +675,9 @@ async function wzSuggest(btn) {
             'No non-ignored source directories — go back and classify your source directories first';
         return;
     }
+    const nextBtn = document.getElementById('wz-next-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Asking Claude…'; }
+    if (nextBtn) nextBtn.disabled = true;
     const listEl = document.getElementById('wz-sys-list');
     if (listEl && !_wz.systems.length) {
         listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
@@ -733,6 +716,7 @@ async function wzSuggest(btn) {
         }
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
+        if (nextBtn) nextBtn.disabled = false;
     }
 }
 

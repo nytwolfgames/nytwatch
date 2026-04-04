@@ -42,7 +42,7 @@
         </select>
         <select name="source" class="input">
             <option value="">All sources</option>
-            {% for s in ['project', 'plugin'] %}
+            {% for s in ['active'] %}
             <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ s|title }}</option>
             {% endfor %}
         </select>
@@ -78,7 +78,7 @@
             {% for f in findings %}
             <tr>
                 <td><span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span></td>
-                <td><span class="badge badge-source-{{ f.source|default('project') }}">{{ (f.source or 'project')|title }}</span></td>
+                <td><span class="badge badge-source-{{ f.source|default('active') }}">{{ (f.source or 'active')|title }}</span></td>
                 <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
                 <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}">{{ f.file_path }}:{{ f.line_start }}</td>
                 <td><span class="badge badge-category">{{ f.category }}</span></td>
@@ -161,7 +161,7 @@ function _escHtml(s) {
 }
 
 function _buildRow(f) {
-    const src = f.source || 'project';
+    const src = f.source || 'active';
     const actions = f.status === 'pending'
         ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe">Approve</button>
            <button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" style="margin-left:var(--sp-2)">Reject</button>`

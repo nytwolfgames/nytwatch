@@ -112,6 +112,12 @@ def _process_system(
         log.warning("System '%s' not found in config, skipping", system_name)
         return 0, 0
 
+    ignored_prefixes = db.get_ignored_path_prefixes()
+
+    def _is_ignored(path: str) -> bool:
+        norm = path.replace("\\", "/")
+        return any(norm.startswith(pfx) for pfx in ignored_prefixes)
+
     if changed_files is not None:
         # Incremental: collect whole system for include-graph resolution, build
         # neighbourhood around the changed files, extract paths for analysis.
@@ -127,7 +133,7 @@ def _process_system(
         if not neighbourhood:
             log.info("No neighbourhood files resolved for system '%s'", system_name)
             return 0, 0
-        file_paths = list(neighbourhood.keys())
+        file_paths = [p for p in neighbourhood.keys() if not _is_ignored(p)]
     else:
         # Full scan: list paths only (agent reads the files itself), apply
         # ownership filter so sub-systems own their deeper paths.
@@ -136,15 +142,16 @@ def _process_system(
             log.info("No files found for system '%s'", system_name)
             return 0, 0
         file_paths = [p for p in all_paths
-                      if find_owning_system(p, config.systems) == system_name]
+                      if find_owning_system(p, config.systems) == system_name
+                      and not _is_ignored(p)]
         excluded = len(all_paths) - len(file_paths)
         if excluded:
             log.info(
-                "System '%s': excluded %d file(s) owned by a more specific system",
+                "System '%s': excluded %d file(s) (sub-system ownership or ignored dir)",
                 system_name, excluded,
             )
         if not file_paths:
-            log.info("No files remain for system '%s' after ownership filter", system_name)
+            log.info("No files remain for system '%s' after ownership/ignored filter", system_name)
             return 0, 0
 
     chunks = chunk_paths_by_count(file_paths, max_files=20)

@@ -440,6 +440,30 @@ async def browse_directory(request: Request, path: str = "", base: str = ""):
     return JSONResponse({"path": current_rel + "/" if current_rel else "", "entries": entries, "parent": parent})
 
 
+@router.post("/api/open-folder")
+async def open_folder(request: Request):
+    """Open a local folder in the OS file explorer."""
+    import subprocess
+    import sys
+    data = await request.json()
+    path = data.get("path", "").strip()
+    if not path:
+        return JSONResponse({"error": "No path provided"}, status_code=400)
+    p = Path(path)
+    if not p.exists():
+        return JSONResponse({"error": f"Path does not exist: {path}"}, status_code=404)
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(p)])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(p)])
+        else:
+            subprocess.Popen(["xdg-open", str(p)])
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 @router.get("/api/systems")
 async def get_systems_api(request: Request):
     config = get_config(request)
@@ -604,11 +628,14 @@ async def init_project(request: Request):
     source_dirs = body.get("source_dirs", [])
     if source_dirs:
         db = get_db(request)
-        valid_types = {"project", "plugin", "ignored"}
+        valid_types = {"active", "ignored"}
         for entry in source_dirs:
             path = (entry.get("path") or "").strip()
-            stype = (entry.get("source_type") or "project").strip()
-            if path and stype in valid_types:
+            stype = (entry.get("source_type") or "active").strip()
+            # Normalise legacy "project"/"plugin" values from old wizard data
+            if stype not in valid_types:
+                stype = "active"
+            if path:
                 db.upsert_source_dir(path, stype)
 
     from auditor.config import set_active_config_path
@@ -877,13 +904,12 @@ async def settings_page(request: Request):
     db = get_db(request)
     config = get_config(request)
     source_dirs = db.list_source_dirs()
-    project_dirs = [d for d in source_dirs if d["source_type"] == "project"]
-    plugin_dirs = [d for d in source_dirs if d["source_type"] == "plugin"]
+    # Normalise legacy "project"/"plugin" values to "active" for display
+    active_dirs = [d for d in source_dirs if d["source_type"] != "ignored"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
-    config_path = getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH))
+    config_path = getattr(request.app.state, "config_path", "") or ""
     return templates.TemplateResponse(request, "settings.html", {
-        "project_dirs": project_dirs,
-        "plugin_dirs": plugin_dirs,
+        "active_dirs": active_dirs,
         "ignored_dirs": ignored_dirs,
         "config": config,
         "config_path": config_path,
@@ -896,7 +922,7 @@ async def update_source_dir(request: Request):
     body = await request.json()
     path = body.get("path", "").strip()
     source_type = body.get("source_type", "").strip()
-    if not path or source_type not in ("project", "plugin", "ignored"):
+    if not path or source_type not in ("active", "ignored"):
         return JSONResponse({"error": "Invalid path or source_type"}, status_code=400)
     db.upsert_source_dir(path, source_type)
     logger.info("Source dir updated: '%s' -> '%s'", path, source_type)

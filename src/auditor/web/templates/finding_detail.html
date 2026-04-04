@@ -10,7 +10,7 @@
     <div>
         <div class="flex items-center gap-2 mb-4 flex-wrap">
             <span class="badge badge-{{ finding.severity }}">{{ finding.severity|upper }}</span>
-            <span class="badge badge-source-{{ finding.source|default('project') }}">{{ (finding.source or 'project')|title }}</span>
+            <span class="badge badge-source-{{ finding.source|default('active') }}">{{ (finding.source or 'active')|title }}</span>
             <span class="badge badge-category">{{ finding.category }}</span>
             <span class="badge badge-info">{{ finding.confidence }}</span>
             <span class="badge status-{{ finding.status }}">{{ finding.status }}</span>

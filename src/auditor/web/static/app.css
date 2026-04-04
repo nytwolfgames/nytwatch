@@ -350,14 +350,14 @@ body {
 .badge-low { background: var(--severity-low); color: white; }
 .badge-info { background: var(--severity-info); color: white; }
 
-.badge-source-project {
+.badge-source-active {
   background: #dbeafe;
   color: #1e40af;
   font-weight: 600;
 }
-.badge-source-plugin {
-  background: #fef3c7;
-  color: #92400e;
+.badge-source-ignored {
+  background: #f3f4f6;
+  color: #6b7280;
   font-weight: 600;
 }
 

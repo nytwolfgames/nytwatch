@@ -69,6 +69,7 @@
         <div style="display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--outline, #3f3f5a); gap:10px;">
             <span id="log-modal-title" style="font-weight:600; font-size:0.95rem; flex:1;">Scan Log</span>
             <span id="log-live-badge" style="display:none; font-size:0.75rem; background:#1d4ed8; color:#fff; padding:2px 8px; border-radius:4px; font-weight:500;">LIVE</span>
+            <button onclick="openRepoFolder()" class="btn btn-sm scan-safe" title="Open project folder in file explorer" style="font-size:0.78rem;">📂 Open Folder</button>
             <button onclick="closeLog()" class="scan-safe" style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant,#aaa);font-size:1.2rem;line-height:1;padding:2px 6px;">&times;</button>
         </div>
         <div id="log-content" style="flex:1; overflow-y:auto; padding:14px 18px; font-family:monospace; font-size:0.78rem; line-height:1.6; white-space:pre-wrap; word-break:break-all; background:var(--surface-container, #13131f); max-height:calc(80vh - 60px);">
@@ -86,6 +87,23 @@
 
 {% block scripts %}
 <script>
+    const _repoPath = {{ active_repo_path(request)|tojson }};
+
+    async function openRepoFolder() {
+        if (!_repoPath) { alert('No project folder configured.'); return; }
+        try {
+            const r = await fetch('/api/open-folder', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: _repoPath}),
+            });
+            const d = await r.json();
+            if (d.error) alert('Could not open folder: ' + d.error);
+        } catch (e) {
+            alert('Could not open folder: ' + e.message);
+        }
+    }
+
     let _logScanId = null;
     let _logPolling = null;
     let _logOffset = 0;

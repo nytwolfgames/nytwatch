@@ -419,8 +419,17 @@ class Database:
             stored = row["path"].replace("\\", "/")
             prefix = stored.rstrip("/") + "/"
             if norm_file.startswith(prefix) or norm_file.startswith(stored):
-                return row["source_type"]
-        return "project"
+                stype = row["source_type"]
+                # Normalise legacy "project"/"plugin" values to "active"
+                return stype if stype == "ignored" else "active"
+        return "active"
+
+    def get_ignored_path_prefixes(self) -> list[str]:
+        """Return normalised path prefixes for all directories marked 'ignored'."""
+        rows = self.conn.execute(
+            "SELECT path FROM source_dirs WHERE source_type = 'ignored'"
+        ).fetchall()
+        return [row["path"].replace("\\", "/").rstrip("/") + "/" for row in rows]
 
     # --- Scan Logs ---
 
