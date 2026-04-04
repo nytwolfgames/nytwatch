@@ -153,6 +153,35 @@ Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.
 """
 
 
+def build_recheck_prompt(finding: dict) -> str:
+    return f"""\
+You are a code auditor verifying whether a previously-identified issue is still present.
+
+## Finding
+Title:    {finding['title']}
+File:     {finding['file_path']}  (lines {finding.get('line_start', '?')}–{finding.get('line_end', '?')})
+Severity: {finding.get('severity', '')}  |  Category: {finding.get('category', '')}
+
+### Original Description
+{finding.get('description', '')}
+
+### Original Code Snippet
+```cpp
+{finding.get('code_snippet', '')}
+```
+
+## Task
+Use the Read tool to read the **current** contents of the file at the path above.
+Determine whether this specific issue is still present in the current code.
+
+## Output Format
+Return ONLY this JSON object — no markdown fences, no other text:
+{{"still_valid": true, "reason": "brief explanation"}}
+
+Set `still_valid` to false if the issue has been fixed or no longer applies.\
+"""
+
+
 _CHAT_HISTORY_LIMIT = 10  # max messages sent to Claude per turn
 
 

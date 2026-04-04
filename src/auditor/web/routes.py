@@ -402,6 +402,35 @@ async def toggle_finding_test(request: Request, finding_id: str):
     return JSONResponse({"ok": True, "include_test": new_val})
 
 
+@router.post("/findings/{finding_id}/recheck")
+async def recheck_finding(request: Request, finding_id: str):
+    import asyncio
+    db = get_db(request)
+    config = get_config(request)
+
+    finding = db.get_finding(finding_id)
+    if not finding:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    from auditor.analysis.engine import run_finding_recheck
+    try:
+        loop = asyncio.get_event_loop()
+        still_valid, reason = await loop.run_in_executor(
+            None, lambda: run_finding_recheck(finding, config.repo_path)
+        )
+    except Exception as e:
+        logger.exception("Recheck error for %s", finding_id)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    if not still_valid:
+        db.update_finding_status(finding_id, FindingStatus.SUPERSEDED)
+        logger.info("Finding %s recheck: no longer valid — superseded. Reason: %s", finding_id, reason)
+    else:
+        logger.info("Finding %s recheck: still valid. Reason: %s", finding_id, reason)
+
+    return JSONResponse({"still_valid": still_valid, "reason": reason})
+
+
 @router.get("/api/findings/{finding_id}/chat")
 async def get_finding_chat(request: Request, finding_id: str):
     db = get_db(request)

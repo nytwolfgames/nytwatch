@@ -68,15 +68,15 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th style="width: 90px;">Severity</th>
-                <th style="width: 80px;">Source</th>
-                <th style="width: 26%;">Title</th>
-                <th style="width: 18%;">File</th>
-                <th style="width: 85px;">Category</th>
-                <th style="width: 90px;">Confidence</th>
-                <th style="width: 85px;">Status</th>
-                <th style="width: 60px;" title="Include a test case when applying this fix">Test</th>
-                <th style="width: 110px;">Actions</th>
+                <th style="width: 8%;">Severity</th>
+                <th style="width: 7%;">Source</th>
+                <th style="width: 28%;">Title</th>
+                <th style="width: 20%;">File</th>
+                <th style="width: 8%;">Category</th>
+                <th style="width: 8%;">Confidence</th>
+                <th style="width: 8%;">Status</th>
+                <th style="width: 5%;" title="Include a test case when applying this fix">Test</th>
+                <th style="width: 8%;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -96,12 +96,15 @@
                            title="Include test case when applying fix"
                            onchange="toggleTest(this)">
                 </td>
-                <td>
+                <td style="white-space:nowrap;">
+                    {% if f.status in ('pending', 'approved', 'rejected') %}
+                    <button onclick="recheckFromList(this, '{{ f.id }}')" class="action-recheck" title="Recheck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg></button>
+                    {% endif %}
                     {% if f.status == 'pending' %}
-                    <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve">Approve</button>
-                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" style="margin-left: var(--sp-2);">Reject</button>
+                    <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve" title="Approve"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg></button>
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" title="Reject"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
                     {% elif f.status == 'approved' %}
-                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject">Unapprove</button>
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" title="Unapprove"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
                     {% endif %}
                 </td>
             </tr>
@@ -120,6 +123,29 @@
 
 {% block scripts %}
 <script>
+async function recheckFromList(btn, findingId) {
+    btn.disabled = true;
+    btn.style.animation = 'spin 1s linear infinite';
+    try {
+        const res = await fetch(`/findings/${findingId}/recheck`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+            alert('Recheck failed: ' + data.error);
+            return;
+        }
+        if (!data.still_valid) {
+            const row = btn.closest('tr');
+            if (row) row.remove();
+        }
+        // still_valid: no feedback needed — icon returns to normal
+    } catch (e) {
+        alert('Recheck failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.style.animation = '';
+    }
+}
+
 async function toggleTest(checkbox) {
     const id = checkbox.dataset.id;
     checkbox.disabled = true;
@@ -191,12 +217,18 @@ function _escHtml(s) {
 function _buildRow(f) {
     const src = f.source || 'active';
     const checked = (f.include_test === undefined || f.include_test) ? 'checked' : '';
-    const actions = f.status === 'pending'
-        ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe">Approve</button>
-           <button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" style="margin-left:var(--sp-2)">Reject</button>`
-        : f.status === 'approved'
-        ? `<button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe">Unapprove</button>`
+    const _svgTick    = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg>`;
+    const _svgCross   = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
+    const _svgRefresh = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>`;
+    const recheckBtn = ['pending','approved','rejected'].includes(f.status)
+        ? `<button onclick="recheckFromList(this,'${_escHtml(f.id)}')" class="action-recheck scan-safe" title="Recheck">${_svgRefresh}</button>`
         : '';
+    const approveReject = f.status === 'pending'
+        ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe" title="Approve">${_svgTick}</button><button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" title="Reject">${_svgCross}</button>`
+        : f.status === 'approved'
+        ? `<button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" title="Unapprove">${_svgCross}</button>`
+        : '';
+    const actions = recheckBtn + approveReject;
     return `<tr data-finding-id="${_escHtml(f.id)}">
         <td>${_severityBadge(f.severity)}</td>
         <td><span class="badge badge-source-${_escHtml(src)}">${_escHtml(src.charAt(0).toUpperCase()+src.slice(1))}</span></td>
@@ -218,15 +250,15 @@ function _ensureTable() {
         <div class="card" style="padding:0;">
           <table class="data-table" style="width:100%;">
             <thead><tr>
-              <th style="width:90px">Severity</th>
-              <th style="width:80px">Source</th>
-              <th style="width:26%">Title</th>
-              <th style="width:18%">File</th>
-              <th style="width:85px">Category</th>
-              <th style="width:90px">Confidence</th>
-              <th style="width:85px">Status</th>
-              <th style="width:60px" title="Include a test case when applying this fix">Test</th>
-              <th style="width:110px">Actions</th>
+              <th style="width:8%">Severity</th>
+              <th style="width:7%">Source</th>
+              <th style="width:28%">Title</th>
+              <th style="width:20%">File</th>
+              <th style="width:8%">Category</th>
+              <th style="width:8%">Confidence</th>
+              <th style="width:8%">Status</th>
+              <th style="width:5%" title="Include a test case when applying this fix">Test</th>
+              <th style="width:8%">Actions</th>
             </tr></thead>
             <tbody id="findings-tbody"></tbody>
           </table>

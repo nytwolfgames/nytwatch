@@ -14,7 +14,7 @@ from typing import Optional
 from pydantic import ValidationError
 
 from auditor.analysis.schemas import ScanResult, BatchApplyResult
-from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt, build_finding_chat_prompt
+from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt, build_finding_chat_prompt, build_recheck_prompt
 from auditor.models import new_id
 
 log = logging.getLogger(__name__)
@@ -323,6 +323,30 @@ def _parse_chat_response(text: str) -> tuple[str, dict]:
         display_text = display_text[:match.start()].strip()
 
     return display_text, updated_fields
+
+
+def run_finding_recheck(finding: dict, repo_path: str) -> tuple[bool, str]:
+    """Ask Claude to verify the finding is still present in the current file.
+
+    Returns:
+        still_valid — True if the issue still exists, False if it has been fixed
+        reason      — Claude's explanation
+    """
+    prompt = build_recheck_prompt(finding)
+    raw = call_claude(prompt, fast=False, repo_path=repo_path, use_tools=True)
+    text = _extract_text_result(raw).strip()
+
+    # Claude may wrap in fences despite instructions
+    text = _strip_markdown_fences(text) if text.startswith("```") else text
+
+    try:
+        data = json.loads(text)
+        still_valid = bool(data.get("still_valid", True))
+        reason = str(data.get("reason", ""))
+        return still_valid, reason
+    except (json.JSONDecodeError, ValueError):
+        log.warning("Could not parse recheck JSON; assuming still valid. Raw: %s", text[:200])
+        return True, text
 
 
 def run_finding_chat(

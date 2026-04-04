@@ -17,12 +17,15 @@
         </div>
         <h1 class="headline-lg">{{ finding.title }}</h1>
     </div>
-    <div class="flex gap-2">
+    <div class="flex gap-2" style="flex-wrap:wrap;">
+        {% if finding.status in ('pending', 'approved', 'rejected') %}
+        <button id="recheck-btn" onclick="recheckFinding()" class="btn btn-secondary"><svg id="recheck-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>Recheck</button>
+        {% endif %}
         {% if finding.status == 'pending' %}
-        <button onclick="postAction('/findings/{{ finding.id }}/approve')" class="btn btn-success">Approve</button>
-        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger">Reject</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/approve')" class="btn btn-success"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><polyline points="2,8 6,12 14,4"/></svg>Approve</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px;flex-shrink:0;"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>Reject</button>
         {% elif finding.status == 'approved' %}
-        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger">Unapprove</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px;flex-shrink:0;"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>Unapprove</button>
         {% endif %}
     </div>
 </div>
@@ -44,6 +47,11 @@
     </div>
 </div>
 
+<div class="card mb-4">
+    <div class="section-label">Reasoning</div>
+    <p class="body-sm text-variant">{{ finding.reasoning }}</p>
+</div>
+
 {% if finding.suggested_fix %}
 <div class="card mb-4" id="suggested-fix-card">
     <div class="section-label">Suggested Fix</div>
@@ -55,6 +63,29 @@
     <p class="body-md" id="suggested-fix-text"></p>
 </div>
 {% endif %}
+
+<div class="card mb-4">
+    <div class="section-label">Chat with Claude</div>
+    <p class="body-sm text-variant mb-3">
+        Ask Claude to explain the finding, explore edge cases, or — to update the fix fields above — explicitly say so, e.g. <em>"Regenerate the diff to also handle the null case."</em>
+    </p>
+
+    <div id="chat-messages"
+         style="max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:var(--sp-3); margin:var(--sp-4);">
+    </div>
+
+    <div id="chat-thinking" style="display:none;" class="body-sm text-variant mb-3">
+        Claude is thinking&hellip;
+    </div>
+
+    <div class="flex gap-2" style="align-items:flex-end;">
+        <textarea id="chat-input" class="input" rows="3"
+                  style="flex:1; resize:vertical;"
+                  placeholder="Ask a question or request a fix update…"
+                  onkeydown="chatKeydown(event)"></textarea>
+        <button id="chat-send" onclick="sendChatMessage()" class="btn btn-primary">Send</button>
+    </div>
+</div>
 
 {% if finding.fix_diff %}
 <div class="card mb-4" id="fix-diff-card">
@@ -99,34 +130,6 @@
     {% endif %}
 </div>
 
-<div class="card mb-4">
-    <div class="section-label">Chat with Claude</div>
-    <p class="body-sm text-variant mb-3">
-        Ask Claude to explain the finding, explore edge cases, or — to update the fix fields above — explicitly say so, e.g. <em>"Regenerate the diff to also handle the null case."</em>
-    </p>
-
-    <div id="chat-messages"
-         style="max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:var(--sp-3); margin-bottom:var(--sp-4);">
-    </div>
-
-    <div id="chat-thinking" style="display:none;" class="body-sm text-variant mb-3">
-        Claude is thinking&hellip;
-    </div>
-
-    <div class="flex gap-2" style="align-items:flex-end;">
-        <textarea id="chat-input" class="input" rows="3"
-                  style="flex:1; resize:vertical;"
-                  placeholder="Ask a question or request a fix update…"
-                  onkeydown="chatKeydown(event)"></textarea>
-        <button id="chat-send" onclick="sendChatMessage()" class="btn btn-primary">Send</button>
-    </div>
-</div>
-
-<div class="card mb-4">
-    <div class="section-label">Reasoning</div>
-    <p class="body-sm text-variant">{{ finding.reasoning }}</p>
-</div>
-
 <div class="card">
     <div class="section-label">Metadata</div>
     <div class="grid grid-2 gap-4" style="margin-top: var(--sp-3);">
@@ -168,6 +171,32 @@
 
 {% block scripts %}
 <script>
+// ── Recheck ───────────────────────────────────────────────────────────────────
+async function recheckFinding() {
+    const btn = document.getElementById('recheck-btn');
+    const icon = document.getElementById('recheck-icon');
+    btn.disabled = true;
+    if (icon) icon.style.animation = 'spin 1s linear infinite';
+    try {
+        const res = await fetch('/findings/{{ finding.id }}/recheck', { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+            alert('Recheck failed: ' + data.error);
+            return;
+        }
+        if (!data.still_valid) {
+            location.reload();
+        } else {
+            alert('Still valid\n\n' + data.reason);
+        }
+    } catch (e) {
+        alert('Recheck failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        if (icon) icon.style.animation = '';
+    }
+}
+
 // ── Test toggle ───────────────────────────────────────────────────────────────
 async function toggleIncludeTest(checkbox) {
     checkbox.disabled = true;
@@ -213,14 +242,22 @@ function _applyUpdatedFields(fields) {
     if (fields.fix_diff) {
         const el = document.getElementById('fix-diff-code');
         const card = document.getElementById('fix-diff-card');
-        if (el) el.textContent = fields.fix_diff;
+        if (el) {
+            el.textContent = fields.fix_diff;
+            el.removeAttribute('data-highlighted');
+            hljs.highlightElement(el);
+        }
         if (card) card.style.display = '';
     }
     if (fields.test_code) {
         const el = document.getElementById('test-code-text');
         const block = document.getElementById('test-code-block');
         const noMsg = document.getElementById('test-no-code-msg');
-        if (el) el.textContent = fields.test_code;
+        if (el) {
+            el.textContent = fields.test_code;
+            el.removeAttribute('data-highlighted');
+            hljs.highlightElement(el);
+        }
         if (block) block.style.display = '';
         if (noMsg) noMsg.style.display = 'none';
     }
