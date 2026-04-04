@@ -62,6 +62,20 @@
   #systems-table .sys-row:hover { background: rgba(0,74,198,0.03) !important; }
   #systems-table .sys-row:hover .sys-edit-btn { opacity: 1 !important; }
   #systems-table .sys-group-row { background: var(--surface-container-low) !important; }
+  #systems-table .sys-group-row.sys-group-ignored {
+    background: rgba(180,83,9,0.06) !important;
+  }
+  #systems-table .sys-group-row.sys-group-ignored td {
+    box-shadow: inset 3px 0 0 rgba(180,83,9,0.45);
+  }
+  #systems-table .sys-row td:first-child { padding-left: 28px; }
+  #systems-table .sys-row-ignored td { opacity: 0.65; }
+  .badge-source-ignored {
+    background: var(--severity-medium, #b45309) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em;
+  }
 </style>
 <div class="card mb-8" style="padding: 0; overflow: hidden;">
 
@@ -85,10 +99,10 @@
             {% for group in grouped_systems %}
 
             {% if has_grouping %}
-            <tr class="sys-group-row">
-                <td colspan="3" style="padding: 8px var(--sp-4); border-top: 1px solid var(--outline-variant);">
+            <tr class="sys-group-row{% if group.ignored %} sys-group-ignored{% endif %}">
+                <td colspan="3" style="padding: 10px var(--sp-5) 7px; border-top: 1px solid var(--outline-variant);">
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
-                        <span class="mono text-variant" style="font-size:0.72rem; flex:1;">
+                        <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em;">
                             {{ group.source_dir if group.source_dir else 'Ungrouped' }}
                         </span>
                         {% if group.ignored %}
@@ -100,7 +114,7 @@
             {% endif %}
 
             {% for system in group.systems %}
-            <tr class="sys-row" data-system="{{ system.name }}">
+            <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.name }}">
                 <td>
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
                         <a href="/findings?system={{ system.name }}"
@@ -379,6 +393,7 @@ async function openDrawer(idx) {
 
         document.getElementById('drawer-backdrop').style.display = '';
         document.getElementById('system-drawer').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
     } catch (e) {
         console.error('openDrawer failed:', e);
         alert('Could not open system editor: ' + e.message);
@@ -402,6 +417,7 @@ function closeDrawer() {
     if (sdSel) sdSel.disabled = false; // reset for next open
     document.getElementById('drawer-backdrop').style.display = 'none';
     document.getElementById('system-drawer').style.display = 'none';
+    document.body.style.overflow = '';
 }
 
 function syncDrawerName() {
@@ -557,6 +573,14 @@ async function navigatePicker(path) {
 }
 
 function renderPickerData(data) {
+    // Option C: detect UE module root (current dir has both "Public" and "Private" children)
+    const entryNames = (data.entries || []).map(e => e.name.toLowerCase());
+    const isModuleRoot = entryNames.includes('public') && entryNames.includes('private');
+
+    // Detect if we're navigated *inside* a Public or Private folder
+    const curLower = _pickerCurrent.toLowerCase();
+    const isInsidePubPriv = curLower.endsWith('/public') || curLower.endsWith('/private');
+
     // Breadcrumb — root is the source_dir (or repo root when no source_dir set)
     const rootParts  = _pickerRoot ? _pickerRoot.split('/').filter(Boolean) : [];
     const rootLabel  = rootParts.length ? rootParts[rootParts.length - 1] : 'repo';
@@ -580,13 +604,30 @@ function renderPickerData(data) {
     }
     document.getElementById('picker-breadcrumb').innerHTML = crumb;
 
+    // Banner: warn or inform about UE module structure
+    let bannerHtml = '';
+    if (isInsidePubPriv) {
+        const parentPath = _pickerCurrent.replace(/\/[^/]+$/, '');
+        bannerHtml = `<div style="padding:7px 14px;background:rgba(180,83,9,0.1);border-bottom:1px solid rgba(180,83,9,0.2);
+                                  font-size:0.78rem;color:var(--severity-medium,#b45309);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span>⚠ Selecting here only covers this subfolder.</span>
+            <span onclick="navigatePicker('${parentPath}')"
+                  style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Go to module root</span>
+        </div>`;
+    } else if (isModuleRoot) {
+        bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
+                                  font-size:0.78rem;color:var(--primary);display:flex;align-items:center;gap:6px;">
+            <span>✓ Module root — selecting covers both <strong>Public</strong> &amp; <strong>Private</strong>.</span>
+        </div>`;
+    }
+
     // Entries
     const curSysName = _sys[_editIdx]?.name || '';
     const el = document.getElementById('picker-entries');
     if (!data.entries?.length) {
-        el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
+        el.innerHTML = bannerHtml + '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
     } else {
-        el.innerHTML = data.entries.map(e => {
+        el.innerHTML = bannerHtml + data.entries.map(e => {
             const np = e.path.replace(/\\/g, '/').replace(/\/?$/, '/');
             const owner = _sys.find(s => s.name !== curSysName &&
                 s.paths.some(p => p.replace(/\\/g, '/').replace(/\/?$/, '/') === np));
@@ -605,16 +646,30 @@ function renderPickerData(data) {
         }).join('');
     }
 
-    // Select-current button label shows relative path from root
-    const selectLabel = relParts.length
-        ? `Select "${relParts.join('/')}/"`
-        : `Select "${rootLabel}/" (root)`;
+    // Select-current button label — adapted for module root
+    let selectLabel;
+    if (isModuleRoot) {
+        selectLabel = relParts.length
+            ? `Select module "${relParts.join('/')}/" (Public + Private)`
+            : `Select "${rootLabel}/" as module root`;
+    } else {
+        selectLabel = relParts.length
+            ? `Select "${relParts.join('/')}/"`
+            : `Select "${rootLabel}/" (root)`;
+    }
     document.getElementById('picker-select-btn').textContent = selectLabel;
 }
 
 function selectPickerPath(path) {
     if (_pickerForPath < 0 || _editIdx < 0) return;
-    _sys[_editIdx].paths[_pickerForPath] = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    let p = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    // Option A: if user selects a Public/ or Private/ leaf, auto-promote to the parent module root
+    const pTrimmed = p.replace(/\/$/, '').toLowerCase();
+    if (pTrimmed.endsWith('/public') || pTrimmed.endsWith('/private')) {
+        const parent = p.replace(/[^/]+\/$/, '');
+        if (parent && parent !== p) p = parent;
+    }
+    _sys[_editIdx].paths[_pickerForPath] = p;
     closePicker();
     renderPaths();
 }
