@@ -27,6 +27,11 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _skip_perms_flag: Optional[str] = None  # None = not yet confirmed
 
+# Model used for fast (incremental) scans.  Haiku is significantly cheaper and
+# faster than Sonnet while still producing accurate findings for focused diffs.
+# Set to None to always use the CLI default model for every call.
+_FAST_MODEL = "claude-haiku-4-5"
+
 
 def call_claude(
     prompt: str,
@@ -56,6 +61,8 @@ def call_claude(
 
     def _build_cmd(perms_flag: Optional[str]) -> list[str]:
         base = ["claude", "-p", "-", "--output-format", "json"]
+        if fast and _FAST_MODEL:
+            base.extend(["--model", _FAST_MODEL])
         if use_tools and perms_flag:
             base.append(perms_flag)
         return base
@@ -145,7 +152,7 @@ def call_claude(
                     stderr_buf[0] if stderr_buf else "",
                 )
             finally:
-                canceller.unregister_process()
+                canceller.unregister_process(proc)
         except FileNotFoundError:
             log.error("Claude CLI not found — is 'claude' on PATH?")
             raise

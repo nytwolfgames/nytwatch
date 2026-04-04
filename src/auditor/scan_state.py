@@ -3,45 +3,46 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from auditor.database import Database
 
 
 class _ScanCanceller:
-    """Singleton that tracks the active Claude subprocess and exposes a cancel signal.
+    """Singleton that tracks all active Claude subprocesses and exposes a cancel signal.
 
-    Call reset() before starting a scan, register_process() when the subprocess
-    starts, and cancel() from any thread to kill the process and signal the scan
-    loop to stop.
+    Supports parallel scanning: multiple processes can be registered simultaneously.
+    Call reset() before starting a scan, register_process() when each subprocess
+    starts, unregister_process(proc) when it exits, and cancel() from any thread
+    to kill ALL active processes and signal every scan worker to stop.
     """
 
     def __init__(self) -> None:
         self._cancelled = threading.Event()
         self._lock = threading.Lock()
-        self._process: Optional[subprocess.Popen] = None
+        self._processes: set[subprocess.Popen] = set()
 
     def reset(self) -> None:
         self._cancelled.clear()
         with self._lock:
-            self._process = None
+            self._processes.clear()
 
     def register_process(self, proc: subprocess.Popen) -> None:
         with self._lock:
-            self._process = proc
+            self._processes.add(proc)
 
-    def unregister_process(self) -> None:
+    def unregister_process(self, proc: subprocess.Popen) -> None:
         with self._lock:
-            self._process = None
+            self._processes.discard(proc)
 
     def cancel(self) -> None:
-        """Set the cancel flag and kill the active subprocess immediately."""
+        """Set the cancel flag and kill ALL active subprocesses immediately."""
         self._cancelled.set()
         with self._lock:
-            if self._process is not None:
+            for proc in self._processes:
                 try:
-                    self._process.kill()
+                    proc.kill()
                 except Exception:
                     pass
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from auditor.config import AuditorConfig, SystemDef
@@ -30,6 +32,14 @@ from auditor.scanner.chunker import (
 from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
+
+# Max parallel Claude processes per scan.  Keeps rate-limit pressure manageable
+# while providing real wall-clock speedup on multi-system projects.
+_MAX_PARALLEL_SYSTEMS = 4
+
+# Files per agent chunk.  In agent mode Claude reads files itself, so a larger
+# chunk just means more paths in the prompt — not more tokens upfront.
+_CHUNK_SIZE = 40
 
 
 def get_current_commit(repo_path: str) -> str:
@@ -156,7 +166,7 @@ def _process_system(
             log.info("No files remain for system '%s' after ownership/ignored filter", system_name)
             return 0, 0
 
-    chunks = chunk_paths_by_count(file_paths, max_files=20)
+    chunks = chunk_paths_by_count(file_paths, max_files=_CHUNK_SIZE)
     from auditor.ws_manager import manager as ws_manager
 
     findings_count = 0
@@ -317,29 +327,56 @@ def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optio
         if system_name:
             systems_to_scan = [s for s in all_systems if s.name == system_name]
         system_map = map_files_to_systems(changed, systems_to_scan)
+
+        # Collect the systems that actually have changed files (skip uncategorized)
+        active_entries = [
+            (sname, files)
+            for sname, files in system_map.items()
+            if sname != "__uncategorized"
+        ]
+        if not active_entries:
+            log.info("Skipping %d uncategorized file(s) — no matching systems", len(changed))
+        else:
+            skipped = len(system_map.get("__uncategorized", []))
+            if skipped:
+                log.info("Skipping %d uncategorized file(s)", skipped)
+
         total_findings = 0
         total_files = len(changed)
         systems_attempted = 0
         systems_failed = 0
+        _lock = threading.Lock()
 
-        for sname in system_map:
-            if sname == "__uncategorized":
-                log.info("Skipping %d uncategorized files", len(system_map[sname]))
-                continue
-            systems_attempted += 1
-            count, _files = _process_system(
-                sname, config, db, scan_id, config.claude_fast_mode,
-                changed_files=system_map[sname],
-            )
-            if count == -1:
-                systems_failed += 1
-                log.error(
-                    "System '%s' failed — stopping scan early to avoid wasting further calls",
-                    sname,
-                )
-                break
-            else:
-                total_findings += count
+        n_workers = max(1, min(len(active_entries), _MAX_PARALLEL_SYSTEMS))
+        log.info(
+            "Incremental scan: %d system(s) to analyse, %d parallel worker(s)",
+            len(active_entries), n_workers,
+        )
+
+        def _run_one(entry: tuple[str, list[str]]) -> tuple[int, int]:
+            sname, files = entry
+            return _process_system(sname, config, db, scan_id, config.claude_fast_mode, changed_files=files)
+
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            future_to_sname = {executor.submit(_run_one, e): e[0] for e in active_entries}
+            for future in as_completed(future_to_sname):
+                sname = future_to_sname[future]
+                systems_attempted += 1
+                try:
+                    count, _files = future.result()
+                except InterruptedError:
+                    raise
+                except Exception as exc:
+                    log.error("System '%s' raised unexpected exception: %s", sname, exc)
+                    systems_failed += 1
+                    continue
+
+                if count == -1:
+                    systems_failed += 1
+                    log.error("System '%s' failed analysis", sname)
+                else:
+                    with _lock:
+                        total_findings += count
 
         all_failed = systems_attempted > 0 and systems_failed == systems_attempted
         final_status = ScanStatus.FAILED if all_failed else ScanStatus.COMPLETED

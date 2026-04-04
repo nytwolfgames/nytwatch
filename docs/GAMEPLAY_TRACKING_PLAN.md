@@ -1,19 +1,30 @@
 # Nytwatch — Gameplay Tracking Module Implementation Plan
 
 **Nytwolf Games | Nytwatch + NytwatchAgent UE5 Plugin**
-Version 1.2 | April 2026
+Version 1.3 | April 2026
 
 ---
 
 ## 1. Executive Summary
 
-Nytwatch is a gameplay telemetry module that adds runtime tracking capability to the existing static analysis platform. It captures UE5 gameplay data during Play-In-Editor (PIE) sessions and produces structured markdown session logs for use as Claude context.
+Nytwatch is the full product name for what was previously "code-auditor". It is a single unified application built by Nytwolf Games, sitting under the Nytkit family of game development tools. It has two modules:
 
-The module consists of two tightly coordinated components:
+- **Code Auditor** — static analysis of UE5 C++ codebases. Existing functionality: systems, findings, incremental scans.
+- **Gameplay Tracker** — runtime UE5 property tracking, documented in this plan.
 
-**NytwatchAgent (UE5 Plugin)** — An editor-only C++ plugin installed into the game project on demand. On PIE start, it reads a `NytwatchConfig.json` file written by the Nytwatch server into the game's `Saved/Nytwatch/` directory, determines which systems are armed and at what verbosity, then uses a configurable-rate polling tick to detect changes to tracked UProperties across all UObjects belonging to armed systems. It writes `nytwatch.lock` when PIE begins and removes it when PIE ends. Completed sessions are written as structured markdown files to `Saved/Nytwatch/Sessions/`, named by a unique session UUID.
+Both modules share the same app, server, and UI. Navigation is flat — Sessions, Findings, Scans, and Settings all sit at the same level. The Gameplay Tracker depends on systems and source directories defined in Code Auditor, which is why they are a single unified product rather than two separate tools.
 
-**Nytwatch Server (Python/FastAPI)** — Gains a filesystem watcher that monitors each registered game project's `Saved/Nytwatch/` directory. It detects PIE state changes via the lock file, shows a live PIE banner on the dashboard, and provides a Sessions management interface where users can browse, rename, bookmark, and delete session logs. Two new columns are added to the `systems` table to hold tracking configuration, and a new `nytwatch_sessions` table indexes imported session metadata. A new `nytwatch install-plugin` CLI command copies the plugin source into a target game project. When the user switches active projects in the dashboard, the watcher automatically re-targets the new project — provided NytwatchAgent is installed there.
+The full Python package is renamed from `auditor` to `nytwatch`. The CLI entrypoint is `nytwatch`. The repo is renamed from `code-auditor` to `nytwatch`.
+
+---
+
+### Gameplay Tracker Summary
+
+The Gameplay Tracker consists of two tightly coordinated components:
+
+**NytwatchAgent (UE5 Plugin)** — An editor-only C++ plugin installed into the game project on demand. On first PIE start, it creates the `Saved/Nytwatch/` directory in the game project, then reads `NytwatchConfig.json` written by the Nytwatch server to determine which systems are armed and at what verbosity. It uses a configurable-rate polling tick to detect UProperty changes across all UObjects belonging to armed systems. It writes `nytwatch.lock` when PIE begins and removes it when PIE ends. Completed sessions are written as structured markdown files to `Saved/Nytwatch/Sessions/`, named by a unique session UUID.
+
+**Nytwatch Server (Python/FastAPI)** — Gains a filesystem watcher that monitors each registered game project's `Saved/Nytwatch/` directory. The watcher only activates once the plugin has created that directory (on first PIE run). It detects PIE state changes via the lock file, shows a live PIE banner on the dashboard, and provides a Sessions management interface where users can browse, rename, bookmark, and delete session logs. Two new columns are added to the `systems` table to hold tracking configuration, and a new `nytwatch_sessions` table indexes imported session metadata. A `nytwatch install-plugin` CLI command copies the plugin source into a target game project.
 
 The two components communicate entirely through the filesystem — no network connection between plugin and server is needed.
 
@@ -23,7 +34,7 @@ The two components communicate entirely through the filesystem — no network co
 
 ```
 nytwatch/                                  # repo root (renamed from code-auditor)
-├── src/auditor/
+├── src/nytwatch/                          # renamed from src/nytwatch/
 │   ├── tracking/                          # NEW package
 │   │   ├── __init__.py
 │   │   ├── watcher.py                     # Filesystem watcher (watchdog)
@@ -119,7 +130,7 @@ Also update `list_systems()`, `replace_systems()`, and `upsert_system()` to incl
 
 ## 4. Backend Implementation Scope
 
-### 4a. `src/auditor/tracking/config_writer.py`
+### 4a. `src/nytwatch/tracking/config_writer.py`
 
 Responsibility: Generate and write `NytwatchConfig.json` into the game project whenever tracking configuration changes.
 
@@ -131,7 +142,7 @@ Key logic:
 - Called from the API handler whenever `POST /api/nytwatch/arm` is saved
 - Filters out any path resolving to inside `Plugins/NytwatchAgent/` (auto-exclusion)
 
-### 4b. `src/auditor/tracking/session_parser.py`
+### 4b. `src/nytwatch/tracking/session_parser.py`
 
 Responsibility: Parse a session markdown file from disk into a structured dict for DB import and UI display.
 
@@ -142,7 +153,7 @@ Key logic:
 - Counts events by matching lines against the `[MM:SS.mm]` timestamp pattern as a cross-check
 - On parse error: returns a partial dict with an `import_error` key so the UI can show a warning badge rather than silently dropping the file
 
-### 4c. `src/auditor/tracking/session_store.py`
+### 4c. `src/nytwatch/tracking/session_store.py`
 
 Responsibility: Thin wrapper around `nytwatch_sessions` DB methods, coordinating DB state with filesystem operations.
 
@@ -152,7 +163,7 @@ Key logic:
 - `delete_session(session_id, db)` — deletes the `.md` file then removes DB row; if file is already gone, removes DB row anyway
 - `bookmark_session(session_id, bookmarked, db)` — DB update only
 
-### 4d. `src/auditor/tracking/watcher.py`
+### 4d. `src/nytwatch/tracking/watcher.py`
 
 Responsibility: Watchdog-based filesystem observer monitoring `Saved/Nytwatch/` directories.
 
@@ -164,11 +175,11 @@ Key logic:
 - On new `.md` file in `Sessions/`: call `session_store.import_session_file()`, broadcast `{"type": "session_imported", ...}`
 - On `.md` file deleted externally: remove DB row regardless of bookmark status, broadcast `{"type": "session_deleted", ...}`
 - PIE state held in a module-level dict keyed by `project_dir`
-- `add_watch(project_dir)` — registers a new watch path; called automatically when the user switches to a project that has NytwatchAgent installed (detected by presence of `Saved/Nytwatch/` directory)
+- `add_watch(project_dir)` — registers a new watch path; only called if `Saved/Nytwatch/` already exists in the project (created by the plugin on first PIE run). If the directory does not yet exist, the watcher polls for its creation at startup and registers dynamically once it appears
 - `remove_watch(project_dir)` — unregisters; called when switching away from a project
 - Project switch hook: the existing `/settings/switch-project` endpoint must call `watcher.remove_watch(old_dir)` and `watcher.add_watch(new_dir)` if the new project has NytwatchAgent installed
 
-### 4e. `src/auditor/tracking/plugin_installer.py`
+### 4e. `src/nytwatch/tracking/plugin_installer.py`
 
 Responsibility: Logic for the `nytwatch install-plugin` CLI subcommand.
 
@@ -179,14 +190,16 @@ Key logic:
 - Writes a `.nytwatch_install` manifest JSON for diagnostics
 - Prints summary with next steps (enable plugin, recompile)
 
-### 4f. `src/auditor/main.py` changes
+### 4f. `src/nytwatch/main.py` changes
 
 - Rename CLI entrypoint from `code-auditor` to `nytwatch` in `pyproject.toml`
 - Add `install-plugin` subcommand: `nytwatch install-plugin --project /path [--force]`
 - Add watcher startup in `create_app()` startup handler
 - Add watcher shutdown in the shutdown handler
 
-### 4g. `src/auditor/database.py` changes
+### 4g. `src/nytwatch/database.py` changes
+
+
 
 - Extend `_migrate()` to add the two `systems` columns if absent
 - Add `nytwatch_sessions` table to `SCHEMA_SQL`
@@ -278,7 +291,7 @@ Key design:
 
 **Object discovery scope**: all UObjects (`TObjectIterator<UObject>`), filtered to those whose class source path falls within an armed system's absolute paths. Applies to all UObject subclasses — Actors, Components, subsystems, data assets, etc.
 
-**Object scan cap**: configurable via `NytwatchConfig.json` (`object_scan_cap`, default 2000). Plugin prioritises previously-seen objects when truncating at cap.
+**Object scan cap**: configurable from the Nytwatch Settings UI (alongside tick interval) and written into `NytwatchConfig.json` (`object_scan_cap`, default 2000). Plugin prioritises previously-seen objects when truncating at cap.
 
 Skip conditions per object:
 - Has `RF_ClassDefaultObject` flag (CDO)
@@ -332,7 +345,7 @@ Responsibility: Buffer events during PIE and flush to a uniquely-identified `.md
 Key design:
 - Holds in-memory `TArray<FNytwatchEvent>` buffer
 - Session ID generated at `Open()` time as a UUID4 string via `FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens)`
-- `void Open(const FNytwatchConfig& Config, const FString& ProjectDir)` — generates session ID, records start time, creates `Saved/Nytwatch/Sessions/` if absent
+- `void Open(const FNytwatchConfig& Config, const FString& ProjectDir)` — generates session ID, records start time, creates `Saved/Nytwatch/` and `Saved/Nytwatch/Sessions/` if absent (this is the authoritative creator of the `Saved/Nytwatch/` directory — the watcher only begins watching after this directory exists)
 - `void AppendEvent(const FNytwatchEvent& Event)` — appends to buffer
 - `void Close(const FString& ProjectDir)` — serialises buffer to markdown format, writes with `FFileHelper::SaveStringToFile`, then deletes `nytwatch.lock`
 - File naming: `<session_id>.md` (UUID4) — guarantees uniqueness, no collision window
@@ -392,7 +405,7 @@ Responsibility: `IModuleInterface` implementation. Minimal — subsystem handles
 | `DELETE` | `/api/sessions/{id}` | Deletes DB record and `.md` file. Returns error if bookmarked |
 | `GET` | `/api/sessions/{id}/content` | Returns raw markdown text of the session file (for inline preview) |
 | `GET` | `/api/nytwatch/arm` | Returns current tracking config for all systems |
-| `POST` | `/api/nytwatch/arm` | Body: `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds": 0.1}`. Saves to DB and writes `NytwatchConfig.json` |
+| `POST` | `/api/nytwatch/arm` | Body: `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds": 0.1, "object_scan_cap": 2000}`. Saves to DB and writes `NytwatchConfig.json` |
 
 ### Modified endpoints
 
@@ -470,7 +483,9 @@ Persistent banner element always present in DOM, hidden by default. Three mutual
 **Nytwatch Tracking** section added to each system row (collapsed by default, expandable):
 - Toggle switch: "Arm for Tracking"
 - When armed: reveals verbosity selector (Critical / Standard / Verbose)
-- Tick interval field (shared across all systems): number input in seconds, saved via `POST /api/nytwatch/arm`
+- Tick interval field (shared across all systems): number input in seconds
+- Object scan cap field (shared across all systems): number input, default 2000
+- Both saved via `POST /api/nytwatch/arm`
 - System name shows small "Tracked" badge when `tracking_enabled = 1`
 - Systems whose paths resolve entirely inside `Plugins/NytwatchAgent/` are rendered greyed-out with tooltip: "This is the NytwatchAgent plugin itself and cannot be tracked."
 
@@ -734,7 +749,8 @@ Everything needed to go from zero to a working, logged session.
 | Q1 | UE version floor | UE 5.7+ only. No version guards needed. |
 | Q2 | Object discovery scope | All UObjects, filtered by armed system paths. Skips CDOs, unreachable, transient non-Actors, and self (NytwatchAgent module). |
 | Q3 | Tick frequency | Configurable from Nytwatch Settings UI. Written into `NytwatchConfig.json`. Default 0.1s (10 Hz). |
-| Q4 | Project switching | Watcher automatically re-targets on project switch — only if `Saved/Nytwatch/` exists in the new project (indicating NytwatchAgent is installed). |
+| Q3b | Object scan cap | Configurable from Nytwatch Settings UI alongside tick interval. Written into `NytwatchConfig.json`. Default 2000. |
+| Q4 | Project switching | Watcher automatically re-targets on project switch — only if `Saved/Nytwatch/` exists in the new project. If not, watcher polls for directory creation and registers once it appears (after first PIE run with plugin installed). |
 | Q5 | Session filename collision | Each session uses a UUID4 as its ID and filename (`<uuid>.md`). Zero collision risk. Same ID embedded in log header and lock file. |
 | Q6 | Paths in config JSON | Absolute filesystem paths. Nytwatch server resolves repo-relative `SystemDef.paths` to absolute using the registered game project root before writing. |
 | Q7 | Network drives | Not supported. `watchdog` on Windows (`ReadDirectoryChangesW`) used as-is. |
@@ -749,7 +765,12 @@ Everything needed to go from zero to a working, logged session.
 | Thing | Name |
 |---|---|
 | Product | Nytwatch |
+| Module 1 | Code Auditor |
+| Module 2 | Gameplay Tracker |
 | Company | Nytwolf Games |
+| Related product | Nytkit |
+| Python package | `nytwatch` (renamed from `auditor`) |
+| Repo | `nytwatch` (renamed from `code-auditor`) |
 | UE5 Plugin | NytwatchAgent |
 | Plugin folder in game | `Plugins/NytwatchAgent/` |
 | UPROPERTY/UCLASS tag | `NytwatchVerbosity` |

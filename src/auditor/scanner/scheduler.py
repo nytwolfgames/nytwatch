@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from auditor.config import AuditorConfig
@@ -12,7 +14,12 @@ from auditor.models import (
     new_id,
     now_iso,
 )
-from auditor.scanner.incremental import run_incremental_scan, get_current_commit, _process_system
+from auditor.scanner.incremental import (
+    run_incremental_scan,
+    get_current_commit,
+    _process_system,
+    _MAX_PARALLEL_SYSTEMS,
+)
 from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
@@ -42,8 +49,9 @@ def run_full_scan(
 ) -> str:
     """Run a full scan across all systems (or a single named system).
 
-    Each system is analysed in turn; findings_count and files_scanned on the
-    scan record are updated after every system so the UI reflects progress.
+    Systems are analysed in parallel (up to _MAX_PARALLEL_SYSTEMS workers).
+    The scan record is updated after every completed system so the UI reflects
+    live progress.
     """
     from auditor.scan_state import ScanLogHandler
     from auditor.ws_manager import manager as ws_manager
@@ -89,6 +97,7 @@ def run_full_scan(
     total_files = 0
     systems_attempted = 0
     systems_failed = 0
+    _lock = threading.Lock()
 
     try:
         try:
@@ -99,31 +108,47 @@ def run_full_scan(
 
         detect_source_dirs(config.repo_path, db)
 
-        for system in systems:
-            systems_attempted += 1
-            log.info("Full scan: processing system '%s' (%d/%d)", system.name, systems_attempted, len(systems))
+        n_workers = max(1, min(len(systems), _MAX_PARALLEL_SYSTEMS))
+        log.info(
+            "Full scan: %d system(s) to analyse, %d parallel worker(s)",
+            len(systems), n_workers,
+        )
 
-            findings_count, files_scanned = _process_system(
-                system.name, config, db, scan_id, config.claude_fast_mode
-            )
+        def _run_one(system: "SystemDef") -> tuple[int, int]:
+            return _process_system(system.name, config, db, scan_id, config.claude_fast_mode)
 
-            if findings_count == -1:
-                systems_failed += 1
-                log.error("Full scan: system '%s' failed entirely", system.name)
-            else:
-                total_findings += findings_count
-                total_files += files_scanned
-                log.info(
-                    "Full scan: system '%s' done — %d files, %d findings",
-                    system.name, files_scanned, findings_count,
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            future_to_system = {executor.submit(_run_one, s): s for s in systems}
+            for future in as_completed(future_to_system):
+                s = future_to_system[future]
+                systems_attempted += 1
+                try:
+                    findings_count, files_scanned = future.result()
+                except InterruptedError:
+                    raise
+                except Exception as exc:
+                    log.error("Full scan: system '%s' raised unexpected exception: %s", s.name, exc)
+                    systems_failed += 1
+                    continue
+
+                if findings_count == -1:
+                    systems_failed += 1
+                    log.error("Full scan: system '%s' failed entirely", s.name)
+                else:
+                    with _lock:
+                        total_findings += findings_count
+                        total_files += files_scanned
+                    log.info(
+                        "Full scan: system '%s' done — %d files, %d findings",
+                        s.name, files_scanned, findings_count,
+                    )
+
+                # Snapshot totals for the DB update (outside lock — slightly stale is fine for UI)
+                db.update_scan(
+                    scan_id,
+                    files_scanned=total_files,
+                    findings_count=total_findings,
                 )
-
-            # Update the scan record after each system so the UI stays current
-            db.update_scan(
-                scan_id,
-                files_scanned=total_files,
-                findings_count=total_findings,
-            )
 
         all_failed = systems_attempted > 0 and systems_failed == systems_attempted
         final_status = ScanStatus.FAILED if all_failed else ScanStatus.COMPLETED

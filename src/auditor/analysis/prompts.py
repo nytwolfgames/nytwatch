@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 
-from auditor.analysis.schemas import FindingOutput, ScanResult, BatchApplyResult
-
 
 UE_REFERENCE_SHEET = """
 ## Unreal Engine C++ Reference Sheet
@@ -67,9 +65,24 @@ UE_REFERENCE_SHEET = """
 """.strip()
 
 
-def _finding_schema_description() -> str:
-    schema = FindingOutput.model_json_schema()
-    return json.dumps(schema, indent=2)
+# Compact inline schema — ~400 tokens cheaper than dumping the full Pydantic JSON schema
+_FINDING_SCHEMA = """\
+Each finding object has these fields:
+  title            string   — short title of the issue
+  description      string   — detailed explanation
+  severity         string   — "critical" | "high" | "medium" | "low" | "info"
+  category         string   — "bug" | "performance" | "ue-antipattern" | "modern-cpp" | "memory" | "readability"
+  confidence       string   — "high" | "medium" | "low"
+  file_path        string   — repo-relative path of the file containing the issue
+  line_start       int      — first line of the issue
+  line_end         int      — last line of the issue
+  code_snippet     string   — verbatim problematic code
+  suggested_fix    string?  — corrected code or description of the fix
+  fix_diff         string?  — unified diff of the fix (if auto-fixable)
+  can_auto_fix     bool     — true only if fix_diff can be applied without human judgment
+  reasoning        string   — why this is an issue and why the fix is correct
+  test_code        string?  — UE Automation Test that verifies the fix (see format below)
+  test_description string?  — one-line description of what the test validates"""
 
 
 def build_scan_prompt(system_name: str, file_paths: list[str]) -> str:
@@ -77,7 +90,6 @@ def build_scan_prompt(system_name: str, file_paths: list[str]) -> str:
         return ""
 
     paths_block = "\n".join(f"- {p}" for p in file_paths)
-    schema_json = _finding_schema_description()
 
     return f"""\
 You are a senior Unreal Engine C++ code auditor. Analyze the "{system_name}" system and find ALL issues.
@@ -107,34 +119,17 @@ Find every issue across ALL of these categories:
 
 ## Output Format
 
-After reading and analyzing the files, return a JSON object matching this structure exactly:
+After reading and analyzing the files, return a JSON object:
 
 ```json
 {{
-  "findings": [ <list of FindingOutput objects> ],
-  "files_analyzed": [ <list of file paths you read> ],
-  "scan_notes": "<any high-level observations about the system>"
+  "findings": [ ... ],
+  "files_analyzed": [ "<list of file paths you read>" ],
+  "scan_notes": "<high-level observations about the system>"
 }}
 ```
 
-Each finding must match this schema:
-```json
-{schema_json}
-```
-
-Field rules:
-- `severity`: one of "critical", "high", "medium", "low", "info"
-- `category`: one of "bug", "performance", "ue-antipattern", "modern-cpp", "memory", "readability"
-- `confidence`: one of "high", "medium", "low"
-- `file_path`: repo-relative path of the file containing the issue
-- `line_start` / `line_end`: approximate line range of the issue
-- `code_snippet`: the problematic code verbatim
-- `suggested_fix`: corrected code or description of the fix
-- `fix_diff`: unified diff format of the fix (if auto-fixable)
-- `can_auto_fix`: true only if the fix_diff can be applied without human judgment
-- `reasoning`: why this is an issue and why the fix is correct
-- `test_code`: a UE Automation Test that verifies the fix (see format below)
-- `test_description`: one-line description of what the test validates
+{_FINDING_SCHEMA}
 
 ## Test Case Format
 
@@ -152,9 +147,7 @@ bool F<TestName>::RunTest(const FString& Parameters)
 }}
 ```
 
-Use descriptive test names that reference the finding. The test path should follow: "CodeAuditor.{system_name}.<Category>.<ShortTitle>"
-
----
+Test path format: "CodeAuditor.{system_name}.<Category>.<ShortTitle>"
 
 Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.\
 """
