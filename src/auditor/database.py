@@ -14,6 +14,7 @@ from auditor.models import (
     FindingStatus,
     Scan,
     ScanStatus,
+    new_id,
     now_iso,
 )
 
@@ -108,6 +109,16 @@ CREATE TABLE IF NOT EXISTS systems (
     claude_fast_mode  INTEGER,
     sort_order        INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS finding_chats (
+    id          TEXT PRIMARY KEY,
+    finding_id  TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (finding_id) REFERENCES findings(id)
+);
+CREATE INDEX IF NOT EXISTS idx_finding_chats_finding ON finding_chats(finding_id);
 """
 
 
@@ -339,6 +350,39 @@ class Database:
                 (1 if include_test else 0, finding_id),
             )
             self.conn.commit()
+
+    def update_finding_fields(self, finding_id: str, fields: dict):
+        """Update a subset of mutable finding fields (suggested_fix, fix_diff, test_code, test_description)."""
+        allowed = {"suggested_fix", "fix_diff", "test_code", "test_description"}
+        safe = {k: v for k, v in fields.items() if k in allowed}
+        if not safe:
+            return
+        sets = ", ".join(f"{k} = ?" for k in safe)
+        vals = list(safe.values()) + [finding_id]
+        with self._lock:
+            self.conn.execute(f"UPDATE findings SET {sets} WHERE id = ?", vals)
+            self.conn.commit()
+
+    # --- Finding chat ---
+
+    def get_finding_chat(self, finding_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id, finding_id, role, content, created_at FROM finding_chats "
+            "WHERE finding_id = ? ORDER BY created_at ASC",
+            (finding_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def insert_chat_message(self, finding_id: str, role: str, content: str) -> str:
+        msg_id = new_id()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO finding_chats (id, finding_id, role, content, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (msg_id, finding_id, role, content, now_iso()),
+            )
+            self.conn.commit()
+        return msg_id
 
     def set_finding_batch(self, finding_id: str, batch_id: str):
         with self._lock:

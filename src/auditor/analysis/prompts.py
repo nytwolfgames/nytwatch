@@ -153,6 +153,71 @@ Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.
 """
 
 
+_CHAT_HISTORY_LIMIT = 10  # max messages sent to Claude per turn
+
+
+def build_finding_chat_prompt(
+    finding: dict,
+    history: list[dict],
+    user_message: str,
+) -> str:
+    """Build a prompt for a single chat turn about a specific finding.
+
+    History is capped to the last ``_CHAT_HISTORY_LIMIT`` messages so the
+    context window stays bounded on long conversations.
+    """
+    lines = [
+        "You are a code review assistant helping a developer refine a code finding and its suggested fix.",
+        "",
+        "## Finding",
+        f"Title:      {finding['title']}",
+        f"File:       {finding['file_path']}  (lines {finding.get('line_start', '?')}–{finding.get('line_end', '?')})",
+        f"Severity:   {finding.get('severity', '')}  |  Category: {finding.get('category', '')}  |  Confidence: {finding.get('confidence', '')}",
+        "",
+        "### Description",
+        finding.get("description", ""),
+        "",
+        "### Current Code",
+        "```cpp",
+        finding.get("code_snippet", ""),
+        "```",
+    ]
+
+    if finding.get("suggested_fix"):
+        lines += ["", "### Suggested Fix", finding["suggested_fix"]]
+
+    if finding.get("fix_diff"):
+        lines += ["", "### Current Diff", "```diff", finding["fix_diff"], "```"]
+
+    if finding.get("test_code"):
+        lines += ["", "### Current Test Code", "```cpp", finding["test_code"], "```"]
+
+    lines += [
+        "",
+        "## Instructions",
+        "- Use the Read tool to examine the file at the path above whenever you need more context.",
+        "- Answer the developer's questions conversationally and accurately.",
+        "- **Only** if the developer explicitly asks you to update, regenerate, or change the fix,",
+        "  diff, or test code: append a JSON block at the **very end** of your response:",
+        "  ```json",
+        '  {"suggested_fix": "...", "fix_diff": "...", "test_code": "..."}',
+        "  ```",
+        "  Include only the fields you are actually changing. Omit unchanged fields.",
+        "  fix_diff must be a valid unified diff patch.",
+        "  Do NOT include the JSON block for conversational replies.",
+    ]
+
+    capped = history[-_CHAT_HISTORY_LIMIT:] if len(history) > _CHAT_HISTORY_LIMIT else history
+    if capped:
+        lines += ["", "## Conversation History"]
+        for msg in capped:
+            label = "User" if msg["role"] == "user" else "Assistant"
+            lines.append(f"{label}: {msg['content']}")
+
+    lines += ["", "## Current Message", f"User: {user_message}"]
+    return "\n".join(lines)
+
+
 def build_batch_apply_prompt(
     findings: list[dict], file_paths: list[str]
 ) -> str:

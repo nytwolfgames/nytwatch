@@ -45,17 +45,29 @@
 </div>
 
 {% if finding.suggested_fix %}
-<div class="card mb-4">
+<div class="card mb-4" id="suggested-fix-card">
     <div class="section-label">Suggested Fix</div>
-    <p class="body-md">{{ finding.suggested_fix }}</p>
+    <p class="body-md" id="suggested-fix-text">{{ finding.suggested_fix }}</p>
+</div>
+{% else %}
+<div class="card mb-4" id="suggested-fix-card" style="display:none;">
+    <div class="section-label">Suggested Fix</div>
+    <p class="body-md" id="suggested-fix-text"></p>
 </div>
 {% endif %}
 
 {% if finding.fix_diff %}
-<div class="card mb-4">
+<div class="card mb-4" id="fix-diff-card">
     <div class="section-label">Diff Preview</div>
     <div class="code-block">
-        <pre><code class="language-diff">{{ finding.fix_diff }}</code></pre>
+        <pre><code class="language-diff" id="fix-diff-code">{{ finding.fix_diff }}</code></pre>
+    </div>
+</div>
+{% else %}
+<div class="card mb-4" id="fix-diff-card" style="display:none;">
+    <div class="section-label">Diff Preview</div>
+    <div class="code-block">
+        <pre><code class="language-diff" id="fix-diff-code"></code></pre>
     </div>
 </div>
 {% endif %}
@@ -72,14 +84,42 @@
     </div>
     {% if finding.test_code %}
     {% if finding.test_description %}
-    <p class="body-sm text-variant mb-2">{{ finding.test_description }}</p>
+    <p class="body-sm text-variant mb-2" id="test-description-text">{{ finding.test_description }}</p>
+    {% else %}
+    <p class="body-sm text-variant mb-2" id="test-description-text" style="display:none;"></p>
     {% endif %}
-    <div class="code-block">
-        <pre><code class="language-cpp">{{ finding.test_code }}</code></pre>
+    <div class="code-block" id="test-code-block">
+        <pre><code class="language-cpp" id="test-code-text">{{ finding.test_code }}</code></pre>
     </div>
     {% else %}
-    <p class="body-sm text-variant">No test case generated for this finding.</p>
+    <p class="body-sm text-variant" id="test-no-code-msg">No test case generated for this finding.</p>
+    <div class="code-block" id="test-code-block" style="display:none;">
+        <pre><code class="language-cpp" id="test-code-text"></code></pre>
+    </div>
     {% endif %}
+</div>
+
+<div class="card mb-4">
+    <div class="section-label">Chat with Claude</div>
+    <p class="body-sm text-variant mb-3">
+        Ask Claude to explain the finding, explore edge cases, or — to update the fix fields above — explicitly say so, e.g. <em>"Regenerate the diff to also handle the null case."</em>
+    </p>
+
+    <div id="chat-messages"
+         style="max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:var(--sp-3); margin-bottom:var(--sp-4);">
+    </div>
+
+    <div id="chat-thinking" style="display:none;" class="body-sm text-variant mb-3">
+        Claude is thinking&hellip;
+    </div>
+
+    <div class="flex gap-2" style="align-items:flex-end;">
+        <textarea id="chat-input" class="input" rows="3"
+                  style="flex:1; resize:vertical;"
+                  placeholder="Ask a question or request a fix update…"
+                  onkeydown="chatKeydown(event)"></textarea>
+        <button id="chat-send" onclick="sendChatMessage()" class="btn btn-primary">Send</button>
+    </div>
 </div>
 
 <div class="card mb-4">
@@ -128,19 +168,123 @@
 
 {% block scripts %}
 <script>
+// ── Test toggle ───────────────────────────────────────────────────────────────
 async function toggleIncludeTest(checkbox) {
     checkbox.disabled = true;
     try {
         const res = await fetch('/findings/{{ finding.id }}/toggle-test', { method: 'POST' });
         const data = await res.json();
-        if (!data.ok) {
-            checkbox.checked = !checkbox.checked;
-        }
+        if (!data.ok) checkbox.checked = !checkbox.checked;
     } catch (e) {
         checkbox.checked = !checkbox.checked;
     } finally {
         checkbox.disabled = false;
     }
 }
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+const _findingId = '{{ finding.id }}';
+
+function _escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _appendMessage(role, content) {
+    const container = document.getElementById('chat-messages');
+    const isUser = role === 'user';
+    const div = document.createElement('div');
+    div.style.cssText = isUser
+        ? 'align-self:flex-end; max-width:80%; background:var(--primary,#004ac6); color:#fff; border-radius:12px 12px 2px 12px; padding:var(--sp-3) var(--sp-4);'
+        : 'align-self:flex-start; max-width:85%; background:var(--surface-container,#f3f3f3); border-radius:12px 12px 12px 2px; padding:var(--sp-3) var(--sp-4);';
+    div.innerHTML = `<span class="body-sm" style="white-space:pre-wrap;">${_escHtml(content)}</span>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function _applyUpdatedFields(fields) {
+    if (!fields || !Object.keys(fields).length) return;
+
+    if (fields.suggested_fix) {
+        const el = document.getElementById('suggested-fix-text');
+        const card = document.getElementById('suggested-fix-card');
+        if (el) el.textContent = fields.suggested_fix;
+        if (card) card.style.display = '';
+    }
+    if (fields.fix_diff) {
+        const el = document.getElementById('fix-diff-code');
+        const card = document.getElementById('fix-diff-card');
+        if (el) el.textContent = fields.fix_diff;
+        if (card) card.style.display = '';
+    }
+    if (fields.test_code) {
+        const el = document.getElementById('test-code-text');
+        const block = document.getElementById('test-code-block');
+        const noMsg = document.getElementById('test-no-code-msg');
+        if (el) el.textContent = fields.test_code;
+        if (block) block.style.display = '';
+        if (noMsg) noMsg.style.display = 'none';
+    }
+    if (fields.test_description) {
+        const el = document.getElementById('test-description-text');
+        if (el) { el.textContent = fields.test_description; el.style.display = ''; }
+    }
+}
+
+async function loadChat() {
+    try {
+        const res = await fetch(`/api/findings/${_findingId}/chat`);
+        const data = await res.json();
+        if (data.messages) {
+            data.messages.forEach(m => _appendMessage(m.role, m.content));
+        }
+    } catch (e) {}
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('chat-send');
+    const thinking = document.getElementById('chat-thinking');
+    const message = (input.value || '').trim();
+    if (!message) return;
+
+    input.value = '';
+    input.disabled = true;
+    sendBtn.disabled = true;
+    thinking.style.display = '';
+
+    _appendMessage('user', message);
+
+    try {
+        const res = await fetch(`/api/findings/${_findingId}/chat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message}),
+        });
+        const data = await res.json();
+        if (data.reply) {
+            _appendMessage('assistant', data.reply);
+            _applyUpdatedFields(data.updated_fields);
+        } else {
+            _appendMessage('assistant', data.error || 'Something went wrong.');
+        }
+    } catch (e) {
+        _appendMessage('assistant', 'Request failed: ' + e.message);
+    } finally {
+        input.disabled = false;
+        sendBtn.disabled = false;
+        thinking.style.display = 'none';
+        input.focus();
+    }
+}
+
+function chatKeydown(e) {
+    // Ctrl+Enter or Cmd+Enter sends the message
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        sendChatMessage();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadChat);
 </script>
 {% endblock %}

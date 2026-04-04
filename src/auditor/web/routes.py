@@ -402,6 +402,58 @@ async def toggle_finding_test(request: Request, finding_id: str):
     return JSONResponse({"ok": True, "include_test": new_val})
 
 
+@router.get("/api/findings/{finding_id}/chat")
+async def get_finding_chat(request: Request, finding_id: str):
+    db = get_db(request)
+    if not db.get_finding(finding_id):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    messages = db.get_finding_chat(finding_id)
+    return JSONResponse({"messages": messages})
+
+
+@router.post("/api/findings/{finding_id}/chat")
+async def post_finding_chat(request: Request, finding_id: str):
+    import asyncio
+    db = get_db(request)
+    config = get_config(request)
+
+    finding = db.get_finding(finding_id)
+    if not finding:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    body = await request.json()
+    user_message = (body.get("message") or "").strip()
+    if not user_message:
+        return JSONResponse({"error": "message is required"}, status_code=400)
+
+    history = db.get_finding_chat(finding_id)
+
+    from auditor.analysis.engine import run_finding_chat
+    try:
+        loop = asyncio.get_event_loop()
+        display_text, updated_fields = await loop.run_in_executor(
+            None,
+            lambda: run_finding_chat(
+                finding=finding,
+                history=history,
+                user_message=user_message,
+                repo_path=config.repo_path,
+            ),
+        )
+    except Exception as e:
+        logger.exception("Finding chat error for %s", finding_id)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    db.insert_chat_message(finding_id, "user", user_message)
+    db.insert_chat_message(finding_id, "assistant", display_text)
+
+    if updated_fields:
+        db.update_finding_fields(finding_id, updated_fields)
+        logger.info("Finding %s: chat updated fields %s", finding_id, list(updated_fields))
+
+    return JSONResponse({"reply": display_text, "updated_fields": updated_fields})
+
+
 # --- Scans ---
 
 @router.get("/scans", response_class=HTMLResponse)

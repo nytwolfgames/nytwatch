@@ -14,7 +14,7 @@ from typing import Optional
 from pydantic import ValidationError
 
 from auditor.analysis.schemas import ScanResult, BatchApplyResult
-from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt
+from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt, build_finding_chat_prompt
 from auditor.models import new_id
 
 log = logging.getLogger(__name__)
@@ -285,6 +285,62 @@ def parse_and_validate(raw: str, schema_class):
         )
         log.debug("Validation errors: %s", exc.errors())
         return None
+
+
+def _extract_text_result(raw: str) -> str:
+    """Pull the plain-text ``result`` field out of the CLI JSON envelope."""
+    try:
+        envelope = json.loads(raw)
+        if isinstance(envelope, dict):
+            result = envelope.get("result", "")
+            if isinstance(result, str):
+                return result
+    except json.JSONDecodeError:
+        pass
+    return raw
+
+
+def _parse_chat_response(text: str) -> tuple[str, dict]:
+    """Split a chat response into (display_text, updated_fields).
+
+    If Claude appended a trailing ```json { ... } ``` block it is extracted and
+    stripped from the display text.  Only the fields in the allow-list
+    (suggested_fix, fix_diff, test_code, test_description) are returned.
+    """
+    updated_fields: dict = {}
+    display_text = text.strip()
+
+    match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```\s*$', display_text, re.DOTALL)
+    if match:
+        try:
+            data = json.loads(match.group(1))
+            allowed = {"suggested_fix", "fix_diff", "test_code", "test_description"}
+            for key in allowed:
+                if key in data and data[key]:
+                    updated_fields[key] = str(data[key])
+        except (json.JSONDecodeError, ValueError):
+            pass
+        display_text = display_text[:match.start()].strip()
+
+    return display_text, updated_fields
+
+
+def run_finding_chat(
+    finding: dict,
+    history: list[dict],
+    user_message: str,
+    repo_path: str,
+) -> tuple[str, dict]:
+    """Send a chat message about a finding to Claude.
+
+    Returns:
+        display_text   — conversational reply to show the user
+        updated_fields — dict of finding fields Claude changed (may be empty)
+    """
+    prompt = build_finding_chat_prompt(finding, history, user_message)
+    raw = call_claude(prompt, fast=False, repo_path=repo_path, use_tools=True)
+    text = _extract_text_result(raw)
+    return _parse_chat_response(text)
 
 
 def analyze_system(
