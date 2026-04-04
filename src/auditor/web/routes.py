@@ -124,7 +124,7 @@ async def findings_list(
         "findings": findings,
         "filters": filters,
         "approved_count": approved_count,
-        "systems": [s["name"] for s in db.list_systems()],
+        "systems": db.list_systems(),  # [{name, source_dir, paths, ...}]
     })
 
 
@@ -533,6 +533,7 @@ async def switch_project(request: Request):
         new_db.replace_systems([
             {
                 "name": s.name,
+                "source_dir": s.source_dir,
                 "paths": list(s.paths),
                 "min_confidence": s.min_confidence,
                 "file_extensions": list(s.file_extensions) if s.file_extensions else None,
@@ -596,6 +597,7 @@ async def init_project(request: Request):
     clean_systems = [
         {
             "name": s["name"].strip(),
+            "source_dir": s.get("source_dir", ""),
             "paths": s["paths"],
             "min_confidence": s.get("min_confidence") or None,
             "file_extensions": s.get("file_extensions") or None,
@@ -646,7 +648,6 @@ async def init_project(request: Request):
         for entry in source_dirs:
             path = (entry.get("path") or "").strip()
             stype = (entry.get("source_type") or "active").strip()
-            # Normalise legacy "project"/"plugin" values from old wizard data
             if stype not in valid_types:
                 stype = "active"
             if path:
@@ -697,17 +698,17 @@ def _build_suggest_systems_prompt(dir_info: dict) -> str:
     return f"""\
 You are helping configure a code analysis tool for an Unreal Engine C++ project.
 
-Below is the structure of the project's source folders. Each entry shows the source type (project/plugin), its immediate subdirectories, and any key files found at its root.
+Below is the structure of each active source directory with its immediate subdirectories and key files.
 
-Your task: suggest logical "systems" for code analysis. A system groups related source code that Claude should analyze together.
+Your task: for each active source directory, suggest logical "systems" — named groups of sub-paths that Claude should analyse together. Each system belongs to exactly one parent source directory.
 
 Rules:
-- Each source directory must appear in exactly one system (no overlaps, no omissions)
-- Plugin directories should each be their own system (one plugin = one system), unless trivially small
-- Large project source directories with many subdirectories can be split into multiple systems by feature area
-- Small related project directories can be merged into one system
-- Use the directory path exactly as shown in the listing below (keep the trailing slash if present)
-- System names should be short and descriptive (e.g., "Combat", "AI", "Inventory", "MyPlugin")
+- Each system MUST include a "source_dir" field matching exactly one of the top-level keys in the listing
+- System "paths" must be sub-paths of their parent "source_dir" (or equal to source_dir if no further split is needed)
+- Split large source directories by gameplay feature area (Combat, AI, Inventory, UI, etc.)
+- Small or plugin directories with few subdirs → one system whose path equals the source_dir
+- Use directory paths exactly as shown (with trailing slash)
+- System names should be short and descriptive
 
 ## Source directory structure
 
@@ -715,12 +716,12 @@ Rules:
 
 ## Output Format
 
-Return a JSON object with this exact structure:
 ```json
 {{
   "systems": [
-    {{"name": "SystemName", "paths": ["Source/MyGame/Combat/"]}},
-    {{"name": "AnotherSystem", "paths": ["Plugins/MyPlugin/Source/"]}}
+    {{"name": "Combat",   "source_dir": "Source/Game/", "paths": ["Source/Game/Combat/"]}},
+    {{"name": "AI",       "source_dir": "Source/Game/", "paths": ["Source/Game/AI/"]}},
+    {{"name": "MyPlugin", "source_dir": "Plugins/MyPlugin/", "paths": ["Plugins/MyPlugin/Source/"]}}
   ]
 }}
 ```
@@ -780,16 +781,33 @@ async def suggest_systems_api(request: Request):
     prompt = _build_suggest_systems_prompt(dir_info)
 
     try:
+        import subprocess as _sp
         from auditor.analysis.engine import call_claude, _extract_json
-        raw = call_claude(prompt, fast=True, timeout=90, repo_path=repo_path)
+        try:
+            raw = call_claude(prompt, fast=True, timeout=90, repo_path=repo_path, use_tools=False)
+        except _sp.CalledProcessError as cpe:
+            # Surface Claude's stderr so the user can diagnose the failure
+            stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()
+            error_msg = stderr_detail or f"Claude CLI exited with code {cpe.returncode}"
+            logger.error("suggest-systems: Claude CLI error (code %d): %s", cpe.returncode, error_msg)
+            return JSONResponse({"error": f"Claude CLI error: {error_msg}"}, status_code=500)
+        except FileNotFoundError:
+            return JSONResponse({"error": "Claude CLI not found — ensure 'claude' is on PATH"}, status_code=500)
         data = _extract_json(raw)
         systems = data.get("systems", [])
+        active_dir_paths = {d["path"] for d in active_dirs}
         valid = []
         for s in systems:
             name = (s.get("name") or "").strip()
+            source_dir = (s.get("source_dir") or "").strip()
             paths = [p for p in (s.get("paths") or []) if isinstance(p, str) and p.strip()]
             if name and paths:
-                valid.append({"name": name, "paths": paths})
+                # If Claude returned an unknown source_dir, infer from the first path
+                if source_dir not in active_dir_paths:
+                    source_dir = next(
+                        (d for d in active_dir_paths if paths[0].startswith(d)), ""
+                    )
+                valid.append({"name": name, "source_dir": source_dir, "paths": paths})
         return JSONResponse({"systems": valid})
     except Exception as e:
         logger.exception("suggest-systems failed")
@@ -919,16 +937,52 @@ async def settings_page(request: Request):
     db = get_db(request)
     config = get_config(request)
     source_dirs = db.list_source_dirs()
-    # Normalise legacy "project"/"plugin" values to "active" for display
     active_dirs = [d for d in source_dirs if d["source_type"] != "ignored"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
+    # Build systems grouped by source_dir for the settings page view
+    active_dir_paths = {d["path"] for d in active_dirs}
+    systems_by_dir = []
+    for ad in active_dirs:
+        dir_systems = [s for s in db.list_systems() if s["source_dir"] == ad["path"]]
+        systems_by_dir.append({"source_dir": ad["path"], "systems": dir_systems})
     config_path = getattr(request.app.state, "config_path", "") or ""
     return templates.TemplateResponse(request, "settings.html", {
         "active_dirs": active_dirs,
         "ignored_dirs": ignored_dirs,
+        "systems_by_dir": systems_by_dir,
         "config": config,
         "config_path": config_path,
     })
+
+
+@router.post("/settings/systems")
+async def add_system(request: Request):
+    db = get_db(request)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    source_dir = body.get("source_dir", "").strip()
+    paths = body.get("paths", [])
+    if not name:
+        return JSONResponse({"error": "System name is required"}, status_code=400)
+    if not source_dir:
+        return JSONResponse({"error": "source_dir is required"}, status_code=400)
+    if not paths:
+        paths = [source_dir]
+    db.upsert_system({"name": name, "source_dir": source_dir, "paths": paths})
+    logger.info("System added/updated: '%s' under '%s'", name, source_dir)
+    return JSONResponse({"ok": True})
+
+
+@router.delete("/settings/systems")
+async def remove_system(request: Request):
+    db = get_db(request)
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "System name is required"}, status_code=400)
+    db.delete_system(name)
+    logger.info("System deleted: '%s'", name)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/settings/source-dirs")

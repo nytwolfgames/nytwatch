@@ -272,17 +272,24 @@ The wizard runs entirely in the browser — no manual YAML editing required.
 | Repository path | Yes | Absolute path to your game repo root. Use the **Browse…** button to navigate the filesystem. |
 | UE installation directory | No | UE root folder (e.g. `C:\Epic Games\UE_5.4`). Use **Browse…**. `UnrealEditor-Cmd` is located automatically inside `Engine/Binaries/`. |
 
-Clicking **Next** validates the repository path and auto-detects game systems.
+Clicking **Next** validates the repository path and auto-detects source directories.
 
-**Step 2 — Systems**
+**Step 2 — Sources**
 
-Detected systems are pre-populated from:
-- `.uplugin` files → **Plugin** type, path set to the plugin's `Source/` directory
-- `Source/**/*.Build.cs` → **Project** type, path set to the module's directory
+These are the top-level source folders in your repository, auto-detected from `.uplugin` files and `*.Build.cs` modules.
+Mark each directory as **Active** (contains C++ code to scan) or **Ignored** (skip entirely — no findings generated).
+Only Active directories will proceed to the next step.
+Click **Re-detect** to refresh if you've changed the repo structure.
 
-Each system shows a **type selector** (Project / Plugin / Ignored). You can add, remove, rename, and browse-select paths. Path overlaps are flagged with a warning.
+**Step 3 — Systems**
 
-**Step 3 — Build**
+Systems categorize gameplay modules within each active source directory. Each system groups related sub-paths that Claude analyses together in one pass — this keeps context focused and Claude's output high-quality.
+
+The view is grouped by active source directory. Each directory has its own **+ Add System** button. Click **✨ Suggest with Claude** to auto-generate systems for all active directories at once.
+
+System names should reflect logical gameplay areas (e.g. "Combat", "AI", "Character"). A system must have at least one path. Path overlaps across systems in the same directory are flagged as warnings.
+
+**Step 4 — Build**
 
 | Field | Description |
 |-------|-------------|
@@ -290,15 +297,15 @@ Each system shows a **type selector** (Project / Plugin / Ignored). You can add,
 | Build timeout | Maximum seconds for UE compilation (default 1800). |
 | Test timeout | Maximum seconds for UE Automation Tests (default 600). |
 
-**Step 4 — Schedule**
+**Step 5 — Schedule**
 
 Configure automatic incremental scans and rotation schedules.
 
-**Step 5 — Review**
+**Step 6 — Review**
 
-Shows a YAML preview and the config file path (auto-named `~/.code-auditor/<project-name>.yaml`, editable). Click **Create Project** to save.
+Shows a grouped systems summary (organized by source directory) and the config file path (auto-named `~/.code-auditor/<project-name>.yaml`, editable). Click **Create Project** to save.
 
-On success, the new project becomes the active project. Source directory classifications are written to the database automatically.
+On success, the new project becomes active, the config YAML is written, and source directory classifications and systems are stored in the database.
 
 ---
 
@@ -331,50 +338,11 @@ Then open `~/.code-auditor/dragon-racer.yaml` in your editor. See the annotated 
 repo_path: /Users/hari/Projects/DragonRacer
 
 # --------------------------------------------------------------------------
-# systems (REQUIRED for scanning)
-# Define your game's logical subsystems. Each system groups related
-# source directories. The scanner analyzes one system at a time — Claude
-# receives a list of file paths and reads them autonomously via its
-# file-reading tools (no file contents are embedded in the prompt).
-#
-# Ownership rules:
-# - paths are relative to repo_path
-# - each path should end with / (trailing slash optional but clear)
-# - a file belongs to the system whose path prefix most SPECIFICALLY
-#   matches it (longest prefix wins, not first match)
-# - files not matching any system go to "__uncategorized" and are skipped
+# systems — stored in the database, not in this YAML
+# Use the Setup Wizard or the Systems section on the Settings page to
+# manage systems. They are organized under their parent Active source
+# directory and stored in ~/.code-auditor/<project>/auditor.db.
 # --------------------------------------------------------------------------
-systems:
-  - name: "DragonFlight"
-    paths:
-      - "Source/DragonRacer/Dragon/"
-      - "Source/DragonRacer/Flight/"
-  - name: "Racing"
-    paths:
-      - "Source/DragonRacer/Racing/"
-      - "Source/DragonRacer/Track/"
-      - "Source/DragonRacer/Checkpoints/"
-  - name: "Combat"
-    paths:
-      - "Source/DragonRacer/Weapons/"
-      - "Source/DragonRacer/Damage/"
-      - "Source/DragonRacer/Projectiles/"
-  - name: "Character"
-    paths:
-      - "Source/DragonRacer/Character/"
-      - "Source/DragonRacer/Animation/"
-  - name: "UI"
-    paths:
-      - "Source/DragonRacer/UI/"
-      - "Source/DragonRacer/HUD/"
-    # Optional per-system overrides (omit to inherit global values):
-    # min_confidence: "high"          # Only surface high-confidence findings
-    # claude_fast_mode: false         # Use more thorough analysis for this system
-    # file_extensions: [".h", ".cpp", ".cs"]
-  - name: "Networking"
-    paths:
-      - "Source/DragonRacer/Networking/"
-      - "Source/DragonRacer/Replication/"
 
 # --------------------------------------------------------------------------
 # build (REQUIRED for batch apply pipeline)
@@ -474,43 +442,38 @@ file_extensions:
 
 ### How to define game systems
 
-Systems are the core organizational unit. Each system should represent a logical subsystem of your game. Guidelines:
+Systems are the core organizational unit. Each system should represent a logical gameplay area within an active source directory.
 
-**Good system definitions** (cohesive, related files):
+**Where to manage systems**
 
-```yaml
-systems:
-  - name: "Combat"
-    paths:
-      - "Source/MyGame/Weapons/"
-      - "Source/MyGame/Damage/"
-      - "Source/MyGame/Projectiles/"
+Systems are managed in the dashboard (**Settings page > Systems section**) or through the Setup Wizard (Step 3). They are not written to the YAML config — they live in the project database (`~/.code-auditor/<project>/auditor.db`).
+
+**Two-level hierarchy**
+
+Each system belongs to one active source directory. Within that directory, systems group related sub-paths that Claude analyses together in one pass:
+
+```
+Active Source Directory: Source/MyGame/
+  System: Combat       → Source/MyGame/Weapons/, Source/MyGame/Damage/
+  System: Character    → Source/MyGame/Character/, Source/MyGame/Animation/
+  System: AI           → Source/MyGame/AI/
+
+Active Source Directory: Plugins/MyPlugin/
+  System: MyPlugin     → Plugins/MyPlugin/Source/
 ```
 
-**Bad system definitions** (too broad, loses context):
+**Ownership rules**
 
-```yaml
-systems:
-  - name: "Everything"
-    paths:
-      - "Source/"  # Too broad -- too many unrelated files per chunk
-```
+- Paths are relative to `repo_path`
+- Each path should end with `/` (trailing slash recommended)
+- A file belongs to the system whose path prefix most specifically matches it (longest prefix wins, not first match)
+- Files not matching any system go to `"__uncategorized"` and are skipped
 
 **Hierarchical systems** (sub-systems supported via longest-prefix ownership):
 
-```yaml
-systems:
-  - name: "Campaign-Core"
-    paths:
-      - "Source/MyGame/Campaign/"
-  - name: "Campaign-AI"
-    paths:
-      - "Source/MyGame/Campaign/AI/"  # Takes ownership of AI/ away from Campaign-Core
-```
+Within the same source directory, you can define a coarse system alongside a fine-grained sub-system. Files in `Source/MyGame/Campaign/AI/` belong exclusively to `Campaign-AI`. `Campaign-Core` gets everything else under `Campaign/`. No duplication needed.
 
-Files in `Source/MyGame/Campaign/AI/` belong exclusively to `Campaign-AI`. `Campaign-Core` gets everything else under `Campaign/`. No duplication needed.
-
-You can also configure and migrate paths visually using the **system editor** in the dashboard (✏ button on each row in the Systems table).
+**Avoid overly broad paths** — a single system covering the entire source tree loses context quality. Aim for cohesive, related files per system.
 
 **Common UE project layouts:**
 

@@ -192,7 +192,7 @@
 
 | Model | Fields | Description |
 |-------|--------|-------------|
-| `SystemDef` | `name: str`, `paths: list[str]`, `min_confidence: Optional[str] = None`, `file_extensions: Optional[list[str]] = None`, `claude_fast_mode: Optional[bool] = None` | Defines a named game system with its source paths relative to repo root. Optional per-system overrides; `None` means inherit from global config. |
+| `SystemDef` | `name: str`, `source_dir: str = ""`, `paths: list[str]`, `min_confidence: Optional[str] = None`, `file_extensions: Optional[list[str]] = None`, `claude_fast_mode: Optional[bool] = None` | Defines a named game system with its source paths relative to repo root. `source_dir` is the path of the parent active source directory (from `source_dirs` table) that this system belongs to. Optional per-system overrides; `None` means inherit from global config. |
 | `ScanSchedule` | `incremental_interval_hours: int = 4`, `rotation_enabled: bool = False`, `rotation_interval_hours: int = 24` | Scan scheduling parameters |
 | `BuildConfig` | `ue_installation_dir: str = ""`, `ue_editor_cmd: str = ""`, `project_file: str = ""`, `build_timeout_seconds: int = 1800`, `test_timeout_seconds: int = 600` | UE build/test configuration. `ue_installation_dir` is the UE root (e.g. `/Users/Shared/Epic Games/UE_5.4`); `ue_editor_cmd` is an explicit override that takes precedence. |
 | `NotificationConfig` | `desktop: bool = True`, `slack_webhook: Optional[str] = None`, `discord_webhook: Optional[str] = None` | Notification channels |
@@ -212,11 +212,9 @@
 | `get_active_config_path` | `() -> Optional[Path]` | Reads `ACTIVE_POINTER_PATH`. Returns the pointed-to `Path` if it exists on disk, otherwise `None`. |
 | `set_active_config_path` | `(path: Path) -> None` | Writes the absolute path string to `ACTIVE_POINTER_PATH`. Called by `init_project` (after wizard create) and `switch_project`. |
 | `load_config` | `(path: Optional[Path] = None) -> AuditorConfig` | Loads and validates config from YAML. Raises `FileNotFoundError` if missing. Falls back to `DEFAULT_CONFIG_PATH` if `path` is None. |
-| `save_config` | `(config: AuditorConfig, path: Optional[Path] = None) -> None` | Reads the existing YAML, updates only the `systems` key (preserving all other config), writes back. Used by the system editor API. |
-| `save_full_config` | `(config: AuditorConfig, path: Optional[Path] = None) -> None` | Serializes all config fields to YAML. Creates parent dirs if needed. Used by the setup wizard and config repair. |
-| `_serialize_systems` | `(systems: list[SystemDef]) -> list[dict]` | Serializes system list including per-system overrides, omitting `None` fields. |
+| `save_full_config` | `(config: AuditorConfig, path: Optional[Path] = None) -> None` | Serializes all config fields to YAML (excluding the `systems` key). Creates parent dirs if needed. Used by the setup wizard and config repair. |
 | `list_project_configs` | `() -> list[dict]` | Scans `~/.code-auditor/*.yaml` for files with a non-empty `repo_path`. Returns `[{path, repo_path, name}]`. Empty/unconfigured YAMLs are excluded. |
-| `validate_config_errors` | `(config: AuditorConfig) -> list[str]` | Returns human-readable validation problems (missing repo, bad paths, duplicate system paths, empty system names). |
+| `validate_config_errors` | `(config: AuditorConfig, systems: Optional[list] = None) -> list[str]` | Returns human-readable validation problems. Pass the `systems` list (from the database) to include system-level checks (missing paths, duplicate prefixes, empty names). |
 | `detect_systems_from_repo` | `(repo_path: str) -> list[dict]` | Auto-detects systems from repo structure using UE heuristics: `.uplugin` files → plugin systems (hint=`"plugin"`), `Source/**/*.Build.cs` → game module systems (hint=`"module"`). Returns `[{name, paths, hint}]`. Skips `Binaries/`, `Intermediate/`, `Saved/`, etc. |
 | `get_data_dir` | `(config: AuditorConfig) -> Path` | Returns expanded data directory, creating it if needed. |
 | `get_db_path` | `(config: AuditorConfig) -> Path` | Returns `{data_dir}/auditor.db`. |
@@ -240,7 +238,7 @@
 | `Severity` | `CRITICAL = "critical"`, `HIGH = "high"`, `MEDIUM = "medium"`, `LOW = "low"`, `INFO = "info"` |
 | `Category` | `BUG = "bug"`, `PERFORMANCE = "performance"`, `UE_ANTIPATTERN = "ue-antipattern"`, `MODERN_CPP = "modern-cpp"`, `MEMORY = "memory"`, `READABILITY = "readability"` |
 | `Confidence` | `HIGH = "high"`, `MEDIUM = "medium"`, `LOW = "low"` |
-| `FindingSource` | `PROJECT = "project"`, `PLUGIN = "plugin"`, `IGNORED = "ignored"` |
+| `FindingSource` | `ACTIVE = "active"`, `IGNORED = "ignored"` |
 | `FindingStatus` | `PENDING = "pending"`, `APPROVED = "approved"`, `REJECTED = "rejected"`, `APPLIED = "applied"`, `VERIFIED = "verified"`, `FAILED = "failed"`, `SUPERSEDED = "superseded"` |
 | `ScanType` | `INCREMENTAL = "incremental"`, `FULL = "full"`, `MANUAL = "manual"` |
 | `ScanStatus` | `RUNNING = "running"`, `COMPLETED = "completed"`, `FAILED = "failed"` |
@@ -269,7 +267,7 @@
 | `reasoning` | `str` | required |
 | `test_code` | `Optional[str]` | `None` |
 | `test_description` | `Optional[str]` | `None` |
-| `source` | `FindingSource` | `FindingSource.PROJECT` |
+| `source` | `FindingSource` | `FindingSource.ACTIVE` |
 | `status` | `FindingStatus` | `FindingStatus.PENDING` |
 | `batch_id` | `Optional[str]` | `None` |
 | `fingerprint` | `str` | `""` |
@@ -318,7 +316,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `conn` | `@property -> sqlite3.Connection` | Lazy connection getter. Sets `row_factory=sqlite3.Row`, enables WAL and foreign keys. |
-| `init_schema` | `() -> None` | Executes all CREATE TABLE/INDEX statements. |
+| `init_schema` | `() -> None` | Executes all CREATE TABLE/INDEX statements. Calls `_migrate()` to add the `source_dir` column to existing databases. |
 | `close` | `() -> None` | Closes connection if open. |
 | **Config** | | |
 | `get_config` | `(key: str, default: str = "") -> str` | Reads a key from the `config` table. |
@@ -348,7 +346,12 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | `upsert_source_dir` | `(path: str, source_type: str) -> None` | Inserts or replaces a source directory classification. |
 | `delete_source_dir` | `(path: str) -> None` | Deletes a source directory entry. |
 | `has_source_dir` | `(path: str) -> bool` | Returns True if path exists in `source_dirs`. |
-| `classify_path` | `(file_path: str) -> str` | Normalizes both input and stored paths (backslash to forward slash) before matching against source dirs (longest prefix first). Returns `"project"` if no match. Cross-platform safe. |
+| `classify_path` | `(file_path: str) -> str` | Normalizes both input and stored paths (backslash to forward slash) before matching against source dirs (longest prefix first). Returns `"active"` if no match. Cross-platform safe. |
+| **Systems** | | |
+| `list_systems` | `() -> list[dict]` | Returns all system records ordered by `source_dir, sort_order, name`. |
+| `list_systems_by_source_dir` | `() -> dict[str, list[dict]]` | Returns systems grouped by `source_dir`: `{source_dir: [system_dicts]}`. |
+| `upsert_system` | `(system: dict) -> None` | Inserts or replaces a system record. Accepts dict with `name`, `source_dir`, `paths`, and optional override fields. |
+| `delete_system` | `(name: str) -> None` | Deletes a system by name. |
 | **Stats** | | |
 | `get_stats` | `() -> dict` | Returns aggregate stats: `status_counts`, `severity_counts`, `total_scans`, `total_batches`, `last_scan`, `pending_count`, `approved_count`. |
 
@@ -471,17 +474,17 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `detect_source_dirs` | `(repo_path: str, db: Database) -> None` | Two-layer classification: (1) deterministic UE heuristics, (2) Claude AI fallback for ambiguous dirs. Never overwrites existing DB classifications (preserves user overrides). |
-| `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: `.uplugin` presence -> plugin; project-name match under `Source/` -> project; `ThirdParty` -> plugin; generated dirs -> ignored. Normalizes all `relative_to()` outputs via `normalize_path()`. Returns `(classified, unclassified)`. |
-| `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Falls back to `"project"` on failure. |
-| `_build_classify_prompt` | `(dir_listings: dict[str, list[str]]) -> str` | Builds the classification prompt. Asks Claude to return `{"classifications": {"path": "project"|"plugin"}}`. |
+| `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: classifies dirs as `"active"` (C++ source to scan) or `"ignored"` (skip). `.uplugin` presence, project-name match under `Source/`, and `ThirdParty` dirs are all classified as `"active"`; generated dirs go to `"ignored"`. Normalizes all `relative_to()` outputs via `normalize_path()`. Returns `(classified, unclassified)`. |
+| `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Returns `"active"` or `"ignored"` per dir. Falls back to `"active"` on failure. |
+| `_build_classify_prompt` | `(dir_listings: dict[str, list[str]]) -> str` | Builds the classification prompt. Asks Claude to return `{"classifications": {"path": "active"|"ignored"}}`. |
 
 **Heuristic Rules (in order):**
 
-1. Everything under `Plugins/` with a `.uplugin` (direct or nested) -> `"plugin"`
-2. `Plugins/` subdirs without `.uplugin` -> `"plugin"` (conservative)
-3. `Source/{ProjectName}` or `Source/{ProjectName}*` -> `"project"`
-4. `Source/ThirdParty` or `Source/ThirdPartyLibs` -> `"plugin"`
-5. Any dir containing `.uplugin` anywhere in the repo -> `"plugin"`
+1. Everything under `Plugins/` with a `.uplugin` (direct or nested) -> `"active"`
+2. `Plugins/` subdirs without `.uplugin` -> `"active"` (conservative)
+3. `Source/{ProjectName}` or `Source/{ProjectName}*` -> `"active"`
+4. `Source/ThirdParty` or `Source/ThirdPartyLibs` -> `"active"`
+5. Any dir containing `.uplugin` anywhere in the repo -> `"active"`
 6. Top-level dirs with no C++ code (no `.h`/`.cpp`) -> `"ignored"`
 7. UE generated dirs (`.git`, `Intermediate`, `Saved`, `Binaries`, `DerivedDataCache`, `.vs`, `.idea`) -> skipped
 
@@ -706,7 +709,7 @@ CREATE INDEX IF NOT EXISTS idx_findings_source       ON findings(source);
 | `findings.severity` | `TEXT` | `Severity` enum | Values: critical, high, medium, low, info |
 | `findings.category` | `TEXT` | `Category` enum | Values: bug, performance, ue-antipattern, modern-cpp, memory, readability |
 | `findings.confidence` | `TEXT` | `Confidence` enum | Values: high, medium, low |
-| `findings.source` | `TEXT` | `FindingSource` enum | Values: project, plugin, ignored |
+| `findings.source` | `TEXT` | `FindingSource` enum | Values: active, ignored |
 | `findings.status` | `TEXT` | `FindingStatus` enum | Values: pending, approved, rejected, applied, verified, failed, superseded |
 | `scans.scan_type` | `TEXT` | `ScanType` enum | Values: incremental, full (rotation is an alias for full) |
 | `scans.status` | `TEXT` | `ScanStatus` enum | Values: running, completed, failed |
@@ -732,7 +735,7 @@ Complete reference -- see [Section 2.3](#23-auditormodelspy----domain-models) fo
 Severity:       critical > high > medium > low > info
 Category:       bug | performance | ue-antipattern | modern-cpp | memory | readability
 Confidence:     high | medium | low
-FindingSource:  project | plugin | ignored
+FindingSource:  active | ignored
 FindingStatus:  pending -> approved -> applied -> verified
                 pending -> rejected
                 any -> failed
@@ -824,8 +827,10 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 | GET | `/api/detect-systems` | `detect_systems_api` | -- | `{"systems": [{name, paths, hint}]}` | Detects systems from `repo_path` query param using `detect_systems_from_repo()`. Falls back to active config's repo_path if query param is empty. |
 | GET | `/api/config/status` | `config_status` | -- | `{"config_path", "repo_path", "repo_exists", "errors", "last_commit", "db_size_bytes", "systems": [{name, paths_exist}]}` | Full config health check for the active project. |
 | POST | `/api/config/repair` | `repair_config` | -- | `{"ok": true}` | Re-saves the active config with all Pydantic defaults filled in. |
-| POST | `/settings/source-dirs` | `update_source_dir` | `{"path": str, "source_type": str}` | `{"ok": true, "path": str, "source_type": str}` | Upsert source directory classification. `source_type` must be `"project"`, `"plugin"`, or `"ignored"`. |
+| POST | `/settings/source-dirs` | `update_source_dir` | `{"path": str, "source_type": str}` | `{"ok": true, "path": str, "source_type": str}` | Upsert source directory classification. `source_type` must be `"active"` or `"ignored"`. |
 | DELETE | `/settings/source-dirs` | `delete_source_dir` | `{"path": str}` | `{"ok": true, "path": str}` | Delete a source directory classification. |
+| POST | `/settings/systems` | `update_system` | `{"name": str, "source_dir": str, "paths": list[str]}` | `{"ok": true}` | Upserts a system in the database. |
+| DELETE | `/settings/systems` | `delete_system` | `{"name": str}` | `{"ok": true}` | Deletes a system by name. |
 | POST | `/batch/apply` | `apply_batch` | -- | `{"ok": true, "batch_id": str}` | Creates a batch from all approved findings and runs the pipeline in a background thread. 400 if no approved findings. |
 | GET | `/api/stats` | `api_stats` | -- | `{status_counts, severity_counts, total_scans, total_batches, last_scan, pending_count, approved_count}` | JSON stats for the active project's database. |
 
@@ -862,19 +867,8 @@ Default location: `~/.code-auditor/config.yaml`
 # Absolute path to the game repository (required for scanning)
 repo_path: /path/to/GameRepo
 
-# Game systems to audit (name + source paths relative to repo root)
-systems:
-  - name: DragonFlight
-    paths:
-      - Source/DragonRacer/DragonFlight/
-  - name: Combat
-    paths:
-      - Source/DragonRacer/Combat/
-      - Source/DragonRacer/Weapons/
-    # Optional per-system overrides (null = inherit global setting):
-    # min_confidence: high
-    # claude_fast_mode: false
-    # file_extensions: [".h", ".cpp"]
+# systems are stored in the database (see source_dirs and systems tables)
+# Use the Setup Wizard or Settings page to manage them.
 
 # Scan scheduling
 scan_schedule:
@@ -912,12 +906,6 @@ file_extensions:                      # File types to scan
 | Field | Type | Default | Required | Description |
 |-------|------|---------|----------|-------------|
 | `repo_path` | `str` | `""` | No* | Absolute path to the game repo root. Blank = wizard mode. |
-| `systems` | `list[SystemDef]` | `[]` | No | Named game systems with their source paths |
-| `systems[].name` | `str` | -- | Yes (per system) | Human-readable system name |
-| `systems[].paths` | `list[str]` | -- | Yes (per system) | Paths relative to repo root. Longest prefix wins for ownership. |
-| `systems[].min_confidence` | `str\|null` | `null` | No | Per-system override for `min_confidence` |
-| `systems[].claude_fast_mode` | `bool\|null` | `null` | No | Per-system override for `claude_fast_mode` |
-| `systems[].file_extensions` | `list[str]\|null` | `null` | No | Per-system override for `file_extensions` |
 | `scan_schedule.incremental_interval_hours` | `int` | `4` | No | Hours between incremental scans. 0 disables scheduling. |
 | `scan_schedule.rotation_enabled` | `bool` | `false` | No | Enable round-robin full scans |
 | `scan_schedule.rotation_interval_hours` | `int` | `24` | No | Hours between rotation scans |

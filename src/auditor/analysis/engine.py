@@ -19,95 +19,115 @@ from auditor.models import new_id
 
 log = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Permission-skip flag — discovered lazily on first tool-using call.
+#   None  → not yet tried
+#   ""    → confirmed unsupported; omit the flag entirely
+#   str   → confirmed working flag
+# ---------------------------------------------------------------------------
+_skip_perms_flag: Optional[str] = None  # None = not yet confirmed
 
-def call_claude(prompt: str, fast: bool = True, timeout: int = 600, repo_path: str = None) -> str:
+
+def call_claude(
+    prompt: str,
+    fast: bool = True,
+    timeout: int = 600,
+    repo_path: str = None,
+    use_tools: bool = True,
+) -> str:
+    """Invoke the Claude CLI.
+
+    Args:
+        use_tools: When True (default) Claude is expected to call file-reading
+            tools, so the permission-skip flag is added.  Pass False for
+            text-only calls (e.g. suggest-systems) where no tools are needed
+            and the flag is irrelevant.
+    """
+    # global must appear before any read or write of the module-level variable
+    global _skip_perms_flag
+
     if not prompt:
         raise ValueError("Empty prompt")
 
     call_id = new_id()[:8]
     log_dir = Path.home() / ".code-auditor" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-
     (log_dir / f"{call_id}_prompt.txt").write_text(prompt, encoding="utf-8")
 
-    cmd = [
-        "claude", "-p", "-",
-        "--output-format", "json",
-        "--dangerouslySkipPermissions",
-    ]
+    def _build_cmd(perms_flag: Optional[str]) -> list[str]:
+        base = ["claude", "-p", "-", "--output-format", "json"]
+        if use_tools and perms_flag:
+            base.append(perms_flag)
+        return base
+
+    # On the first tool-using call, try the standard flag.
+    # _run_cmd below will detect "unknown option" and retry without it.
+    cmd = _build_cmd(
+        "--dangerously-skip-permissions" if _skip_perms_flag is None else _skip_perms_flag
+    )
 
     log.debug("Running claude CLI (timeout=%ds, prompt_len=%d)", timeout, len(prompt))
-    log.info("Claude call %s: prompt_len=%d, timeout=%ds, cwd=%s", call_id, len(prompt), timeout, repo_path or ".")
+    log.info(
+        "Claude call %s: prompt_len=%d, timeout=%ds, cwd=%s",
+        call_id, len(prompt), timeout, repo_path or ".",
+    )
 
     from auditor.scan_state import canceller
 
-    # Write prompt to a temp file and redirect stdin from it.
-    # On Windows, piping large payloads via subprocess stdin (input=) can
-    # deadlock or hang due to pipe buffer limits. Reading from a file avoids
-    # that entirely — the OS streams directly without Python holding both
-    # ends of a pipe open simultaneously.
-    tf = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False, encoding="utf-8"
-    )
-    try:
-        tf.write(prompt)
-        tf.flush()
-        tf.close()
+    class _Result:
+        def __init__(self, returncode: int, out: str, err: str) -> None:
+            self.returncode = returncode
+            self.stdout = out
+            self.stderr = err
 
-        t0 = time.time()
+    def _run_cmd(command: list[str], deadline: float) -> _Result:
+        """Write prompt to a temp file, run command, respect timeout + cancellation."""
+        # On Windows, piping large payloads via subprocess stdin (input=) can
+        # deadlock due to pipe buffer limits.  Writing to a temp file avoids that.
+        tf = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
         try:
+            tf.write(prompt); tf.flush(); tf.close()
+            popen_kwargs: dict = {}
+            if repo_path:
+                popen_kwargs["cwd"] = repo_path
             with open(tf.name, "r", encoding="utf-8") as stdin_file:
-                popen_kwargs = {}
-                if repo_path:
-                    popen_kwargs["cwd"] = repo_path
                 proc = subprocess.Popen(
-                    cmd,
+                    command,
                     stdin=stdin_file,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     **popen_kwargs,
                 )
-
             canceller.register_process(proc)
             try:
-                # Read stdout/stderr in background threads so we can poll
-                # for cancellation and log progress at regular intervals.
-                _stdout_buf: list[str] = []
-                _stderr_buf: list[str] = []
+                stdout_buf: list[str] = []
+                stderr_buf: list[str] = []
 
                 def _read(stream, buf):
                     buf.append(stream.read())
 
-                t_out = threading.Thread(target=_read, args=(proc.stdout, _stdout_buf), daemon=True)
-                t_err = threading.Thread(target=_read, args=(proc.stderr, _stderr_buf), daemon=True)
+                t_out = threading.Thread(target=_read, args=(proc.stdout, stdout_buf), daemon=True)
+                t_err = threading.Thread(target=_read, args=(proc.stderr, stderr_buf), daemon=True)
                 t_out.start()
                 t_err.start()
 
-                check_interval = 30  # seconds between status log lines
-                deadline = t0 + timeout
-
                 while True:
-                    t_out.join(timeout=check_interval)
+                    t_out.join(timeout=30)
                     if not t_out.is_alive():
-                        break  # stdout closed — process finished
-
-                    elapsed = time.time() - t0
+                        break  # process finished
 
                     if canceller.is_cancelled:
-                        proc.kill()
-                        t_out.join()
-                        t_err.join()
+                        proc.kill(); t_out.join(); t_err.join()
                         raise InterruptedError("Scan was cancelled")
 
                     if time.time() >= deadline:
-                        proc.kill()
-                        t_out.join()
-                        t_err.join()
+                        proc.kill(); t_out.join(); t_err.join()
                         log.error("Claude CLI timed out after %ds (call %s)", timeout, call_id)
                         (log_dir / f"{call_id}_timeout.txt").write_text("", encoding="utf-8")
-                        raise subprocess.TimeoutExpired(cmd, timeout)
+                        raise subprocess.TimeoutExpired(command, timeout)
 
+                    elapsed = time.time() - (deadline - timeout)
                     log.info(
                         "Claude call %s: still running (%.0fs elapsed, %.0fs remaining)",
                         call_id, elapsed, deadline - time.time(),
@@ -116,52 +136,65 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600, repo_path: s
                 t_err.join()
                 proc.wait()
 
-                stdout = _stdout_buf[0] if _stdout_buf else ""
-                stderr = _stderr_buf[0] if _stderr_buf else ""
+                if canceller.is_cancelled:
+                    raise InterruptedError("Scan was cancelled")
 
+                return _Result(
+                    proc.returncode,
+                    stdout_buf[0] if stdout_buf else "",
+                    stderr_buf[0] if stderr_buf else "",
+                )
             finally:
                 canceller.unregister_process()
-
-            if canceller.is_cancelled:
-                raise InterruptedError("Scan was cancelled")
-
         except FileNotFoundError:
             log.error("Claude CLI not found — is 'claude' on PATH?")
             raise
-    finally:
-        os.unlink(tf.name)
+        finally:
+            os.unlink(tf.name)
 
-    # Build a result-like object matching what subprocess.run returns
-    class _Result:
-        def __init__(self, returncode, out, err):
-            self.returncode = returncode
-            self.stdout = out
-            self.stderr = err
+    t0 = time.time()
+    result = _run_cmd(cmd, t0 + timeout)
 
-    result = _Result(proc.returncode, stdout, stderr)
-
-    elapsed = time.time() - t0
-
-    # Surface stderr from the Claude CLI into the Python logger so it appears
-    # in the per-scan log viewer regardless of exit code.
-    if result.stderr and result.stderr.strip():
+    # Surface Claude's stderr into the Python logger
+    if result.stderr.strip():
         for line in result.stderr.strip().splitlines():
             if line.strip():
                 log.info("[claude] %s", line.strip())
 
-    if result.returncode != 0:
-        log.error(
-            "Claude CLI exited %d (call %s)",
-            result.returncode,
-            call_id,
+    # If the permission flag is unsupported, learn that and retry once without it
+    if (
+        result.returncode != 0
+        and use_tools
+        and _skip_perms_flag is None
+        and "unknown option" in result.stderr.lower()
+    ):
+        log.warning(
+            "Claude CLI does not support '--dangerously-skip-permissions' — "
+            "retrying without permission flag"
         )
+        _skip_perms_flag = ""
+        cmd = _build_cmd("")
+        result = _run_cmd(cmd, t0 + timeout)
+        if result.stderr.strip():
+            for line in result.stderr.strip().splitlines():
+                if line.strip():
+                    log.info("[claude] %s", line.strip())
+
+    if result.returncode != 0:
+        log.error("Claude CLI exited %d (call %s)", result.returncode, call_id)
         raise subprocess.CalledProcessError(
             result.returncode, cmd, result.stdout, result.stderr
         )
 
-    (log_dir / f"{call_id}_response.txt").write_text(result.stdout, encoding="utf-8")
-    log.info("Claude call %s: completed in %.1fs, response_len=%d", call_id, elapsed, len(result.stdout))
+    # Confirm the flag is supported so future calls skip the retry path
+    if use_tools and _skip_perms_flag is None:
+        _skip_perms_flag = "--dangerously-skip-permissions"
 
+    (log_dir / f"{call_id}_response.txt").write_text(result.stdout, encoding="utf-8")
+    log.info(
+        "Claude call %s: completed in %.1fs, response_len=%d",
+        call_id, time.time() - t0, len(result.stdout),
+    )
     return result.stdout
 
 

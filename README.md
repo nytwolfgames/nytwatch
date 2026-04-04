@@ -60,17 +60,18 @@ Open http://127.0.0.1:8420 in your browser. If no project is configured yet, you
 
 ### 3. Run the Setup Wizard
 
-Click **"+ Setup New Project"** on the Settings page (or follow the first-run redirect). The wizard walks you through five steps:
+Click **"+ Setup New Project"** on the Settings page (or follow the first-run redirect). The wizard walks you through six steps:
 
 | Step | What you configure |
 |------|--------------------|
 | **1 — Setup** | Project name, repository path, UE installation directory (all with folder browsers) |
-| **2 — Systems** | Source directories to scan — auto-detected from `.uplugin` and `*.Build.cs` files, with a type selector (Project / Plugin / Ignored) per system |
-| **3 — Build** | `.uproject` file path and timeout overrides |
-| **4 — Schedule** | Incremental scan interval and rotation schedule |
-| **5 — Review** | YAML preview, config file path (auto-named `~/.code-auditor/<project-name>.yaml`) |
+| **2 — Sources** | Top-level source directories auto-detected from the repo — mark each as **Active** (C++ to scan) or **Ignored** (skip entirely). Only Active directories proceed to the next step. |
+| **3 — Systems** | Gameplay module systems, grouped under each active source directory. Each system groups related sub-paths that Claude analyses together. Click **✨ Suggest with Claude** to auto-generate systems from your source structure. |
+| **4 — Build** | `.uproject` file path and timeout overrides |
+| **5 — Schedule** | Incremental scan interval and rotation schedule |
+| **6 — Review** | Grouped systems summary and config file path (auto-named `~/.code-auditor/<project-name>.yaml`) |
 
-On completion the config is saved, source directory classifications are written to the database, and the new project becomes active.
+On completion the config is saved, source directory classifications and systems are stored in the database, and the new project becomes active.
 
 ### 4. Run your first scan
 
@@ -100,16 +101,6 @@ The **Active Project** card on the Settings page shows the current project and l
 ```yaml
 repo_path: /path/to/your/game/repo
 
-systems:
-  - name: "Combat"
-    paths:
-      - "Source/MyGame/Weapons/"
-      - "Source/MyGame/Damage/"
-    # Per-system overrides (all optional — inherit global defaults if omitted):
-    # min_confidence: "high"
-    # claude_fast_mode: false
-    # file_extensions: [".h", ".cpp", ".cs"]
-
 build:
   ue_installation_dir: "/Users/Shared/Epic Games/UE_5.4"   # editor cmd auto-derived
   ue_editor_cmd: ""                                         # explicit override (optional)
@@ -132,7 +123,7 @@ min_confidence: "medium"
 file_extensions: [".h", ".cpp"]
 ```
 
-> **System ownership** — When two systems have overlapping path prefixes (e.g., `Campaign/` and `Campaign/AI/`), the system with the longest matching prefix wins. Files in `Campaign/AI/` belong to `Campaign-AI`, not `Campaign-Core`.
+> **Systems are stored in the database** — source directory classifications and gameplay module systems are managed through the web dashboard or setup wizard and stored in `~/.code-auditor/<project>/auditor.db`. They are not written to the YAML config.
 
 ## Usage
 
@@ -145,7 +136,7 @@ The web dashboard runs locally on port 8420 and provides:
 - **Finding detail** (`/findings/{id}`) — Full view with code snippet, diff preview, test case, and reasoning
 - **Batch status** (`/batches/{id}`) — Real-time pipeline progress (applying → building → testing → verified)
 - **Scan history** (`/scans`) — Past scans with file counts and finding counts
-- **Settings** (`/settings`) — Active project card, project switcher, config health, source directory classification, setup wizard
+- **Settings** (`/settings`) — Active project card, project switcher, config health, source directory classification (Active/Ignored), system management grouped by source directory, setup wizard
 
 All pages are scoped to the active project. The sidebar shows the active project name on every page.
 
@@ -271,12 +262,13 @@ Each project has its own SQLite database derived from the active config path:
   logs/                  # Claude call logs
 ```
 
-The database has four main tables:
+The database has five main tables:
 
 - **findings** — Individual code issues with severity, category, fix diff, test code, and lifecycle status
 - **scans** — Scan metadata (type, system, files scanned, findings count)
 - **batches** — Batch apply records (status, branch, build log, test log, PR URL)
-- **source_dirs** — Source directory classifications (project / plugin / ignored), auto-populated by the setup wizard
+- **source_dirs** — Source directory classifications (`active` / `ignored`), auto-populated by the scanner and manageable from the Settings page
+- **systems** — Gameplay module system definitions (name, paths, `source_dir` foreign reference to the parent active source directory, per-system overrides)
 
 ## Configuration reference
 
@@ -285,7 +277,6 @@ The database has four main tables:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `repo_path` | string | `""` | Path to the game repository |
-| `systems` | list | `[]` | Game system definitions (see below) |
 | `build.ue_installation_dir` | string | `""` | UE install root — editor cmd derived from this |
 | `build.ue_editor_cmd` | string | `""` | Explicit path to UnrealEditor-Cmd (overrides `ue_installation_dir`) |
 | `build.project_file` | string | `""` | Path to .uproject file |
@@ -304,11 +295,10 @@ The database has four main tables:
 
 ### System definition fields
 
-Each entry in `systems` supports:
-
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | yes | Display name for the system |
+| `source_dir` | string | yes | Path of the parent active source directory this system belongs to |
 | `paths` | list[string] | yes | Repo-relative paths to scan (trailing `/` recommended) |
 | `min_confidence` | string | no | Override global `min_confidence` for this system only |
 | `claude_fast_mode` | bool | no | Override global `claude_fast_mode` for this system only |

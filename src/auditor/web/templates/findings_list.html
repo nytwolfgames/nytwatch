@@ -48,8 +48,12 @@
         </select>
         <select name="system" class="input">
             <option value="">All systems</option>
-            {% for s in systems %}
-            <option value="{{ s }}" {% if filters.system == s %}selected{% endif %}>{{ s }}</option>
+            {% for source_dir, dir_systems in systems | groupby('source_dir') %}
+            <optgroup label="{{ source_dir or 'Unassigned' }}">
+                {% for s in dir_systems %}
+                <option value="{{ s.name }}" {% if filters.system == s.name %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </optgroup>
             {% endfor %}
         </select>
         <input type="text" name="file_path" value="{{ filters.file_path or '' }}" placeholder="Filter by file path..." class="input" style="min-width: 12rem;">

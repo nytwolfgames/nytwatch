@@ -59,10 +59,10 @@
             {% for d in active_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
-                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
-                    <option value="active" selected>Active</option>
-                    <option value="ignored">Ignored</option>
-                </select>
+                <div class="type-toggle">
+                    <button class="tgl-on tgl-active" disabled>Active</button>
+                    <button onclick="moveDir('{{ d.path }}', 'ignored')">Ignored</button>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -79,10 +79,10 @@
             {% for d in ignored_dirs %}
             <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex:1;word-break:break-all;opacity:0.6;">{{ d.path }}</span>
-                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
-                    <option value="active">Active</option>
-                    <option value="ignored" selected>Ignored</option>
-                </select>
+                <div class="type-toggle">
+                    <button onclick="moveDir('{{ d.path }}', 'active')">Active</button>
+                    <button class="tgl-on tgl-ignored" disabled>Ignored</button>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -96,13 +96,64 @@
     <div class="section-label mb-4">Add Directory</div>
     <div class="flex gap-3 items-center">
         <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex:1;">
-        <select id="new-dir-type" class="input" style="width:10rem;">
-            <option value="active">Active</option>
-            <option value="ignored">Ignored</option>
-        </select>
+        <div class="type-toggle">
+            <button id="ndt-active" class="tgl-on tgl-active" onclick="setNewDirType('active')">Active</button>
+            <button id="ndt-ignored" onclick="setNewDirType('ignored')">Ignored</button>
+        </div>
         <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
     </div>
 </div>
+
+<!-- Systems -->
+<h2 class="headline-md mb-2 mt-8">Systems</h2>
+<p class="body-md text-variant mb-6">
+    Systems define which gameplay modules within each active source directory are scanned together.
+    Each system belongs to one active source directory. Use the <strong>Setup Wizard</strong> to configure systems, or manage them inline below.
+</p>
+
+{% if systems_by_dir %}
+{% for entry in systems_by_dir %}
+<div class="card mb-4">
+    <div class="flex items-center gap-3 mb-3">
+        <span class="mono label-sm" style="flex:1;">{{ entry.source_dir }}</span>
+        <button onclick="openAddSystemForm('{{ entry.source_dir }}')" class="btn btn-sm">+ Add System</button>
+    </div>
+    {% if entry.systems %}
+    <div class="dir-list">
+        {% for s in entry.systems %}
+        <div class="dir-item" style="align-items:flex-start;">
+            <div style="flex:1;">
+                <div class="body-sm" style="font-weight:600;">{{ s.name }}</div>
+                <div class="mono body-sm text-variant" style="margin-top:2px;">{{ s.paths | join(', ') }}</div>
+            </div>
+            <button onclick="deleteSystem('{{ s.name }}')"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.1rem;padding:2px 6px;flex-shrink:0;"
+                    title="Delete system">&times;</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="body-sm text-variant">No systems yet — click "+ Add System".</p>
+    {% endif %}
+    <div id="add-sys-form-{{ entry.source_dir | replace('/', '_') | replace('.', '_') }}"
+         style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--outline);">
+        <div class="flex gap-2 items-center flex-wrap">
+            <input type="text" placeholder="System name" class="input input-sm" style="width:180px;"
+                   id="new-sys-name-{{ entry.source_dir | replace('/', '_') | replace('.', '_') }}">
+            <input type="text" placeholder="Path (defaults to source dir)" class="input input-sm" style="flex:1;min-width:180px;"
+                   id="new-sys-path-{{ entry.source_dir | replace('/', '_') | replace('.', '_') }}"
+                   value="{{ entry.source_dir }}">
+            <button onclick="addSystem('{{ entry.source_dir }}')" class="btn btn-sm btn-primary">Add</button>
+            <button onclick="closeAddSystemForm('{{ entry.source_dir }}')" class="btn btn-sm">Cancel</button>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card">
+    <p class="body-sm text-variant">No systems configured. Use <strong>+ Setup New Project</strong> to configure systems via the wizard.</p>
+</div>
+{% endif %}
 
 <!-- ── Setup Wizard Modal ───────────────────────────────────────────────────── -->
 <div id="wizard-overlay"
@@ -157,6 +208,30 @@
     background:var(--surface-container-low); border-radius:6px;
 }
 .dir-item-ignored { opacity:.7; border-left:3px solid var(--outline); }
+
+/* Active / Ignored toggle pill */
+.type-toggle {
+    display: inline-flex;
+    border: 1px solid var(--outline);
+    border-radius: 100px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.type-toggle button {
+    padding: 3px 11px;
+    font-size: 0.78rem;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: var(--on-surface-variant);
+    transition: background .12s, color .12s;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+.type-toggle button:hover:not(.tgl-on) { background: var(--surface-container); }
+.type-toggle button.tgl-on { cursor: default; }
+.type-toggle button.tgl-active  { background: var(--primary, #004ac6); color: #fff; }
+.type-toggle button.tgl-ignored { background: var(--surface-container-high); color: var(--on-surface); }
 
 /* Wizard step indicator */
 .wz-steps { display:flex; align-items:center; margin-bottom:4px; }
@@ -214,9 +289,16 @@ async function moveDir(path, newType) {
     } catch (e) { alert('Failed: ' + e.message); }
 }
 
+let _newDirType = 'active';
+function setNewDirType(t) {
+    _newDirType = t;
+    document.getElementById('ndt-active').className  = t === 'active'  ? 'tgl-on tgl-active'  : '';
+    document.getElementById('ndt-ignored').className = t === 'ignored' ? 'tgl-on tgl-ignored' : '';
+}
+
 async function addDir() {
     const path = document.getElementById('new-dir-path').value.trim();
-    const sourceType = document.getElementById('new-dir-type').value;
+    const sourceType = _newDirType;
     if (!path) { alert('Please enter a directory path'); return; }
     try {
         const res = await fetch('/settings/source-dirs', {
@@ -227,6 +309,46 @@ async function addDir() {
         const data = await res.json();
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to add');
+    } catch (e) { alert('Failed: ' + e.message); }
+}
+
+function openAddSystemForm(sourceDir) {
+    const safeId = sourceDir.replace(/[^a-z0-9]/gi, '_');
+    document.getElementById('add-sys-form-' + safeId).style.display = '';
+}
+function closeAddSystemForm(sourceDir) {
+    const safeId = sourceDir.replace(/[^a-z0-9]/gi, '_');
+    document.getElementById('add-sys-form-' + safeId).style.display = 'none';
+}
+
+async function addSystem(sourceDir) {
+    const safeId = sourceDir.replace(/[^a-z0-9]/gi, '_');
+    const name = document.getElementById('new-sys-name-' + safeId)?.value.trim();
+    const path = document.getElementById('new-sys-path-' + safeId)?.value.trim();
+    if (!name) { alert('System name is required'); return; }
+    try {
+        const res = await fetch('/settings/systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, source_dir: sourceDir, paths: [path || sourceDir]}),
+        });
+        const data = await res.json();
+        if (data.ok) location.reload();
+        else alert(data.error || 'Failed to add system');
+    } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function deleteSystem(name) {
+    if (!confirm(`Delete system "${name}"?`)) return;
+    try {
+        const res = await fetch('/settings/systems', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name}),
+        });
+        const data = await res.json();
+        if (data.ok) location.reload();
+        else alert(data.error || 'Failed to delete system');
     } catch (e) { alert('Failed: ' + e.message); }
 }
 
@@ -617,18 +739,19 @@ function wzRenderSourceList() {
         return;
     }
     const rows = _wz.source_dirs.map((dir, idx) => {
-        const typeOpts = ['active','ignored'].map(t =>
-            `<option value="${t}" ${dir.source_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`
-        ).join('');
+        const isActive  = dir.source_type === 'active';
+        const isIgnored = dir.source_type === 'ignored';
         const badge = dir.auto ? '' :
             `<span style="font-size:0.7rem;color:var(--on-surface-variant);margin-left:4px;">(unclassified)</span>`;
         return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;
                             background:var(--surface-container-low);border-radius:6px;margin-bottom:6px;">
             <span class="mono body-sm" style="flex:1;word-break:break-all;">${escH(dir.path)}${badge}</span>
-            <select class="input input-sm" style="width:7.5rem;"
-                    onchange="_wz.source_dirs[${idx}].source_type=this.value;wzRenderSourceList()">
-                ${typeOpts}
-            </select>
+            <div class="type-toggle">
+                <button class="${isActive ? 'tgl-on tgl-active' : ''}"
+                        onclick="_wz.source_dirs[${idx}].source_type='active';wzRenderSourceList()">Active</button>
+                <button class="${isIgnored ? 'tgl-on tgl-ignored' : ''}"
+                        onclick="_wz.source_dirs[${idx}].source_type='ignored';wzRenderSourceList()">Ignored</button>
+            </div>
         </div>`;
     }).join('');
     el.innerHTML = rows;
@@ -636,42 +759,71 @@ function wzRenderSourceList() {
 
 // ── Step 3: Systems ───────────────────────────────────────────────────────────
 function wzRenderSystems(el) {
-    let html = `
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+    el.innerHTML = `
         <div class="flex items-center gap-2 mb-3">
             <div class="label-lg" style="flex:1;">Systems</div>
-            <button onclick="wzSuggest(this)" class="btn btn-sm scan-safe" id="wz-suggest-btn">✨ Suggest with Claude</button>
-            <button onclick="wzAddSys()" class="btn btn-sm scan-safe">+ Add System</button>
+            <button onclick="wzSuggestAll(this)" class="btn btn-sm scan-safe" id="wz-suggest-btn">✨ Suggest with Claude</button>
         </div>
         <p class="body-sm text-variant mb-4">
-            Each system groups source directories that Claude analyses together in one pass.
-            Click <strong>Suggest with Claude</strong> to auto-generate systems from your source directories,
-            or add them manually.
+            Systems categorize gameplay modules within each active source directory.
+            Each system groups related paths that Claude analyses together in one pass.
+            Click <strong>Suggest with Claude</strong> to auto-generate systems, or add them manually per directory.
         </p>
-        <div id="wz-sys-list">`;
+        <div id="wz-sys-list"></div>
+        <div id="wz-overlaps"></div>`;
 
-    if (!_wz.systems.length) {
-        html += `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
-            No systems yet — click "✨ Suggest with Claude" or "+ Add System"
-        </div>`;
-    } else {
-        html += _wz.systems.map((s, i) => wzSysCard(s, i)).join('');
-    }
-    html += '</div><div id="wz-overlaps"></div>';
-    el.innerHTML = html;
+    wzRenderSysList(document.getElementById('wz-sys-list'));
     wzCheckOverlaps();
 
-    // Auto-trigger suggestion if systems list is empty
-    if (!_wz.systems.length) {
+    // Auto-trigger suggestion if no systems yet and there are active dirs
+    if (!_wz.systems.length && activeDirs.length) {
         const suggestBtn = document.getElementById('wz-suggest-btn');
-        if (suggestBtn) wzSuggest(suggestBtn);
+        if (suggestBtn) wzSuggestAll(suggestBtn);
     }
 }
 
-async function wzSuggest(btn) {
+function wzRenderSysList(listEl) {
+    if (!listEl) return;
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+
+    if (!activeDirs.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            No active source directories — go back and mark at least one as Active.
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    for (const dir of activeDirs) {
+        const dirSystems = _wz.systems
+            .map((s, i) => ({s, i}))
+            .filter(({s}) => s.source_dir === dir.path);
+
+        html += `<div style="margin-bottom:18px;">
+            <div class="flex items-center gap-2 mb-2" style="padding:6px 0;border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.06));">
+                <span class="mono body-sm" style="flex:1;">📁 ${escH(dir.path)}</span>
+                <button data-srcdir="${escH(dir.path)}" onclick="wzAddSysUnder(this.getAttribute('data-srcdir'))"
+                        class="btn btn-sm scan-safe">+ Add System</button>
+            </div>`;
+
+        if (!dirSystems.length) {
+            html += `<div class="body-sm text-variant" style="padding:8px 0 4px 4px;font-size:0.82rem;">
+                No systems yet — click "+ Add System".
+            </div>`;
+        } else {
+            html += dirSystems.map(({s, i}) => wzSysCard(s, i)).join('');
+        }
+        html += '</div>';
+    }
+    listEl.innerHTML = html;
+}
+
+async function wzSuggestAll(btn) {
     const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
     if (!activeDirs.length) {
         document.getElementById('wz-err').textContent =
-            'No active source directories — go back and mark at least one directory as Active';
+            'No active source directories — go back and mark at least one as Active';
         return;
     }
     const nextBtn = document.getElementById('wz-next-btn');
@@ -698,21 +850,20 @@ async function wzSuggest(btn) {
         if (!d.systems.length) {
             document.getElementById('wz-err').textContent =
                 'Claude returned no suggestions — add systems manually';
+            wzRenderSysList(listEl);
         } else {
             const existing = new Set(_wz.systems.map(s => s.name));
             for (const s of d.systems) {
-                if (!existing.has(s.name)) _wz.systems.push({name: s.name, paths: s.paths, hint: ''});
+                if (!existing.has(s.name)) {
+                    _wz.systems.push({name: s.name, paths: s.paths || [], source_dir: s.source_dir || '', hint: ''});
+                }
             }
             document.getElementById('wz-err').textContent = '';
             wzRerender();
         }
     } catch (e) {
         document.getElementById('wz-err').textContent = 'Suggestion failed: ' + e.message;
-        if (listEl && !_wz.systems.length) {
-            listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
-                No systems yet — click "+ Add System" to add manually
-            </div>`;
-        }
+        wzRenderSysList(listEl);
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
         if (nextBtn) nextBtn.disabled = false;
@@ -720,7 +871,7 @@ async function wzSuggest(btn) {
 }
 
 function wzSysCard(s, i) {
-    const paths = s.paths.map((p, pi) => wzPathRow(i, pi, p)).join('');
+    const paths = s.paths.map((p, pi) => wzPathRow(i, pi, p, s.source_dir || '')).join('');
     return `<div class="wz-sys-card" id="wz-card-${i}">
         <div class="flex items-center gap-2 mb-3">
             <input type="text" class="input input-sm" style="flex:1;" placeholder="System name"
@@ -733,9 +884,10 @@ function wzSysCard(s, i) {
     </div>`;
 }
 
-function wzPathRow(si, pi, path) {
+function wzPathRow(si, pi, path, srcDir) {
+    const _srcDirJs = JSON.stringify(srcDir || '');
     return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" id="wz-pr-${si}-${pi}">
-        <button onclick="spOpen({si:${si},pi:${pi}},this)" class="scan-safe"
+        <button onclick="spOpen({si:${si},pi:${pi},srcDir:${_srcDirJs}},this)" class="scan-safe"
             style="flex:1;text-align:left;background:var(--surface-container-low);border:1px solid var(--outline);
                    border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.78rem;font-family:monospace;
                    color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
@@ -749,28 +901,25 @@ function wzPathRow(si, pi, path) {
 }
 
 function wzRerender() {
-    const el = document.getElementById('wz-sys-list');
-    if (!el) return;
-    if (!_wz.systems.length) {
-        el.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
-            No systems yet — click "✨ Suggest with Claude" or "+ Add System"
-        </div>`;
-    } else {
-        el.innerHTML = _wz.systems.map((s, i) => wzSysCard(s, i)).join('');
-    }
+    wzRenderSysList(document.getElementById('wz-sys-list'));
     wzCheckOverlaps();
 }
 
 function wzSysName(i, v) { _wz.systems[i].name = v; wzCheckOverlaps(); }
-function wzAddSys() { _wz.systems.push({name:'', paths:[], hint:''}); wzRerender(); }
+function wzAddSysUnder(srcDir) {
+    const defaultPath = srcDir ? (srcDir.endsWith('/') ? srcDir : srcDir + '/') : '';
+    _wz.systems.push({name: '', paths: [defaultPath], source_dir: srcDir || '', hint: ''});
+    wzRerender();
+}
 function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
 
 function wzAddPath(si) {
     _wz.systems[si].paths.push('');
     wzRerender();
     // Auto-open browser for the new blank path
+    const srcDir = _wz.systems[si]?.source_dir || '';
     const btn = document.querySelector(`#wz-pr-${si}-${_wz.systems[si].paths.length - 1} button`);
-    if (btn) spOpen({si, pi: _wz.systems[si].paths.length - 1}, btn);
+    if (btn) spOpen({si, pi: _wz.systems[si].paths.length - 1, srcDir}, btn);
 }
 
 function wzRemovePath(si, pi) {
@@ -810,29 +959,61 @@ function wzCheckOverlaps() {
 // ── Step 6: Review ────────────────────────────────────────────────────────────
 function wzRenderReview(el) {
     const systems = _wz.systems.filter(s => s.name && s.paths.filter(p=>p).length);
-    const totalPaths = systems.reduce((a, s) => a + s.paths.length, 0);
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
 
-    let yaml = `repo_path: ${_wz.repo_path}\nmin_confidence: ${_wz.min_confidence}\nclaude_fast_mode: ${_wz.claude_fast_mode}\n\nsystems:\n`;
-    for (const s of systems) {
-        yaml += `  - name: ${s.name}\n    paths:\n`;
-        for (const p of s.paths.filter(Boolean)) yaml += `      - ${p}\n`;
-    }
-    yaml += `\nscan_schedule:\n  incremental_interval_hours: ${_wz.scan_schedule.incremental_interval_hours}\n  rotation_enabled: ${_wz.scan_schedule.rotation_enabled}\n`;
-    if (_wz.scan_schedule.rotation_enabled) yaml += `  rotation_interval_hours: ${_wz.scan_schedule.rotation_interval_hours}\n`;
-    if (_wz.build.ue_installation_dir || _wz.build.project_file) {
-        yaml += `\nbuild:\n`;
-        if (_wz.build.ue_installation_dir) yaml += `  ue_installation_dir: ${_wz.build.ue_installation_dir}\n`;
-        if (_wz.build.project_file) yaml += `  project_file: ${_wz.build.project_file}\n`;
+    // Build grouped systems summary
+    let systemsSummary = '';
+    if (systems.length) {
+        for (const dir of activeDirs) {
+            const dirSys = systems.filter(s => s.source_dir === dir.path);
+            if (!dirSys.length) continue;
+            systemsSummary += `<div style="margin-bottom:10px;">
+                <div class="mono body-sm" style="color:var(--on-surface-variant);margin-bottom:4px;">📁 ${escH(dir.path)}</div>
+                ${dirSys.map(s => `<div style="padding:3px 0 3px 14px;display:flex;align-items:baseline;gap:8px;">
+                    <span class="body-sm" style="font-weight:600;">${escH(s.name)}</span>
+                    <span class="mono body-sm text-variant">${s.paths.filter(Boolean).map(escH).join(', ')}</span>
+                </div>`).join('')}
+            </div>`;
+        }
+        // Systems with no matching active dir
+        const unassigned = systems.filter(s => !activeDirs.find(d => d.path === s.source_dir));
+        if (unassigned.length) {
+            systemsSummary += `<div style="margin-bottom:10px;">
+                <div class="body-sm text-variant" style="margin-bottom:4px;">⚠ Unassigned source dir</div>
+                ${unassigned.map(s => `<div style="padding:3px 0 3px 14px;">
+                    <span class="body-sm" style="font-weight:600;">${escH(s.name)}</span>
+                    <span class="mono body-sm text-variant" style="margin-left:8px;">${s.paths.filter(Boolean).map(escH).join(', ')}</span>
+                </div>`).join('')}
+            </div>`;
+        }
+    } else {
+        systemsSummary = '<div class="body-sm text-variant">No systems configured</div>';
     }
 
     el.innerHTML = `
-        <div class="label-lg mb-3">Review & Confirm</div>
-        <p class="body-sm text-variant mb-4">
-            ${systems.length} system${systems.length !== 1 ? 's' : ''} across ${totalPaths} path${totalPaths !== 1 ? 's' : ''}.
-        </p>
-        <div style="background:var(--surface-container);border-radius:6px;padding:14px;
-                    font-family:monospace;font-size:0.78rem;white-space:pre;overflow-x:auto;
-                    line-height:1.7;max-height:240px;overflow-y:auto;margin-bottom:16px;">${escH(yaml)}</div>
+        <div class="label-lg mb-4">Review & Confirm</div>
+
+        <div style="margin-bottom:14px;">
+            <div class="section-label mb-2">Repository</div>
+            <div class="mono body-sm">${escH(_wz.repo_path)}</div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <div class="section-label mb-2">Systems (${systems.length})</div>
+            <div style="background:var(--surface-container);border-radius:6px;padding:12px;max-height:200px;overflow-y:auto;">
+                ${systemsSummary}
+            </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <div class="section-label mb-2">Scan Schedule</div>
+            <div class="body-sm">
+                Incremental every <strong>${_wz.scan_schedule.incremental_interval_hours}h</strong>${_wz.scan_schedule.rotation_enabled ? ` · Rotation every <strong>${_wz.scan_schedule.rotation_interval_hours}h</strong>` : ''}
+                · Min confidence: <strong>${_wz.min_confidence}</strong>
+                ${_wz.claude_fast_mode ? ' · Fast mode on' : ''}
+            </div>
+        </div>
+
         <div>
             <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Save config to</label>
             <input id="wz-cfgpath" type="text" class="input" style="width:100%;"
@@ -840,7 +1021,7 @@ function wzRenderReview(el) {
                 oninput="_wz.config_path=this.value.trim()"
                 placeholder="~/.code-auditor/my-project.yaml">
             <div class="body-sm text-variant mt-1">
-                Derived from the project name. Each project gets its own <span class="mono">.yaml</span> file in <span class="mono">~/.code-auditor/</span>.
+                Each project gets its own <span class="mono">.yaml</span> file in <span class="mono">~/.code-auditor/</span>.
             </div>
         </div>
         <div id="wz-result" style="margin-top:14px;"></div>
@@ -951,7 +1132,7 @@ async function wzCreate() {
                 min_confidence: _wz.min_confidence,
                 config_path: _wz.config_path,
                 source_dirs: _wz.source_dirs
-                    .filter(d => d.source_type !== 'ignored' && d.path)
+                    .filter(d => d.path)
                     .map(d => ({path: d.path, source_type: d.source_type})),
             }),
         });
@@ -996,7 +1177,7 @@ async function spOpen(ctx, anchorEl) {
         startPath = (document.getElementById(ctx.inputId)?.value.trim() || '')
             .replace(/\\/g, '/');
     } else if (ctx?.si != null) {
-        startPath = (_wz.systems[ctx.si]?.paths[ctx.pi] || '').replace(/\/?$/, '');
+        startPath = (_wz.systems[ctx.si]?.paths[ctx.pi] || ctx?.srcDir || '').replace(/\/?$/, '');
     }
     await spNavigate(startPath);
 

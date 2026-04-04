@@ -76,6 +76,7 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
         db.replace_systems([
             {
                 "name": s.name,
+                "source_dir": s.source_dir,  # "" for legacy YAML systems
                 "paths": list(s.paths),
                 "min_confidence": s.min_confidence,
                 "file_extensions": list(s.file_extensions) if s.file_extensions else None,

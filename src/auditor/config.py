@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 class SystemDef(BaseModel):
     name: str
     paths: list[str]
+    source_dir: str = ""  # parent active source directory this system lives under
     # Per-system overrides — None means "inherit global setting"
     min_confidence: Optional[str] = None
     file_extensions: Optional[list[str]] = None

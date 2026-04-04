@@ -99,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_scan_logs_scan ON scan_logs(scan_id);
 
 CREATE TABLE IF NOT EXISTS systems (
     name              TEXT PRIMARY KEY,
+    source_dir        TEXT NOT NULL DEFAULT '',
     paths             TEXT NOT NULL DEFAULT '[]',
     min_confidence    TEXT,
     file_extensions   TEXT,
@@ -125,7 +126,18 @@ class Database:
 
     def init_schema(self):
         self.conn.executescript(SCHEMA_SQL)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self):
+        """Apply incremental schema migrations for existing databases."""
+        existing_cols = {
+            row[1] for row in self.conn.execute("PRAGMA table_info(systems)").fetchall()
+        }
+        if "source_dir" not in existing_cols:
+            self.conn.execute(
+                "ALTER TABLE systems ADD COLUMN source_dir TEXT NOT NULL DEFAULT ''"
+            )
 
     def close(self):
         if self._conn:
@@ -443,10 +455,10 @@ class Database:
     # --- Systems ---
 
     def list_systems(self) -> list[dict]:
-        """Return all systems ordered by sort_order, as plain dicts."""
+        """Return all systems ordered by source_dir then sort_order, as plain dicts."""
         rows = self.conn.execute(
-            "SELECT name, paths, min_confidence, file_extensions, claude_fast_mode "
-            "FROM systems ORDER BY sort_order, name"
+            "SELECT name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode "
+            "FROM systems ORDER BY source_dir, sort_order, name"
         ).fetchall()
         result = []
         for r in rows:
@@ -456,6 +468,13 @@ class Database:
             result.append(d)
         return result
 
+    def list_systems_by_source_dir(self) -> dict[str, list[dict]]:
+        """Return systems grouped by source_dir: {source_dir: [system_dicts]}."""
+        grouped: dict[str, list[dict]] = {}
+        for s in self.list_systems():
+            grouped.setdefault(s["source_dir"], []).append(s)
+        return grouped
+
     def replace_systems(self, systems: list[dict]) -> None:
         """Replace ALL systems with the given list (atomic)."""
         self.conn.execute("DELETE FROM systems")
@@ -463,10 +482,12 @@ class Database:
             fe = s.get("file_extensions")
             cfm = s.get("claude_fast_mode")
             self.conn.execute(
-                """INSERT INTO systems (name, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO systems
+                   (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     s["name"],
+                    s.get("source_dir") or "",
                     json.dumps(s.get("paths", [])),
                     s.get("min_confidence") or None,
                     json.dumps(fe) if fe is not None else None,
@@ -484,13 +505,15 @@ class Database:
             "SELECT sort_order FROM systems WHERE name = ?", (system["name"],)
         ).fetchone()
         sort_order = existing["sort_order"] if existing else (
-            (self.conn.execute("SELECT COALESCE(MAX(sort_order)+1,0) FROM systems").fetchone()[0])
+            self.conn.execute("SELECT COALESCE(MAX(sort_order)+1,0) FROM systems").fetchone()[0]
         )
         self.conn.execute(
-            """INSERT OR REPLACE INTO systems (name, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT OR REPLACE INTO systems
+               (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 system["name"],
+                system.get("source_dir") or "",
                 json.dumps(system.get("paths", [])),
                 system.get("min_confidence") or None,
                 json.dumps(fe) if fe is not None else None,
