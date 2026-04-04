@@ -36,8 +36,15 @@
 </div>
 
 <div class="card mb-4">
-    <div class="section-label">Location</div>
-    <div class="mono text-primary">{{ finding.file_path }}:{{ finding.line_start }}-{{ finding.line_end }}</div>
+    <div class="section-label">Affected Location{% if finding['locations_list'] %}s{% endif %}</div>
+    <div class="mono body-sm" style="padding:var(--sp-2) 0;{% if finding['locations_list'] %}border-bottom:1px solid var(--outline-variant);{% endif %}">
+        {{ finding['file_path'] }}:{{ finding['line_start'] }}–{{ finding['line_end'] }}
+    </div>
+    {% for loc in finding['locations_list'] %}
+    <div class="mono body-sm" style="padding:var(--sp-2) 0;{% if not loop.last %}border-bottom:1px solid var(--outline-variant);{% endif %}color:var(--on-surface-variant);">
+        {{ loc['file_path'] }}:{{ loc['line_start'] }}–{{ loc['line_end'] }}
+    </div>
+    {% endfor %}
 </div>
 
 <div class="card mb-4">

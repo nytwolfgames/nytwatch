@@ -10,43 +10,38 @@
             Apply {{ approved_count }} Approved
         </button>
         {% endif %}
+        <button onclick="cleanFindings(this)" class="btn btn-danger btn-sm">Clean</button>
         <a href="/findings/export?{{ request.query_string.decode() }}" class="btn btn-secondary btn-sm">Export</a>
     </div>
 </div>
 
-<form method="GET" action="/findings" class="card mb-6">
+<form method="GET" action="/findings" id="filter-form" class="card mb-6">
     <div class="flex gap-3 flex-wrap items-center">
-        <select name="status" class="input">
+        <select name="status" class="input" onchange="this.form.submit()">
             <option value="">All statuses</option>
             {% for s in ['pending', 'approved', 'rejected', 'applied', 'verified', 'failed'] %}
             <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s|title }}</option>
             {% endfor %}
         </select>
-        <select name="severity" class="input">
+        <select name="severity" class="input" onchange="this.form.submit()">
             <option value="">All severities</option>
             {% for s in ['critical', 'high', 'medium', 'low', 'info'] %}
             <option value="{{ s }}" {% if filters.severity == s %}selected{% endif %}>{{ s|title }}</option>
             {% endfor %}
         </select>
-        <select name="category" class="input">
+        <select name="category" class="input" onchange="this.form.submit()">
             <option value="">All categories</option>
             {% for c in ['bug', 'performance', 'ue-antipattern', 'modern-cpp', 'memory', 'readability'] %}
             <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
-        <select name="confidence" class="input">
+        <select name="confidence" class="input" onchange="this.form.submit()">
             <option value="">All confidence</option>
             {% for c in ['high', 'medium', 'low'] %}
             <option value="{{ c }}" {% if filters.confidence == c %}selected{% endif %}>{{ c|title }}</option>
             {% endfor %}
         </select>
-        <select name="source" class="input">
-            <option value="">All sources</option>
-            {% for s in ['active'] %}
-            <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ s|title }}</option>
-            {% endfor %}
-        </select>
-        <select name="system" class="input">
+        <select name="system" class="input" onchange="this.form.submit()">
             <option value="">All systems</option>
             {% for source_dir, dir_systems in systems | groupby('source_dir') %}
             <optgroup label="{{ source_dir or 'Unassigned' }}">
@@ -57,7 +52,6 @@
             {% endfor %}
         </select>
         <input type="text" name="file_path" value="{{ filters.file_path or '' }}" placeholder="Filter by file path..." class="input" style="min-width: 12rem;">
-        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
         <a href="/findings" class="link-subtle body-sm">Clear</a>
     </div>
 </form>
@@ -68,13 +62,13 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th style="width: 8%;">Severity</th>
-                <th style="width: 7%;">Source</th>
-                <th style="width: 28%;">Title</th>
-                <th style="width: 20%;">File</th>
-                <th style="width: 8%;">Category</th>
+                <th style="width: 7%;">Severity</th>
+                <th style="width: 32%;">Title</th>
+                <th style="width: 16%;">File</th>
+                <th style="width: 10%;">System</th>
+                <th style="width: 7%;">Category</th>
                 <th style="width: 8%;">Confidence</th>
-                <th style="width: 8%;">Status</th>
+                <th style="width: 7%;">Status</th>
                 <th style="width: 5%;" title="Include a test case when applying this fix">Test</th>
                 <th style="width: 8%;">Actions</th>
             </tr>
@@ -83,9 +77,9 @@
             {% for f in findings %}
             <tr>
                 <td><span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span></td>
-                <td><span class="badge badge-source-{{ f.source|default('active') }}">{{ (f.source or 'active')|title }}</span></td>
                 <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
-                <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}">{{ f.file_path }}:{{ f.line_start }}</td>
+                <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}{% if f.locations_extra %} (+{{ f.locations_extra }} more){% endif %}">{{ f.file_path }}:{{ f.line_start }}{% if f.locations_extra %} <span class="badge" style="font-size:0.65rem;padding:1px 5px;vertical-align:middle;">+{{ f.locations_extra }}</span>{% endif %}</td>
+                <td class="body-sm cell-truncate" title="{{ f.system_name or '' }}">{{ f.system_name or '—' }}</td>
                 <td><span class="badge badge-category">{{ f.category }}</span></td>
                 <td class="body-sm text-variant">{{ f.confidence }}</td>
                 <td><span class="badge status-{{ f.status }}">{{ f.status }}</span></td>
@@ -162,6 +156,24 @@ async function toggleTest(checkbox) {
     }
 }
 
+async function cleanFindings(btn) {
+    const count = document.querySelectorAll('.data-table tbody tr').length;
+    const filterDesc = window.location.search ? 'matching the current filters' : '(no filters — ALL findings)';
+    if (!confirm(`Delete ${count} finding(s) ${filterDesc}?\n\nThis cannot be undone.`)) return;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Cleaning…';
+    try {
+        const res = await fetch('/findings/clean' + window.location.search, { method: 'POST' });
+        const data = await res.json();
+        window.location.href = '/findings' + window.location.search;
+    } catch (e) {
+        alert('Clean failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = orig;
+    }
+}
+
 async function applyBatch() {
     const btn = document.getElementById('apply-btn');
     btn.disabled = true;
@@ -189,7 +201,6 @@ const _activeFilters = {
     severity:   {{ ('"' ~ filters.severity ~ '"') | safe if filters.severity else 'null' }},
     category:   {{ ('"' ~ filters.category ~ '"') | safe if filters.category else 'null' }},
     confidence: {{ ('"' ~ filters.confidence ~ '"') | safe if filters.confidence else 'null' }},
-    source:     {{ ('"' ~ filters.source ~ '"') | safe if filters.source else 'null' }},
     file_path:  {{ ('"' ~ filters.file_path ~ '"') | safe if filters.file_path else 'null' }},
 };
 
@@ -201,7 +212,6 @@ function _matchesFilters(f) {
     if (_activeFilters.severity   && f.severity   !== _activeFilters.severity)   return false;
     if (_activeFilters.category   && f.category   !== _activeFilters.category)   return false;
     if (_activeFilters.confidence && f.confidence !== _activeFilters.confidence) return false;
-    if (_activeFilters.source     && f.source     !== _activeFilters.source)     return false;
     if (_activeFilters.file_path  && !(f.file_path || '').includes(_activeFilters.file_path)) return false;
     return true;
 }
@@ -210,12 +220,17 @@ function _severityBadge(sev) {
     return `<span class="badge badge-${sev}">${sev.toUpperCase()}</span>`;
 }
 
+function _extraLocs(f) {
+    if (!f.locations) return [];
+    if (Array.isArray(f.locations)) return f.locations;
+    try { return JSON.parse(f.locations) || []; } catch { return []; }
+}
+
 function _escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function _buildRow(f) {
-    const src = f.source || 'active';
     const checked = (f.include_test === undefined || f.include_test) ? 'checked' : '';
     const _svgTick    = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg>`;
     const _svgCross   = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
@@ -231,9 +246,9 @@ function _buildRow(f) {
     const actions = recheckBtn + approveReject;
     return `<tr data-finding-id="${_escHtml(f.id)}">
         <td>${_severityBadge(f.severity)}</td>
-        <td><span class="badge badge-source-${_escHtml(src)}">${_escHtml(src.charAt(0).toUpperCase()+src.slice(1))}</span></td>
         <td><a href="/findings/${_escHtml(f.id)}">${_escHtml(f.title)}</a></td>
-        <td class="mono cell-truncate" style="font-size:.75rem" title="${_escHtml(f.file_path)}:${f.line_start}">${_escHtml(f.file_path)}:${f.line_start}</td>
+        <td class="mono cell-truncate" style="font-size:.75rem" title="${_escHtml(f.file_path)}:${f.line_start}${_extraLocs(f).length ? ` (+${_extraLocs(f).length} more)` : ''}">${_escHtml(f.file_path)}:${f.line_start}${_extraLocs(f).length ? ` <span class="badge" style="font-size:0.65rem;padding:1px 5px;vertical-align:middle;">+${_extraLocs(f).length}</span>` : ''}</td>
+        <td class="body-sm cell-truncate" title="${_escHtml(f.system_name||'')}">${_escHtml(f.system_name||'—')}</td>
         <td><span class="badge badge-category">${_escHtml(f.category)}</span></td>
         <td class="body-sm text-variant">${_escHtml(f.confidence)}</td>
         <td><span class="badge status-${_escHtml(f.status)}">${_escHtml(f.status)}</span></td>
@@ -250,13 +265,13 @@ function _ensureTable() {
         <div class="card" style="padding:0;">
           <table class="data-table" style="width:100%;">
             <thead><tr>
-              <th style="width:8%">Severity</th>
-              <th style="width:7%">Source</th>
-              <th style="width:28%">Title</th>
-              <th style="width:20%">File</th>
-              <th style="width:8%">Category</th>
+              <th style="width:7%">Severity</th>
+              <th style="width:32%">Title</th>
+              <th style="width:16%">File</th>
+              <th style="width:10%">System</th>
+              <th style="width:7%">Category</th>
               <th style="width:8%">Confidence</th>
-              <th style="width:8%">Status</th>
+              <th style="width:7%">Status</th>
               <th style="width:5%" title="Include a test case when applying this fix">Test</th>
               <th style="width:8%">Actions</th>
             </tr></thead>

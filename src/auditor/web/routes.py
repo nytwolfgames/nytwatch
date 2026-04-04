@@ -197,12 +197,50 @@ async def findings_list(
         "source": source,
         "system": system,
     }
+    ignored_dirs = {
+        row["path"].replace("\\", "/").rstrip("/")
+        for row in db.list_source_dirs()
+        if row["source_type"] == "ignored"
+    }
+    active_systems = [
+        s for s in db.list_systems()
+        if s.get("source_dir", "").replace("\\", "/").rstrip("/") not in ignored_dirs
+    ]
     return templates.TemplateResponse(request, "findings_list.html", {
         "findings": findings,
         "filters": filters,
         "approved_count": approved_count,
-        "systems": db.list_systems(),  # [{name, source_dir, paths, ...}]
+        "systems": active_systems,
     })
+
+
+@router.post("/findings/clean")
+async def clean_findings(
+    request: Request,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    category: Optional[str] = None,
+    confidence: Optional[str] = None,
+    file_path: Optional[str] = None,
+    source: Optional[str] = None,
+    system: Optional[str] = None,
+):
+    db = get_db(request)
+    path_prefixes = None
+    if system:
+        sys_def = next((s for s in db.list_systems() if s["name"] == system), None)
+        if sys_def:
+            path_prefixes = sys_def["paths"]
+    deleted = db.delete_findings_by_filter(
+        status=status,
+        severity=severity,
+        category=category,
+        confidence=confidence,
+        file_path=file_path,
+        source=source,
+        path_prefixes=path_prefixes,
+    )
+    return JSONResponse({"deleted": deleted})
 
 
 @router.get("/findings/export")

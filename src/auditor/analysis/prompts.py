@@ -73,16 +73,19 @@ Each finding object has these fields:
   severity         string   — "critical" | "high" | "medium" | "low" | "info"
   category         string   — "bug" | "performance" | "ue-antipattern" | "modern-cpp" | "memory" | "readability"
   confidence       string   — "high" | "medium" | "low"
-  file_path        string   — repo-relative path of the file containing the issue
-  line_start       int      — first line of the issue
-  line_end         int      — last line of the issue
-  code_snippet     string   — verbatim problematic code
+  file_path        string   — repo-relative path of the PRIMARY (most representative) occurrence
+  line_start       int      — first line of the primary occurrence
+  line_end         int      — last line of the primary occurrence
+  code_snippet     string   — verbatim problematic code from the primary occurrence
   suggested_fix    string?  — corrected code or description of the fix
-  fix_diff         string?  — unified diff of the fix (if auto-fixable)
+  fix_diff         string?  — unified diff of the fix covering ALL affected locations (if auto-fixable)
   can_auto_fix     bool     — true only if fix_diff can be applied without human judgment
   reasoning        string   — why this is an issue and why the fix is correct
   test_code        string?  — UE Automation Test that verifies the fix (see format below)
-  test_description string?  — one-line description of what the test validates"""
+  test_description string?  — one-line description of what the test validates
+  locations        array?   — additional affected locations when the same root-cause issue appears in more than one place.
+                              Each entry: {"file_path": "...", "line_start": N, "line_end": N}.
+                              Omit (or null) for single-location issues."""
 
 
 def build_scan_prompt(system_name: str, file_paths: list[str]) -> str:
@@ -116,6 +119,14 @@ Find every issue across ALL of these categories:
 5. **Modern C++** — Raw owning pointers where smart pointers fit, C-style casts, missing constexpr/consteval, unnecessary heap allocation, auto improvements
 
 ---
+
+## Grouping Rule
+
+If the **exact same root-cause issue** (same category, same fix pattern) appears in multiple locations across the scanned files, emit **ONE finding** that covers all occurrences:
+- Set `file_path` / `line_start` / `line_end` to the most representative occurrence.
+- List every other affected location in the `locations` array (each entry: `{{"file_path": "...", "line_start": N, "line_end": N}}`).
+- The `fix_diff` must cover **all** affected locations.
+- Do **NOT** group issues that merely look similar but have different root causes or require different fixes.
 
 ## Output Format
 
@@ -154,12 +165,41 @@ Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.
 
 
 def build_recheck_prompt(finding: dict) -> str:
+    # Build full list of affected locations (primary + extras)
+    primary = {
+        "file_path": finding["file_path"],
+        "line_start": finding.get("line_start", "?"),
+        "line_end": finding.get("line_end", "?"),
+    }
+    extra_locs: list[dict] = []
+    if finding.get("locations"):
+        try:
+            extra_locs = json.loads(finding["locations"]) or []
+        except (json.JSONDecodeError, TypeError):
+            pass
+    all_locs = [primary] + extra_locs
+
+    if len(all_locs) == 1:
+        locations_block = f"File:     {primary['file_path']}  (lines {primary['line_start']}–{primary['line_end']})"
+        task_instruction = "Use the Read tool to read the **current** contents of the file above.\nDetermine whether this specific issue is still present in the current code."
+    else:
+        loc_lines = "\n".join(
+            f"  {i+1}. {loc['file_path']}  (lines {loc['line_start']}–{loc['line_end']})"
+            for i, loc in enumerate(all_locs)
+        )
+        locations_block = f"Affected locations:\n{loc_lines}"
+        task_instruction = (
+            "Use the Read tool to read the **current** contents of each file listed above.\n"
+            "Determine whether this specific issue is still present in ANY of the locations.\n"
+            "Set `still_valid` to true if it persists in at least one location."
+        )
+
     return f"""\
 You are a code auditor verifying whether a previously-identified issue is still present.
 
 ## Finding
 Title:    {finding['title']}
-File:     {finding['file_path']}  (lines {finding.get('line_start', '?')}–{finding.get('line_end', '?')})
+{locations_block}
 Severity: {finding.get('severity', '')}  |  Category: {finding.get('category', '')}
 
 ### Original Description
@@ -171,14 +211,13 @@ Severity: {finding.get('severity', '')}  |  Category: {finding.get('category', '
 ```
 
 ## Task
-Use the Read tool to read the **current** contents of the file at the path above.
-Determine whether this specific issue is still present in the current code.
+{task_instruction}
 
 ## Output Format
 Return ONLY this JSON object — no markdown fences, no other text:
 {{"still_valid": true, "reason": "brief explanation"}}
 
-Set `still_valid` to false if the issue has been fixed or no longer applies.\
+Set `still_valid` to false only if the issue has been fixed in ALL locations.\
 """
 
 
@@ -195,12 +234,27 @@ def build_finding_chat_prompt(
     History is capped to the last ``_CHAT_HISTORY_LIMIT`` messages so the
     context window stays bounded on long conversations.
     """
+    # Build location block — primary + any additional locations
+    extra_locs: list[dict] = []
+    if finding.get("locations"):
+        try:
+            extra_locs = json.loads(finding["locations"]) or []
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if extra_locs:
+        loc_lines = [f"  Primary: {finding['file_path']} (lines {finding.get('line_start','?')}–{finding.get('line_end','?')})"]
+        for loc in extra_locs:
+            loc_lines.append(f"  Also:    {loc['file_path']} (lines {loc.get('line_start','?')}–{loc.get('line_end','?')})")
+        location_str = "\n".join(loc_lines)
+    else:
+        location_str = f"{finding['file_path']}  (lines {finding.get('line_start', '?')}–{finding.get('line_end', '?')})"
+
     lines = [
         "You are a code review assistant helping a developer refine a code finding and its suggested fix.",
         "",
         "## Finding",
         f"Title:      {finding['title']}",
-        f"File:       {finding['file_path']}  (lines {finding.get('line_start', '?')}–{finding.get('line_end', '?')})",
+        f"File:       {location_str}",
         f"Severity:   {finding.get('severity', '')}  |  Category: {finding.get('category', '')}  |  Confidence: {finding.get('confidence', '')}",
         "",
         "### Description",

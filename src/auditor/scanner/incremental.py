@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import subprocess
 import threading
@@ -245,6 +246,10 @@ def _process_system(
                 continue
 
             source_type = _classify_path(fo.file_path)
+            locations_json = (
+                json.dumps([loc.model_dump() for loc in fo.locations])
+                if fo.locations else None
+            )
             finding = Finding(
                 scan_id=scan_id,
                 title=fo.title,
@@ -262,6 +267,7 @@ def _process_system(
                 reasoning=fo.reasoning,
                 test_code=fo.test_code,
                 test_description=fo.test_description,
+                locations=locations_json,
                 source=FindingSource(source_type),
                 fingerprint=fingerprint,
             )

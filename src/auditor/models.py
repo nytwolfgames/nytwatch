@@ -94,6 +94,7 @@ class Finding(BaseModel):
     reasoning: str
     test_code: Optional[str] = None
     test_description: Optional[str] = None
+    locations: Optional[str] = None  # JSON-encoded list of {file_path, line_start, line_end}
     source: FindingSource = FindingSource.ACTIVE
     status: FindingStatus = FindingStatus.PENDING
     batch_id: Optional[str] = None

@@ -5,6 +5,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class LocationOutput(BaseModel):
+    file_path: str
+    line_start: int
+    line_end: int
+
+
 class FindingOutput(BaseModel):
     title: str
     description: str
@@ -21,6 +27,7 @@ class FindingOutput(BaseModel):
     reasoning: str
     test_code: Optional[str] = None
     test_description: Optional[str] = None
+    locations: Optional[list[LocationOutput]] = None
 
 
 class ScanResult(BaseModel):

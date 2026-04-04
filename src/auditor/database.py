@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS findings (
     test_code       TEXT,
     test_description TEXT,
     include_test    INTEGER NOT NULL DEFAULT 1,
+    locations       TEXT,
     source          TEXT NOT NULL DEFAULT 'project',
     status          TEXT NOT NULL DEFAULT 'pending',
     batch_id        TEXT,
@@ -162,6 +163,10 @@ class Database:
             self.conn.execute(
                 "ALTER TABLE findings ADD COLUMN include_test INTEGER NOT NULL DEFAULT 1"
             )
+        if "locations" not in finding_cols:
+            self.conn.execute(
+                "ALTER TABLE findings ADD COLUMN locations TEXT"
+            )
 
     def close(self):
         with self._lock:
@@ -255,15 +260,15 @@ class Database:
                 """INSERT INTO findings (id, scan_id, title, description, severity,
                    category, confidence, file_path, line_start, line_end,
                    code_snippet, suggested_fix, fix_diff, can_auto_fix, reasoning,
-                   test_code, test_description, source, status, batch_id, fingerprint, created_at, reviewed_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   test_code, test_description, locations, source, status, batch_id, fingerprint, created_at, reviewed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     finding.id, finding.scan_id, finding.title, finding.description,
                     finding.severity.value, finding.category.value, finding.confidence.value,
                     finding.file_path, finding.line_start, finding.line_end,
                     finding.code_snippet, finding.suggested_fix, finding.fix_diff,
                     int(finding.can_auto_fix), finding.reasoning,
-                    finding.test_code, finding.test_description,
+                    finding.test_code, finding.test_description, finding.locations,
                     finding.source.value, finding.status.value, finding.batch_id,
                     finding.fingerprint, finding.created_at, finding.reviewed_at,
                 ),
@@ -274,7 +279,22 @@ class Database:
         row = self.conn.execute(
             "SELECT * FROM findings WHERE id = ?", (finding_id,)
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        d = {k: row[k] for k in row.keys()}
+        d["locations_list"] = self._parse_locations(d.get("locations"))
+        return d
+
+    @staticmethod
+    def _parse_locations(raw) -> list:
+        """Deserialise the locations JSON column into a plain list of dicts."""
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return []
 
     def list_findings(
         self,
@@ -292,27 +312,27 @@ class Database:
         params: list = []
 
         if status:
-            where.append("status = ?")
+            where.append("f.status = ?")
             params.append(status)
         if severity:
-            where.append("severity = ?")
+            where.append("f.severity = ?")
             params.append(severity)
         if category:
-            where.append("category = ?")
+            where.append("f.category = ?")
             params.append(category)
         if confidence:
-            where.append("confidence = ?")
+            where.append("f.confidence = ?")
             params.append(confidence)
         if file_path:
-            where.append("file_path LIKE ?")
+            where.append("f.file_path LIKE ?")
             params.append(f"%{file_path}%")
         if source:
-            where.append("source = ?")
+            where.append("f.source = ?")
             params.append(source)
         if path_prefixes:
             # Normalise backslashes in the stored file_path so the filter works
             # on both Windows and Unix regardless of how paths were recorded.
-            clauses = " OR ".join("REPLACE(file_path, '\\', '/') LIKE ?" for _ in path_prefixes)
+            clauses = " OR ".join("REPLACE(f.file_path, '\\', '/') LIKE ?" for _ in path_prefixes)
             where.append(f"({clauses})")
             for p in path_prefixes:
                 params.append(p.replace("\\", "/").rstrip("/") + "/%")
@@ -321,17 +341,25 @@ class Database:
         params.extend([limit, offset])
 
         rows = self.conn.execute(
-            f"SELECT * FROM findings {clause} ORDER BY "
-            f"CASE severity "
+            f"SELECT f.*, s.system_name FROM findings f "
+            f"LEFT JOIN scans s ON f.scan_id = s.id "
+            f"{clause} ORDER BY "
+            f"CASE f.severity "
             f"  WHEN 'critical' THEN 0 "
             f"  WHEN 'high' THEN 1 "
             f"  WHEN 'medium' THEN 2 "
             f"  WHEN 'low' THEN 3 "
             f"  WHEN 'info' THEN 4 "
-            f"END, created_at DESC LIMIT ? OFFSET ?",
+            f"END, f.created_at DESC LIMIT ? OFFSET ?",
             params,
         ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = {k: r[k] for k in r.keys()}
+            d["locations_list"] = self._parse_locations(d.get("locations"))
+            d["locations_extra"] = len(d["locations_list"])
+            result.append(d)
+        return result
 
     def update_finding_status(self, finding_id: str, status: FindingStatus):
         updates = {"status": status.value}
@@ -424,6 +452,57 @@ class Database:
             fingerprints,
         ).fetchall()
         return {row["fingerprint"] for row in rows}
+
+    def delete_findings_by_filter(
+        self,
+        status: Optional[str] = None,
+        severity: Optional[str] = None,
+        category: Optional[str] = None,
+        confidence: Optional[str] = None,
+        file_path: Optional[str] = None,
+        source: Optional[str] = None,
+        path_prefixes: Optional[list[str]] = None,
+    ) -> int:
+        """Delete findings matching the given filters. Returns the number of rows deleted."""
+        where = []
+        params: list = []
+
+        if status:
+            where.append("status = ?")
+            params.append(status)
+        if severity:
+            where.append("severity = ?")
+            params.append(severity)
+        if category:
+            where.append("category = ?")
+            params.append(category)
+        if confidence:
+            where.append("confidence = ?")
+            params.append(confidence)
+        if file_path:
+            where.append("file_path LIKE ?")
+            params.append(f"%{file_path}%")
+        if source:
+            where.append("source = ?")
+            params.append(source)
+        if path_prefixes:
+            clauses = " OR ".join("REPLACE(file_path, '\\', '/') LIKE ?" for _ in path_prefixes)
+            where.append(f"({clauses})")
+            for p in path_prefixes:
+                params.append(p.replace("\\", "/").rstrip("/") + "/%")
+
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        with self._lock:
+            # Remove child chat messages first to satisfy the FK constraint
+            # (finding_chats.finding_id REFERENCES findings.id, FK enforcement is ON)
+            self.conn.execute(
+                f"DELETE FROM finding_chats WHERE finding_id IN "
+                f"(SELECT id FROM findings {clause})",
+                params,
+            )
+            cursor = self.conn.execute(f"DELETE FROM findings {clause}", params)
+            self.conn.commit()
+        return cursor.rowcount
 
     def wipe_findings(self) -> int:
         """Delete ALL findings (and their associated batch links). Returns row count deleted."""
