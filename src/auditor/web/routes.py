@@ -56,6 +56,29 @@ def get_config(request: Request):
 
 # --- Dashboard ---
 
+def _infer_source_dirs(systems: list[dict], source_dir_paths: set[str]) -> list[dict]:
+    """For systems with an empty source_dir, infer it by longest-prefix match against
+    the known source directories.  Returns the full list (modified in place for matches)."""
+    # Normalise every source dir to "path/with/trailing/slash"
+    sd_normed = {sd: sd.replace("\\", "/").rstrip("/") + "/" for sd in source_dir_paths}
+
+    result = []
+    for s in systems:
+        if s.get("source_dir"):
+            result.append(s)
+            continue
+        best_sd, best_len = "", 0
+        for path in s.get("paths", []):
+            p = path.replace("\\", "/")
+            if not p.endswith("/"):
+                p += "/"
+            for sd, sd_norm in sd_normed.items():
+                if p.startswith(sd_norm) and len(sd_norm) > best_len:
+                    best_sd, best_len = sd, len(sd_norm)
+        result.append(dict(s, source_dir=best_sd) if best_sd else s)
+    return result
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     db = get_db(request)
@@ -68,17 +91,65 @@ async def dashboard(request: Request):
         return RedirectResponse(url="/settings?setup=1")
 
     db_systems = db.list_systems()
+    all_source_dirs = db.list_source_dirs()
+    source_dir_map = {d["path"]: d["source_type"] for d in all_source_dirs}
+
+    # ── One-time repair: assign source_dir to systems that are missing it ──────
+    needs_repair = any(not s.get("source_dir") for s in db_systems)
+    if needs_repair and source_dir_map:
+        repaired = _infer_source_dirs(db_systems, set(source_dir_map.keys()))
+        db.replace_systems([
+            {
+                "name": s["name"],
+                "source_dir": s.get("source_dir") or "",
+                "paths": s.get("paths", []),
+                "min_confidence": s.get("min_confidence"),
+                "file_extensions": s.get("file_extensions"),
+                "claude_fast_mode": s.get("claude_fast_mode"),
+            }
+            for s in repaired
+        ])
+        db_systems = db.list_systems()
+        logger.info("Repaired source_dir for %d system(s)",
+                    sum(1 for s in repaired if s.get("source_dir")))
+
+    # ── Build grouped structure (order matches list_systems: source_dir, sort_order, name) ──
+    sys_by_dir: dict[str, list] = {}
+    for s in db_systems:
+        sd = s.get("source_dir") or ""
+        sys_by_dir.setdefault(sd, []).append({
+            "name": s["name"],
+            "source_dir": sd,
+            "count": db.count_findings_for_path_prefixes(s["paths"]),
+        })
+
+    # Preserve list_systems ordering: iterate source_dirs in the order they first appear
+    seen: dict[str, None] = {}
+    for s in db_systems:
+        sd = s.get("source_dir") or ""
+        seen[sd] = None  # ordered dict as ordered set
+
+    grouped_systems = [
+        {
+            "source_dir": sd,
+            "ignored": source_dir_map.get(sd) == "ignored",
+            "systems": sys_by_dir[sd],
+        }
+        for sd in seen
+    ]
+    has_grouping = any(g["source_dir"] for g in grouped_systems)
+
+    # Flat list in the same order — used as JS index baseline
+    systems = [s for g in grouped_systems for s in g["systems"]]
 
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
-    systems = [
-        {"name": s["name"], "count": db.count_findings_for_path_prefixes(s["paths"])}
-        for s in db_systems
-    ]
     return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "batches": batches,
         "systems": systems,
+        "grouped_systems": grouped_systems,
+        "has_grouping": has_grouping,
     })
 
 
@@ -500,6 +571,7 @@ async def save_systems_api(request: Request):
     db.replace_systems([
         {
             "name": s["name"].strip(),
+            "source_dir": s.get("source_dir") or "",
             "paths": s["paths"],
             "min_confidence": s.get("min_confidence") or None,
             "file_extensions": s.get("file_extensions") or None,
@@ -843,6 +915,111 @@ async def suggest_systems_api(request: Request):
     except Exception as e:
         logger.exception("suggest-systems failed")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+def _build_suggest_paths_prompt(system_name: str, source_dir: str, subdirs: list[dict]) -> str:
+    lines = []
+    for d in subdirs:
+        lines.append(f"  {d['path']}")
+        for c in d["children"][:12]:
+            lines.append(f"    {c}")
+    listing = "\n".join(lines) or f"  (no subdirectories — source dir is a leaf)"
+    sd_root = source_dir.rstrip("/") + "/"
+    return f"""\
+You are configuring a code analysis tool for an Unreal Engine C++ project.
+
+System name: "{system_name}"
+Source directory: "{source_dir}"
+
+Subdirectories of "{source_dir}":
+{listing}
+
+Which paths should the system "{system_name}" scan? Choose directories whose names suggest they \
+are related to the system name. When in doubt, prefer fewer, broader paths.
+
+Rules:
+- Return only paths that appear in the listing above
+- If no subdirectory is clearly related, return the entire source dir: "{sd_root}"
+- All paths must have a trailing slash
+- Do not invent paths that are not listed
+
+Return ONLY valid JSON (no fences, no commentary):
+{{"paths": ["{sd_root}"]}}"""
+
+
+@router.post("/api/suggest-paths")
+async def suggest_paths_api(request: Request):
+    """Ask Claude to suggest scan paths for a single named system inside its source_dir."""
+    body = await request.json()
+    system_name = (body.get("system_name") or "").strip()
+    source_dir  = (body.get("source_dir")  or "").strip()
+
+    if not system_name:
+        return JSONResponse({"error": "system_name is required"}, status_code=400)
+    if not source_dir:
+        return JSONResponse({"error": "source_dir is required"}, status_code=400)
+
+    config = get_config(request)
+    repo_path = (body.get("repo_path") or config.repo_path or "").strip()
+    if not repo_path:
+        return JSONResponse({"error": "No repo path configured"}, status_code=400)
+
+    repo = Path(repo_path).expanduser().resolve()
+    sd_norm  = source_dir.replace("\\", "/").rstrip("/")
+    sd_path  = (repo / sd_norm).resolve()
+    sd_root  = sd_norm + "/"
+
+    if not sd_path.exists() or not sd_path.is_dir():
+        return JSONResponse({"error": f"Source directory not found: {source_dir}"}, status_code=400)
+
+    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", ".git", ".vs", ".idea"}
+
+    # Build one-level-deep listing with immediate children for context
+    subdirs: list[dict] = []
+    try:
+        for entry in sorted(sd_path.iterdir(), key=lambda e: e.name.lower()):
+            if entry.name in _skip or entry.name.startswith(".") or not entry.is_dir():
+                continue
+            rel = str(entry.relative_to(repo)).replace("\\", "/").rstrip("/") + "/"
+            children: list[str] = []
+            try:
+                for child in sorted(entry.iterdir(), key=lambda e: e.name.lower()):
+                    if child.name in _skip or child.name.startswith(".") or not child.is_dir():
+                        continue
+                    children.append(str(child.relative_to(repo)).replace("\\", "/").rstrip("/") + "/")
+            except (PermissionError, OSError):
+                pass
+            subdirs.append({"path": rel, "children": children})
+    except (PermissionError, OSError) as exc:
+        return JSONResponse({"error": f"Cannot read source directory: {exc}"}, status_code=500)
+
+    # No subdirs → the whole source_dir is the only sensible path
+    if not subdirs:
+        return JSONResponse({"paths": [sd_root]})
+
+    prompt = _build_suggest_paths_prompt(system_name, sd_root, subdirs)
+    try:
+        import subprocess as _sp
+        from auditor.analysis.engine import call_claude, _extract_json
+        try:
+            raw = call_claude(prompt, fast=True, timeout=60, repo_path=repo_path, use_tools=False)
+        except _sp.CalledProcessError as cpe:
+            stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()
+            return JSONResponse({"error": f"Claude CLI error: {stderr_detail or cpe.returncode}"}, status_code=500)
+        except FileNotFoundError:
+            return JSONResponse({"error": "Claude CLI not found — ensure 'claude' is on PATH"}, status_code=500)
+
+        data = _extract_json(raw)
+        raw_paths = [p for p in (data.get("paths") or []) if isinstance(p, str) and p.strip()]
+
+        # Validate: every path must be under the source_dir
+        valid = [p for p in raw_paths if p.replace("\\", "/").startswith(sd_root) or p.replace("\\", "/").rstrip("/") + "/" == sd_root]
+        if not valid:
+            valid = [sd_root]
+        return JSONResponse({"paths": valid})
+    except Exception:
+        logger.exception("suggest-paths failed")
+        return JSONResponse({"error": "Suggestion failed — check server logs"}, status_code=500)
 
 
 @router.get("/api/config/status")

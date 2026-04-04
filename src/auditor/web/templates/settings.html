@@ -50,6 +50,18 @@
     You can override any classification below. Changes take effect on the next scan.
 </p>
 
+<div class="card mt-6">
+    <div class="section-label mb-4">Add Directory</div>
+    <div class="flex gap-3 items-center">
+        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex:1;">
+        <div class="type-toggle">
+            <button id="ndt-active" class="tgl-on tgl-active" onclick="setNewDirType('active')">Active</button>
+            <button id="ndt-ignored" onclick="setNewDirType('ignored')">Ignored</button>
+        </div>
+        <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
+    </div>
+</div>
+
 <div class="grid grid-2 gap-6">
     <div class="card">
         <div class="section-label mb-4">Active Directories</div>
@@ -93,18 +105,6 @@
         {% else %}
         <p class="body-sm text-variant">No ignored directories.</p>
         {% endif %}
-    </div>
-</div>
-
-<div class="card mt-6">
-    <div class="section-label mb-4">Add Directory</div>
-    <div class="flex gap-3 items-center">
-        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex:1;">
-        <div class="type-toggle">
-            <button id="ndt-active" class="tgl-on tgl-active" onclick="setNewDirType('active')">Active</button>
-            <button id="ndt-ignored" onclick="setNewDirType('ignored')">Ignored</button>
-        </div>
-        <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
     </div>
 </div>
 

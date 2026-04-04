@@ -58,45 +58,84 @@
 {% endif %}
 
 {% if systems %}
-<div class="card mb-8" style="padding: 0;">
-    <div style="padding: var(--sp-4) var(--sp-4) 0; display:flex; align-items:center; gap: var(--sp-2);">
+<style>
+  #systems-table .sys-row:hover { background: rgba(0,74,198,0.03) !important; }
+  #systems-table .sys-row:hover .sys-edit-btn { opacity: 1 !important; }
+  #systems-table .sys-group-row { background: var(--surface-container-low) !important; }
+</style>
+<div class="card mb-8" style="padding: 0; overflow: hidden;">
+
+    <div style="padding: var(--sp-4) var(--sp-5); display:flex; align-items:center; gap: var(--sp-2);">
         <span class="label-lg" style="flex:1;">Systems</span>
         <button class="btn btn-sm scan-safe" onclick="openDrawer(null)">+ Add System</button>
         <button class="btn btn-sm" onclick="triggerScan(null, 'incremental')">Incremental All</button>
         <button class="btn btn-sm btn-primary" onclick="triggerScan(null, 'full')">Full Scan All</button>
     </div>
-    <table id="systems-table" class="data-table" style="width: 100%; margin-top: var(--sp-3);">
+
+    <table id="systems-table" class="data-table">
         <thead>
             <tr>
                 <th>System</th>
-                <th style="width: 80px;">Findings</th>
-                <th style="width: 220px; text-align: right;">Actions</th>
+                <th style="width:80px;">Findings</th>
+                <th style="width:210px; text-align:right;">Actions</th>
             </tr>
         </thead>
         <tbody>
-            {% for system in systems %}
-            <tr data-system="{{ system.name }}">
-                <td class="body-md">
-                    <a href="/findings?system={{ system.name }}" style="color: inherit; text-decoration: none;">{{ system.name }}</a>
-                    <button onclick="openDrawer({{ loop.index0 }})" class="scan-safe" title="Edit system"
-                        style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:0.8rem;padding:1px 5px;margin-left:3px;opacity:.5;vertical-align:middle;">✏</button>
-                    <span class="system-scan-badge" style="display:none; margin-left: var(--sp-2); font-size:0.7rem; background:#1d4ed8; color:#fff; padding:2px 7px; border-radius:4px; font-weight:500; vertical-align:middle;"></span>
+            {% set ns = namespace(idx=0) %}
+            {% for group in grouped_systems %}
+
+            {% if has_grouping %}
+            <tr class="sys-group-row">
+                <td colspan="3" style="padding: 8px var(--sp-4); border-top: 1px solid var(--outline-variant);">
+                    <div style="display:flex; align-items:center; gap:var(--sp-2);">
+                        <span class="mono text-variant" style="font-size:0.72rem; flex:1;">
+                            {{ group.source_dir if group.source_dir else 'Ungrouped' }}
+                        </span>
+                        {% if group.ignored %}
+                        <span class="badge badge-source-ignored">ignored</span>
+                        {% endif %}
+                    </div>
                 </td>
-                <td class="body-sm text-variant" style="width: 80px;">
+            </tr>
+            {% endif %}
+
+            {% for system in group.systems %}
+            <tr class="sys-row" data-system="{{ system.name }}">
+                <td>
+                    <div style="display:flex; align-items:center; gap:var(--sp-2);">
+                        <a href="/findings?system={{ system.name }}"
+                           style="color:var(--on-surface); font-weight:500; text-decoration:none;">{{ system.name }}</a>
+                        <button onclick="openDrawer({{ ns.idx }})" class="sys-edit-btn scan-safe" title="Edit system"
+                                style="background:none; border:none; cursor:pointer; color:var(--outline);
+                                       font-size:0.75rem; padding:1px 5px; opacity:0; transition:opacity 0.15s;
+                                       line-height:1; border-radius:var(--radius-sm);">✏</button>
+                        <span class="system-scan-badge badge"
+                              style="display:none; background:var(--status-approved-bg); color:var(--status-approved-fg);"></span>
+                    </div>
+                </td>
+                <td>
                     {% if system.count > 0 %}
-                    <a href="/findings?system={{ system.name }}" style="font-weight: 600; color: var(--on-surface);">{{ system.count }}</a>
+                    <a href="/findings?system={{ system.name }}"
+                       style="font-weight:600; color:var(--on-surface); text-decoration:none;">{{ system.count }}</a>
                     {% else %}
                     <span class="text-outline">0</span>
                     {% endif %}
                 </td>
-                <td style="text-align: right; white-space: nowrap;">
+                <td style="text-align:right;">
+                    {% if not group.ignored %}
                     <span class="system-actions">
                         <button class="btn btn-sm" onclick="triggerScan('{{ system.name }}', 'incremental')">Incremental</button>
-                        <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system.name }}', 'full')" style="margin-left: var(--sp-2);">Full Scan</button>
+                        <button class="btn btn-sm btn-primary" onclick="triggerScan('{{ system.name }}', 'full')"
+                                style="margin-left:var(--sp-2);">Full Scan</button>
                     </span>
-                    <button class="btn btn-sm btn-danger system-stop-btn scan-safe" onclick="cancelScan()" style="display:none;">Stop</button>
+                    {% endif %}
+                    <button class="btn btn-sm btn-danger system-stop-btn scan-safe"
+                            onclick="cancelScan()" style="display:none;">Stop</button>
                 </td>
             </tr>
+            {% set ns.idx = ns.idx + 1 %}
+            {% endfor %}
+
             {% endfor %}
         </tbody>
     </table>
@@ -165,7 +204,12 @@
                    placeholder="e.g. Campaign-Core" oninput="syncDrawerName()">
         </div>
         <div>
-            <label class="body-sm text-outline" style="display:block;margin-bottom:8px;">Paths</label>
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+                <label class="body-sm text-outline" style="flex:1;">Paths</label>
+                <button id="drawer-suggest-btn" onclick="suggestDrawerPaths(this)" class="btn btn-sm scan-safe"
+                        style="font-size:0.75rem;padding:2px 8px;">✨ Auto-detect</button>
+            </div>
+            <div id="drawer-suggest-status" style="display:none;font-size:0.78rem;color:var(--on-surface-variant);margin-bottom:6px;"></div>
             <div id="drawer-paths"></div>
             <button onclick="addBlankPath(this)" class="btn btn-sm scan-safe" style="margin-top:8px;">+ Add Path</button>
         </div>
@@ -248,6 +292,7 @@ let _editIdx = -1;      // index in _sys currently in drawer; -1 = none
 let _origSys = null;    // deep-copy at drawer open, restored on cancel
 let _pickerForPath = -1;
 let _pickerCurrent = '';
+let _pickerRoot = '';  // source_dir used as navigation root; empty = repo root
 
 // Boot: load current systems and source dirs from API in parallel
 let _sysReady = false;
@@ -328,6 +373,10 @@ async function openDrawer(idx) {
             ? '' : String(sys.claude_fast_mode);
         if (extEl) extEl.value = sys.file_extensions ? sys.file_extensions.join(', ') : '';
 
+        // Reset suggest status
+        const suggestStatus = document.getElementById('drawer-suggest-status');
+        if (suggestStatus) { suggestStatus.textContent = ''; suggestStatus.style.display = 'none'; }
+
         document.getElementById('drawer-backdrop').style.display = '';
         document.getElementById('system-drawer').style.display = 'flex';
     } catch (e) {
@@ -339,6 +388,10 @@ async function openDrawer(idx) {
 function onDrawerSrcDirChange() {
     if (_editIdx < 0) return;
     _sys[_editIdx].source_dir = document.getElementById('drawer-source-dir')?.value || '';
+    // Clear paths — they were scoped to the previous source dir
+    _sys[_editIdx].paths = [];
+    closePicker();
+    renderPaths();
 }
 
 function closeDrawer() {
@@ -366,6 +419,50 @@ function syncAdvanced() {
     _sys[_editIdx].file_extensions = exts
         ? exts.split(',').map(e => e.trim()).filter(Boolean)
         : null;
+}
+
+// ── Auto-detect paths ─────────────────────────────────────────────────────────
+async function suggestDrawerPaths(btn) {
+    if (_editIdx < 0) return;
+    const name    = (document.getElementById('drawer-name')?.value || '').trim();
+    const srcDir  = (document.getElementById('drawer-source-dir')?.value || '').trim();
+    if (!srcDir) { alert('Select a source directory first.'); return; }
+    if (!name)   { alert('Enter a system name first.'); return; }
+
+    const statusEl = document.getElementById('drawer-suggest-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Detecting…';
+    if (statusEl) { statusEl.textContent = 'Asking Claude to suggest paths…'; statusEl.style.display = ''; }
+
+    try {
+        const r = await fetch('/api/suggest-paths', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ system_name: name, source_dir: srcDir }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) {
+            if (statusEl) { statusEl.textContent = '✗ ' + (d.error || 'Failed'); statusEl.style.color = 'var(--error,#f87171)'; }
+            return;
+        }
+        const paths = (d.paths || []).filter(p => p.trim());
+        if (!paths.length) {
+            if (statusEl) { statusEl.textContent = '✗ No paths returned.'; statusEl.style.color = 'var(--error,#f87171)'; }
+            return;
+        }
+        _sys[_editIdx].paths = paths;
+        closePicker();
+        renderPaths();
+        if (statusEl) {
+            statusEl.style.color = 'var(--on-surface-variant)';
+            statusEl.textContent = `✓ Suggested ${paths.length} path${paths.length > 1 ? 's' : ''}`;
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = '✗ ' + e.message; statusEl.style.color = 'var(--error,#f87171)'; }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✨ Auto-detect';
+    }
 }
 
 // ── Path list rendering ───────────────────────────────────────────────────────
@@ -432,16 +529,22 @@ function subOwners(path, systemName) {
 async function openPicker(pathIdx, anchorEl) {
     closeMoveMenu();
     _pickerForPath = pathIdx;
-    const current = (_sys[_editIdx]?.paths[pathIdx] || '').replace(/\/?$/, '');
-    // If no path set yet, start browsing inside the selected source_dir
-    const srcDir = (document.getElementById('drawer-source-dir')?.value || '').replace(/\/?$/, '');
-    const startPath = current || srcDir;
+    const current = (_sys[_editIdx]?.paths[pathIdx] || '').replace(/\\/g, '/').replace(/\/?$/, '');
+    // Root = selected source_dir (trailing slash stripped for comparisons)
+    _pickerRoot = (document.getElementById('drawer-source-dir')?.value || '').replace(/\\/g, '/').replace(/\/?$/, '');
+    // Start at current path, or source_dir if no path set yet
+    const startPath = current || _pickerRoot;
     await navigatePicker(startPath);
     popup(document.getElementById('path-picker'), anchorEl, 'flex');
 }
 
 async function navigatePicker(path) {
-    _pickerCurrent = path.replace(/\\/g, '/').replace(/\/?$/, '');
+    let norm = path.replace(/\\/g, '/').replace(/\/?$/, '');
+    // Clamp: never navigate above _pickerRoot
+    if (_pickerRoot && norm !== _pickerRoot && !norm.startsWith(_pickerRoot + '/')) {
+        norm = _pickerRoot;
+    }
+    _pickerCurrent = norm;
     const el = document.getElementById('picker-entries');
     el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
     try {
@@ -454,14 +557,26 @@ async function navigatePicker(path) {
 }
 
 function renderPickerData(data) {
-    // Breadcrumb
-    const parts = _pickerCurrent ? _pickerCurrent.split('/').filter(Boolean) : [];
-    let crumb = `<span onclick="navigatePicker('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
-    let cum = '';
-    for (const p of parts) {
+    // Breadcrumb — root is the source_dir (or repo root when no source_dir set)
+    const rootParts  = _pickerRoot ? _pickerRoot.split('/').filter(Boolean) : [];
+    const rootLabel  = rootParts.length ? rootParts[rootParts.length - 1] : 'repo';
+    const rootTitle  = _pickerRoot || 'repo root';
+
+    // Path segments that are *below* the root
+    const relPath = _pickerRoot
+        ? _pickerCurrent.slice(_pickerRoot.length).replace(/^\//, '')
+        : _pickerCurrent;
+    const relParts = relPath ? relPath.split('/').filter(Boolean) : [];
+
+    let crumb = `<span onclick="navigatePicker('${_pickerRoot}')"
+                       title="${escH(rootTitle)}"
+                       style="cursor:pointer;color:var(--primary);">${escH(rootLabel)}</span>`;
+    let cum = _pickerRoot;
+    for (const p of relParts) {
         cum += (cum ? '/' : '') + p;
         const cp = cum;
-        crumb += ` <span style="color:var(--on-surface-variant);">/</span> <span onclick="navigatePicker('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+        crumb += ` <span style="color:var(--on-surface-variant);">/</span>`
+               + ` <span onclick="navigatePicker('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
     }
     document.getElementById('picker-breadcrumb').innerHTML = crumb;
 
@@ -490,8 +605,11 @@ function renderPickerData(data) {
         }).join('');
     }
 
-    document.getElementById('picker-select-btn').textContent =
-        _pickerCurrent ? `Select "${_pickerCurrent}/"` : 'Select repo root';
+    // Select-current button label shows relative path from root
+    const selectLabel = relParts.length
+        ? `Select "${relParts.join('/')}/"`
+        : `Select "${rootLabel}/" (root)`;
+    document.getElementById('picker-select-btn').textContent = selectLabel;
 }
 
 function selectPickerPath(path) {
@@ -502,7 +620,7 @@ function selectPickerPath(path) {
 }
 
 function selectPickerCurrent() {
-    selectPickerPath(_pickerCurrent ? _pickerCurrent + '/' : '');
+    selectPickerPath(_pickerCurrent + '/');
 }
 
 function closePicker() {
@@ -513,8 +631,10 @@ function closePicker() {
 // ── Move menu ─────────────────────────────────────────────────────────────────
 function openMoveMenu(pathIdx, anchorEl) {
     closePicker();
-    const others = _sys.filter((_, i) => i !== _editIdx);
-    if (!others.length) { alert('No other systems to move to.'); return; }
+    const currentSrcDir = _sys[_editIdx]?.source_dir || '';
+    // Only allow moving to systems in the same source directory
+    const others = _sys.filter((s, i) => i !== _editIdx && (s.source_dir || '') === currentSrcDir);
+    if (!others.length) { alert('No other systems in the same source directory to move to.'); return; }
     const menu = document.getElementById('move-menu');
     menu.innerHTML =
         `<div style="padding:5px 10px 6px;font-size:0.72rem;color:var(--on-surface-variant);border-bottom:1px solid var(--outline);">Move to:</div>` +
@@ -632,14 +752,14 @@ function highlightScannedSystem(data) {
             badge.textContent = label;
             badge.style.display = '';
             row.style.background = 'var(--surface-container-high, rgba(29,78,216,.12))';
-            actions.style.display = 'none';
+            if (actions) actions.style.display = 'none';
             stopBtn.style.display = '';
             stopBtn.disabled = data.cancelling;
             stopBtn.textContent = data.cancelling ? 'Cancelling…' : 'Stop';
         } else {
             badge.style.display = 'none';
             row.style.background = '';
-            actions.style.display = '';
+            if (actions) actions.style.display = '';
             stopBtn.style.display = 'none';
         }
     });
