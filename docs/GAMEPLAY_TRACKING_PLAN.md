@@ -34,7 +34,14 @@ The two components communicate entirely through the filesystem — no network co
 
 ```
 nytwatch/                                  # repo root (renamed from code-auditor)
-├── src/nytwatch/                          # renamed from src/nytwatch/
+├── scripts/                               # NEW: install/uninstall scripts
+│   ├── windows/
+│   │   ├── install.ps1                    # Windows install script
+│   │   └── uninstall.ps1                  # Windows uninstall script
+│   └── unix/
+│       ├── install.sh                     # Mac/Linux install script
+│       └── uninstall.sh                   # Mac/Linux uninstall script
+├── src/nytwatch/                          # renamed from src/auditor/
 │   ├── tracking/                          # NEW package
 │   │   ├── __init__.py
 │   │   ├── watcher.py                     # Filesystem watcher (watchdog)
@@ -605,6 +612,8 @@ Contents: a single semver line e.g. `1.0.0`. The authoritative version source. T
 
 ```
 nytwatch install-plugin --project /path/to/GameProject [--force]
+# or equivalently:
+nw install-plugin --project /path/to/GameProject [--force]
 ```
 
 ### Step-by-step logic
@@ -645,15 +654,313 @@ nytwatch install-plugin --project /path/to/GameProject [--force]
 
 ```toml
 [project.scripts]
-nytwatch = "auditor.main:main"
+nytwatch = "nytwatch.main:main"
+nw       = "nytwatch.main:main"       # short alias, identical entrypoint
 
 [tool.hatch.build.targets.wheel.shared-data]
 "ue5-plugin" = "share/nytwatch/ue5-plugin"
 ```
 
+Both `nytwatch` and `nw` resolve to the same entrypoint — no conditional logic needed. All CLI commands work with either prefix:
+
+```
+nytwatch serve          ↔   nw serve
+nytwatch install-plugin ↔   nw install-plugin
+nytwatch scan           ↔   nw scan
+nytwatch migrate        ↔   nw migrate
+```
+
 ---
 
-## 10. Auto-Exclusion Logic
+## 10. Install and Uninstall Scripts
+
+Four scripts live in `scripts/` — two per platform. They handle PATH management and environment setup so users never need to manually configure anything after cloning the repo.
+
+### 10a. Scope
+
+| Script | Platform | Purpose |
+|---|---|---|
+| `scripts/windows/install.ps1` | Windows | Install Nytwatch, update User PATH |
+| `scripts/windows/uninstall.ps1` | Windows | Uninstall Nytwatch, remove PATH entry |
+| `scripts/unix/install.sh` | Mac/Linux | Install Nytwatch, update shell profile |
+| `scripts/unix/uninstall.sh` | Mac/Linux | Uninstall Nytwatch, remove PATH entry |
+
+All scripts operate at **user level** — no administrator or sudo privileges required.
+
+---
+
+### 10b. `install.ps1` / `install.sh` — Step-by-step logic
+
+1. **Check Python version** — require 3.11+. Print a clear error and exit if not met.
+
+2. **Check for existing installation** — look for both `nytwatch` and `code-auditor` on PATH.
+   - If `code-auditor` found: print a warning — "Found an existing code-auditor installation. Run `uninstall.ps1` first to remove it before installing Nytwatch." Exit non-zero.
+   - If `nytwatch` already on PATH and version matches: print "Already installed." Exit 0.
+   - If `nytwatch` on PATH but version differs: print "Upgrading from X to Y." Continue.
+
+3. **Install the package**:
+   - `pip install -e .` for development installs (cloned repo)
+   - `pip install nytwatch` for release installs (once published to PyPI)
+
+4. **Locate the CLI entrypoint** — find the `Scripts/` (Windows) or `bin/` (Unix) directory where pip placed the `nytwatch` executable. This is derived from the active Python environment.
+
+5. **Add to PATH**:
+   - **Windows (`install.ps1`)**: reads the current User PATH from the registry (`HKCU:\Environment`), appends the Scripts directory if not already present, writes it back. Does not require admin. Takes effect in new terminal sessions.
+   - **Unix (`install.sh`)**: detects the active shell (bash/zsh), appends `export PATH="...:$PATH"` to the appropriate profile file (`~/.bashrc`, `~/.zshrc`). Sources the profile at the end so it takes effect immediately in the current session.
+
+6. **Create config directory** — create `~/.nytwatch/` if absent. This is where the default `config.yaml` and SQLite database live.
+
+7. **Print confirmation**:
+   ```
+   Nytwatch installed successfully.
+
+   Version  : 1.0.0
+   Config   : ~/.nytwatch/
+   Commands : nytwatch | nw (short alias)
+
+   Run 'nw --help' to get started.
+   Note: Open a new terminal window for PATH changes to take effect. (Windows only)
+   ```
+
+---
+
+### 10c. `uninstall.ps1` / `uninstall.sh` — Step-by-step logic
+
+1. **Detect what is installed** — check for both `nytwatch` and `code-auditor` on PATH or via `pip show`. Handle either gracefully — the uninstaller is used for both the current Nytwatch installation and the legacy code-auditor migration.
+
+2. **Uninstall the package**:
+   - `pip uninstall nytwatch -y` or `pip uninstall code-auditor -y` depending on what was found.
+
+3. **Remove PATH entry**:
+   - **Windows**: reads User PATH from registry, removes any entry pointing to a `nytwatch` or `code-auditor` Scripts directory, writes it back.
+   - **Unix**: removes the matching `export PATH=...` line from `~/.bashrc` / `~/.zshrc`.
+
+4. **Handle data directory**:
+
+   Two cases depending on which package was uninstalled:
+
+   **Case A — Uninstalling `nytwatch`** (clean uninstall, not a migration):
+   ```
+   Remove config and data directory (~/.nytwatch/)? This will delete your database and settings. [y/N]:
+   ```
+   - If `y`: delete `~/.nytwatch/` recursively.
+   - If `n` or blank: leave it intact. Print "Data directory preserved at ~/.nytwatch/"
+
+   **Case B — Uninstalling `code-auditor`** (migration scenario):
+   - Check if `~/.nytwatch/` exists (i.e. migration has already run successfully).
+     - If `~/.nytwatch/` exists: automatically delete `~/.code-auditor/` without prompting. Print "Migration detected — removing legacy data directory (~/.code-auditor/)."
+     - If `~/.nytwatch/` does not exist: prompt the user:
+       ```
+       Remove legacy data directory (~/.code-auditor/)? [y/N]:
+       ```
+       Print a warning if they choose `n`: "Data preserved at ~/.code-auditor/ — run 'nytwatch migrate' after installing Nytwatch to import it."
+
+5. **Print confirmation**:
+   ```
+   code-auditor uninstalled successfully.
+   Legacy data directory removed.
+   Run 'scripts/windows/install.ps1' (Windows) or 'scripts/unix/install.sh' (Unix) to install Nytwatch.
+   ```
+
+---
+
+### 10d. Migration Flow (code-auditor → Nytwatch)
+
+When the time comes to migrate existing code-auditor users to Nytwatch:
+
+```
+Step 1 — Run the uninstaller
+  Windows : .\scripts\windows\uninstall.ps1
+  Unix    : ./scripts/unix/uninstall.sh
+
+  This removes the 'code-auditor' CLI from PATH and uninstalls the package.
+  Choose to keep the data directory (~/.code-auditor/) when prompted
+  — the migrator will handle it.
+
+Step 2 — Pull the new repo (or clone nytwatch)
+  git pull   # if updating in-place
+  # or
+  git clone <nytwatch-repo-url>
+
+Step 3 — Run the installer
+  Windows : .\scripts\windows\install.ps1
+  Unix    : ./scripts/unix/install.sh
+
+  This installs 'nytwatch', adds it to PATH, and creates ~/.nytwatch/
+
+Step 4 — Migrate existing data (if needed)
+  nytwatch migrate --from ~/.code-auditor/
+  # copies the SQLite database and config into ~/.nytwatch/
+  # on success, automatically deletes ~/.code-auditor/
+  # (migration command is a Phase 2 addition)
+
+Step 5 — Run the uninstaller (if not already done in Step 1)
+  .\scripts\windows\uninstall.ps1   # Windows
+  ./scripts/unix/uninstall.sh       # Unix
+  # Since ~/.nytwatch/ now exists, the uninstaller detects the completed
+  # migration and automatically removes ~/.code-auditor/ without prompting
+```
+
+The uninstall script explicitly handles `code-auditor` as a known legacy name so users on the old version can run the new uninstaller without any manual steps.
+
+---
+
+## 11. Documentation Updates
+
+All existing documentation must be updated to reflect: (a) the rebrand from code-auditor to Nytwatch, and (b) the addition of the Gameplay Tracker module. Each file is addressed separately below.
+
+Two types of changes apply across all documents:
+
+**Rebrand changes** — mechanical find-and-replace plus path/command updates:
+- Product name: "Code Auditor" / "Code Auditor Agent" → "Nytwatch"
+- CLI: `code-auditor` → `nytwatch`
+- Data directory: `~/.code-auditor/` → `~/.nytwatch/`
+- Config file: `config.yaml` paths updated to reflect new install location
+- Python package imports: `from auditor.` → `from nytwatch.`
+- Repo name: `code-auditor/` → `nytwatch/`
+
+**Gameplay Tracker additions** — new content specific to each document, detailed below.
+
+---
+
+### 11a. `README.md`
+
+**Rebrand changes:**
+- Title, intro paragraph, all CLI command examples
+- Quick start install steps: replace `pip install -e .` context with reference to `scripts/install.ps1` / `install.sh`
+- Data directory and config path references throughout
+- Project structure diagram (rename `src/auditor/` → `src/nytwatch/`)
+
+**Gameplay Tracker additions:**
+- New entry in the documentation index linking to `docs/GAMEPLAY_TRACKING_PLAN.md`
+- New "Modules" section near the top briefly describing Code Auditor and Gameplay Tracker as the two modules
+- New quick-start step: `nytwatch install-plugin --project /path/to/game` after the server start step
+- New section in Architecture: add NytwatchAgent plugin to the component diagram and explain the filesystem-based communication model
+- Update Requirements: add Unreal Engine 5.7+ as a requirement for the Gameplay Tracker module (optional for Code Auditor only users)
+
+---
+
+### 11b. `docs/SETUP_GUIDE.md`
+
+**Rebrand changes:**
+- All CLI command examples throughout (`code-auditor init`, `code-auditor serve`, `code-auditor scan` → `nytwatch` equivalents)
+- Installation section: replace manual `pip install` with `scripts/install.ps1` / `install.sh` as the primary install method; keep `pip install -e .` as the developer/manual alternative
+- All file path references (`~/.code-auditor/`, `code-auditor.yaml`)
+- Any screenshot alt text or UI label references
+
+**Gameplay Tracker additions:**
+- New **Prerequisites** entry: Unreal Engine 5.7+ (for Gameplay Tracker only)
+- New **Installation** step: `nytwatch install-plugin --project /path` after initial setup
+- New **Gameplay Tracker Setup** section covering:
+  - Arming systems in the Settings UI
+  - Verbosity levels and the `NytwatchVerbosity` metadata tag with usage examples
+  - Tick interval and object scan cap configuration
+  - What a session log looks like and how to use it with Claude
+- New **Sessions** section under Dashboard pages: how to browse, rename, bookmark, and delete sessions
+- New **Migration** section: step-by-step guide for users moving from code-auditor using `uninstall.ps1` + `install.ps1` + `nytwatch migrate`
+- Updated **CLI Reference** table: add `nytwatch install-plugin` / `nw install-plugin` command; document `nw` as the short alias for all commands
+
+---
+
+### 11c. `docs/TECHNICAL_SPEC.md`
+
+This is the most technically intensive document to update — it mirrors the codebase structure directly.
+
+**Rebrand changes:**
+- All module import paths: `auditor.*` → `nytwatch.*`
+- All CLI command signatures
+- Database schema section: reflect systems table new columns (`tracking_enabled`, `tracking_verbosity`)
+- API endpoint table: update any paths that changed
+- Configuration YAML schema: update field names and paths
+- Inter-module dependency graph: rename all nodes
+
+**Gameplay Tracker additions:**
+- New **Database Tables** entries: `nytwatch_sessions` full schema
+- New **Pydantic Models**: session model, tracking config model, `ENytwatchVerbosity` enum
+- New **API Endpoints** entries: all `/api/nytwatch/*` and `/api/sessions/*` endpoints with request/response shapes
+- New **Module Reference** entries for the entire `nytwatch/tracking/` package:
+  - `watcher.py` — class diagram, event handler methods
+  - `session_parser.py` — function signatures and return types
+  - `session_store.py` — function signatures
+  - `config_writer.py` — function signatures
+  - `plugin_installer.py` — function signatures
+- New **WebSocket Message Types** entries for `pie_state`, `session_imported`, `session_deleted`
+- New **UE5 Plugin Reference** section covering:
+  - `NytwatchConfig.json` schema (full field reference)
+  - `nytwatch.lock` schema
+  - Session log format spec
+  - C++ struct and enum definitions (`FNytwatchConfig`, `FNytwatchEvent`, `ENytwatchVerbosity`)
+  - `NytwatchVerbosity` metadata tag reference (UPROPERTY/UCLASS usage)
+- Updated **Component Diagram**: add NytwatchAgent, filesystem communication layer, `Saved/Nytwatch/` directory
+- Updated **Data Flow Diagram**: add PIE session tracking flow alongside existing scan cycle
+
+---
+
+### 11d. `docs/PRODUCT_BRIEF.md`
+
+**Rebrand changes:**
+- Product name throughout
+- Executive summary opening
+- All CLI and path examples in the appendix config reference
+- Roadmap phase descriptions (rename phases if they reference "Code Auditor" specifically)
+- Competitive landscape table (update product name column)
+
+**Gameplay Tracker additions:**
+- **Executive Summary**: update to describe Nytwatch as a two-module platform — static analysis + runtime gameplay tracking
+- **Problem Statement**: add a new problem: "Game logic is opaque at runtime — developers have no structured way to observe how their systems actually behave during play, making it hard to reason about bugs, unexpected interactions, or design questions without printf debugging"
+- **Solution**: add Gameplay Tracker as a sixth key capability alongside the existing five
+- **Key Features**: new feature section covering:
+  - PIE session recording
+  - `NytwatchVerbosity` property tagging
+  - Structured markdown session logs
+  - Claude-ready context output
+  - NytwatchAgent plugin (editor-only, zero shipping impact)
+- **User Journey**: add a gameplay tracking scenario — "You notice a combat bug, arm the CombatSystem at Standard verbosity, reproduce the issue in PIE, open the session log, hand it to Claude"
+- **Architecture Overview**: update diagram to show two modules and the plugin communication model
+- **Roadmap**: update phases to include Gameplay Tracker milestones from `GAMEPLAY_TRACKING_PLAN.md` Phase 1/2/3
+- **Competitive Landscape**: add a column or rows for runtime gameplay observability tools (if any exist); highlight this as a differentiator
+
+---
+
+### 11e. `docs/DESIGN_SYSTEM.md`
+
+Lightest-touch document — mostly naming and one new component area.
+
+**Rebrand changes:**
+- Any explicit "Code Auditor" or "Code Auditor Agent" name references
+- Dashboard URL/port examples if present
+
+**Gameplay Tracker additions:**
+- New **Component Logic** entries for Gameplay Tracker-specific UI:
+  - PIE recording banner (pulsing dot, three states: recording / saved / warning)
+  - Session list row (bookmark star, display name, badges, event count)
+  - Timeline density strip (colour scale from light to dark by event density)
+  - Per-system event count bar chart
+- New **"The Recording Pulse"** signature interaction alongside "The Pulse" loader — the slow CSS animation on the red dot during an active PIE session; same family as the existing shimmer but distinct enough to signal a different mode
+
+---
+
+### 11f. New document: `docs/GAMEPLAY_TRACKING_PLAN.md`
+
+Already exists — this document. No further changes needed beyond keeping it current as decisions are made.
+
+---
+
+### 11g. Documentation update order
+
+Recommended sequence to avoid inconsistency mid-update:
+
+1. `TECHNICAL_SPEC.md` first — it is the source of truth for all technical details; other docs reference it
+2. `README.md` — highest visibility, should be correct before anything else is shared
+3. `SETUP_GUIDE.md` — depends on accurate CLI and install steps from README
+4. `PRODUCT_BRIEF.md` — depends on accurate feature list and architecture from TECHNICAL_SPEC
+5. `DESIGN_SYSTEM.md` — last, depends on knowing final component shapes from all the above
+
+---
+
+## 12. Auto-Exclusion Logic
+
+
 
 When Nytwatch is used with a game project that has NytwatchAgent installed, the plugin's own source code must be excluded from both static analysis and gameplay tracking.
 
@@ -686,7 +993,7 @@ Systems whose paths resolve entirely inside `Plugins/NytwatchAgent/` are rendere
 
 ---
 
-## 11. Phased Rollout
+## 13. Phased Rollout
 
 ### Phase 1 — MVP (Core Tracking Loop)
 
@@ -720,6 +1027,13 @@ Everything needed to go from zero to a working, logged session.
 - Sessions page (`sessions.html`) — list with rename, bookmark, delete, basic detail view
 - Settings Nytwatch tracking arm toggles, verbosity selector, tick interval field
 
+**Documentation** (in order per Section 11g):
+- `TECHNICAL_SPEC.md` — rebrand + all new Gameplay Tracker technical reference
+- `README.md` — rebrand + new module overview, install-plugin quick start, updated architecture
+- `SETUP_GUIDE.md` — rebrand + Gameplay Tracker setup, Sessions usage, migration guide
+- `PRODUCT_BRIEF.md` — rebrand + Gameplay Tracker in features, user journey, roadmap
+- `DESIGN_SYSTEM.md` — rebrand + PIE banner and session UI component specs
+
 ### Phase 2 — Polish
 
 - Session detail panel: per-system event count bars, timeline density strip
@@ -730,6 +1044,7 @@ Everything needed to go from zero to a working, logged session.
 - "Tracked" badge on Systems table rows
 - `--force` flag for `nytwatch install-plugin`
 - Session pruning API and UI control (delete all non-bookmarked sessions older than N days)
+- `nytwatch migrate --from ~/.code-auditor/` command for migrating existing code-auditor data
 
 ### Phase 3 — Future
 
@@ -742,7 +1057,7 @@ Everything needed to go from zero to a working, logged session.
 
 ---
 
-## 12. Resolved Decisions
+## 14. Resolved Decisions
 
 | # | Question | Decision |
 |---|---|---|
@@ -760,7 +1075,7 @@ Everything needed to go from zero to a working, logged session.
 
 ---
 
-## 13. Naming Reference
+## 15. Naming Reference
 
 | Thing | Name |
 |---|---|
@@ -778,8 +1093,8 @@ Everything needed to go from zero to a working, logged session.
 | Game saved directory | `Saved/Nytwatch/` |
 | Lock file | `nytwatch.lock` |
 | Sessions folder | `Saved/Nytwatch/Sessions/` |
-| CLI entrypoint | `nytwatch` |
-| Install command | `nytwatch install-plugin` |
+| CLI entrypoint | `nytwatch` (also `nw` short alias) |
+| Install command | `nytwatch install-plugin` or `nw install-plugin` |
 | DB sessions table | `nytwatch_sessions` |
 | Install manifest | `.nytwatch_install` |
 | Build macro | `NYTWATCH_PLUGIN_VERSION` |
