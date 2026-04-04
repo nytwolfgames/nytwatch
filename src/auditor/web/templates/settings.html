@@ -212,6 +212,8 @@
 .h-ok { background:#22c55e; }
 .h-warn { background:#f59e0b; }
 .h-err { background:#ef4444; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
 <script>
@@ -367,6 +369,7 @@ async function switchProject(path) {
 // ── Wizard state ──────────────────────────────────────────────────────────────
 const WZ_STEPS = [
     {id: 'setup',    label: 'Setup'},
+    {id: 'sources',  label: 'Sources'},
     {id: 'systems',  label: 'Systems'},
     {id: 'build',    label: 'Build'},
     {id: 'schedule', label: 'Schedule'},
@@ -380,6 +383,8 @@ function _wzReset() {
         step: 0,
         project_name: '',
         repo_path: '',
+        source_dirs: [],      // [{path, source_type, auto}]
+        _sourceDetectedFor: '', // tracks which repo_path the source_dirs were detected for
         systems: [],
         build: {ue_installation_dir: '', project_file: '', build_timeout_seconds: 1800, test_timeout_seconds: 600},
         scan_schedule: {incremental_interval_hours: 4, rotation_enabled: false, rotation_interval_hours: 24},
@@ -427,7 +432,9 @@ function wzRender() {
     const el = document.getElementById('wz-content');
     const step = WZ_STEPS[_wz.step].id;
 
-    if (step === 'setup') {
+    if (step === 'sources') {
+        wzRenderSources(el);
+    } else if (step === 'setup') {
         el.innerHTML = `
             <div class="label-lg mb-5">Project Setup</div>
 
@@ -564,23 +571,107 @@ function wzRender() {
     }
 }
 
-// ── Step 2: Systems ───────────────────────────────────────────────────────────
+// ── Step 2: Sources ───────────────────────────────────────────────────────────
+function wzRenderSources(el) {
+    el.innerHTML = `
+        <div class="flex items-center gap-2 mb-3">
+            <div class="label-lg" style="flex:1;">Source Directories</div>
+            <button onclick="wzDetectSources(this)" class="btn btn-sm scan-safe" id="wz-src-detect-btn">Re-detect</button>
+        </div>
+        <p class="body-sm text-variant mb-4">
+            These are the top-level source folders in your repository.
+            Mark each one as <strong>Project</strong> (your game code),
+            <strong>Plugin</strong> (third-party or reusable), or
+            <strong>Ignored</strong> (no C++ to scan).
+            Only non-ignored directories will be used in the next step.
+        </p>
+        <div id="wz-src-list">
+            <div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Detecting…</div>
+        </div>`;
+
+    // Auto-detect if we haven't detected for this repo_path yet
+    if (_wz._sourceDetectedFor !== _wz.repo_path || !_wz.source_dirs.length) {
+        wzDetectSources(null);
+    } else {
+        wzRenderSourceList();
+    }
+}
+
+async function wzDetectSources(btn) {
+    const listEl = document.getElementById('wz-src-list');
+    const detectBtn = document.getElementById('wz-src-detect-btn');
+    if (detectBtn) { detectBtn.disabled = true; detectBtn.textContent = 'Detecting…'; }
+
+    try {
+        const r = await fetch('/api/detect-source-dirs?repo_path=' + encodeURIComponent(_wz.repo_path));
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+
+        // Merge: preserve user overrides for dirs already in _wz.source_dirs,
+        // add newly detected dirs
+        const existing = {};
+        for (const sd of _wz.source_dirs) existing[sd.path] = sd.source_type;
+        _wz.source_dirs = d.dirs.map(dir => ({
+            path: dir.path,
+            source_type: existing[dir.path] !== undefined ? existing[dir.path] : dir.source_type,
+            auto: dir.auto,
+        }));
+        _wz._sourceDetectedFor = _wz.repo_path;
+        wzRenderSourceList();
+    } catch (e) {
+        if (listEl) listEl.innerHTML =
+            `<div style="color:#ef4444;font-size:0.85rem;padding:12px 0;">Detection failed: ${escH(e.message)}</div>
+             <p class="body-sm text-variant mt-2">You can continue and add systems manually in the next step.</p>`;
+    } finally {
+        if (detectBtn) { detectBtn.disabled = false; detectBtn.textContent = 'Re-detect'; }
+    }
+}
+
+function wzRenderSourceList() {
+    const el = document.getElementById('wz-src-list');
+    if (!el) return;
+    if (!_wz.source_dirs.length) {
+        el.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            No source directories found. Check that the repo path is correct.
+        </div>`;
+        return;
+    }
+    const rows = _wz.source_dirs.map((dir, idx) => {
+        const typeOpts = ['project','plugin','ignored'].map(t =>
+            `<option value="${t}" ${dir.source_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`
+        ).join('');
+        const badge = dir.auto ? '' :
+            `<span style="font-size:0.7rem;color:var(--on-surface-variant);margin-left:4px;">(unclassified)</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;
+                            background:var(--surface-container-low);border-radius:6px;margin-bottom:6px;">
+            <span class="mono body-sm" style="flex:1;word-break:break-all;">${escH(dir.path)}${badge}</span>
+            <select class="input input-sm" style="width:7.5rem;"
+                    onchange="_wz.source_dirs[${idx}].source_type=this.value;wzRenderSourceList()">
+                ${typeOpts}
+            </select>
+        </div>`;
+    }).join('');
+    el.innerHTML = rows;
+}
+
+// ── Step 3: Systems ───────────────────────────────────────────────────────────
 function wzRenderSystems(el) {
     let html = `
         <div class="flex items-center gap-2 mb-3">
             <div class="label-lg" style="flex:1;">Systems</div>
-            <button onclick="wzDetect(this)" class="btn btn-sm scan-safe" id="wz-detect-btn">Detect from repo</button>
+            <button onclick="wzSuggest(this)" class="btn btn-sm scan-safe" id="wz-suggest-btn">✨ Suggest with Claude</button>
             <button onclick="wzAddSys()" class="btn btn-sm scan-safe">+ Add System</button>
         </div>
         <p class="body-sm text-variant mb-4">
-            Each system maps to one or more source directories.
-            Use "Detect from repo" to auto-find modules and plugins.
+            Each system groups source directories that Claude analyses together in one pass.
+            Click <strong>Suggest with Claude</strong> to auto-generate systems from your source directories,
+            or add them manually.
         </p>
         <div id="wz-sys-list">`;
 
     if (!_wz.systems.length) {
         html += `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
-            No systems yet — click "Detect from repo" or "+ Add System"
+            No systems yet — click "✨ Suggest with Claude" or "+ Add System"
         </div>`;
     } else {
         html += _wz.systems.map((s, i) => wzSysCard(s, i)).join('');
@@ -588,21 +679,69 @@ function wzRenderSystems(el) {
     html += '</div><div id="wz-overlaps"></div>';
     el.innerHTML = html;
     wzCheckOverlaps();
+
+    // Auto-trigger suggestion if systems list is empty
+    if (!_wz.systems.length) {
+        const suggestBtn = document.getElementById('wz-suggest-btn');
+        if (suggestBtn) wzSuggest(suggestBtn);
+    }
+}
+
+async function wzSuggest(btn) {
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+    if (!activeDirs.length) {
+        document.getElementById('wz-err').textContent =
+            'No non-ignored source directories — go back and classify your source directories first';
+        return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Asking Claude…'; }
+    const listEl = document.getElementById('wz-sys-list');
+    if (listEl && !_wz.systems.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            <span style="display:inline-block;animation:spin 1s linear infinite;">⟳</span>
+            Claude is analysing your source structure…
+        </div>`;
+    }
+    try {
+        const r = await fetch('/api/suggest-systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                repo_path: _wz.repo_path,
+                source_dirs: _wz.source_dirs,
+            }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        if (!d.systems.length) {
+            document.getElementById('wz-err').textContent =
+                'Claude returned no suggestions — add systems manually';
+        } else {
+            const existing = new Set(_wz.systems.map(s => s.name));
+            for (const s of d.systems) {
+                if (!existing.has(s.name)) _wz.systems.push({name: s.name, paths: s.paths, hint: ''});
+            }
+            document.getElementById('wz-err').textContent = '';
+            wzRerender();
+        }
+    } catch (e) {
+        document.getElementById('wz-err').textContent = 'Suggestion failed: ' + e.message;
+        if (listEl && !_wz.systems.length) {
+            listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+                No systems yet — click "+ Add System" to add manually
+            </div>`;
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
+    }
 }
 
 function wzSysCard(s, i) {
     const paths = s.paths.map((p, pi) => wzPathRow(i, pi, p)).join('');
-    const typeOpts = ['project','plugin','ignored'].map(t =>
-        `<option value="${t}" ${s.source_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`
-    ).join('');
     return `<div class="wz-sys-card" id="wz-card-${i}">
         <div class="flex items-center gap-2 mb-3">
             <input type="text" class="input input-sm" style="flex:1;" placeholder="System name"
                 value="${escH(s.name)}" oninput="wzSysName(${i},this.value)">
-            <select class="input input-sm" style="width:7rem;" onchange="wzSysType(${i},this.value)"
-                title="Source directory type">
-                ${typeOpts}
-            </select>
             <button onclick="wzRemoveSys(${i})" class="scan-safe"
                 style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.2rem;padding:2px 6px;">&times;</button>
         </div>
@@ -631,7 +770,7 @@ function wzRerender() {
     if (!el) return;
     if (!_wz.systems.length) {
         el.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
-            No systems yet — click "Detect from repo" or "+ Add System"
+            No systems yet — click "✨ Suggest with Claude" or "+ Add System"
         </div>`;
     } else {
         el.innerHTML = _wz.systems.map((s, i) => wzSysCard(s, i)).join('');
@@ -640,8 +779,7 @@ function wzRerender() {
 }
 
 function wzSysName(i, v) { _wz.systems[i].name = v; wzCheckOverlaps(); }
-function wzSysType(i, v) { _wz.systems[i].source_type = v; }
-function wzAddSys() { _wz.systems.push({name:'', paths:[], hint:'', source_type:'project'}); wzRerender(); }
+function wzAddSys() { _wz.systems.push({name:'', paths:[], hint:''}); wzRerender(); }
 function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
 
 function wzAddPath(si) {
@@ -686,40 +824,7 @@ function wzCheckOverlaps() {
     ).join('');
 }
 
-async function wzDetect(btn) {
-    if (!_wz.repo_path) {
-        document.getElementById('wz-err').textContent = 'Set the repository path in step 1 first';
-        return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Detecting…';
-    try {
-        const r = await fetch('/api/detect-systems?repo_path=' + encodeURIComponent(_wz.repo_path));
-        const d = await r.json();
-        if (d.error) throw new Error(d.error);
-        if (!d.systems.length) {
-            document.getElementById('wz-err').textContent =
-                'No systems detected automatically — add them manually';
-        } else {
-            const existing = new Set(_wz.systems.map(s => s.name));
-            for (const s of d.systems) {
-                if (!existing.has(s.name)) _wz.systems.push({
-                    name: s.name, paths: s.paths, hint: s.hint,
-                    source_type: s.hint === 'plugin' ? 'plugin' : 'project',
-                });
-            }
-            wzRerender();
-            document.getElementById('wz-err').textContent = '';
-        }
-    } catch (e) {
-        document.getElementById('wz-err').textContent = 'Detection failed: ' + e.message;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Detect from repo';
-    }
-}
-
-// ── Step 5: Review ────────────────────────────────────────────────────────────
+// ── Step 6: Review ────────────────────────────────────────────────────────────
 function wzRenderReview(el) {
     const systems = _wz.systems.filter(s => s.name && s.paths.filter(p=>p).length);
     const totalPaths = systems.reduce((a, s) => a + s.paths.length, 0);
@@ -796,24 +901,35 @@ async function wzNext() {
         statusEl.textContent = 'Validating…';
         btn.textContent = 'Validating…';
         try {
-            const r = await fetch('/api/detect-systems?repo_path=' + encodeURIComponent(repo));
-            const d = await r.json();
-            if (d.error) { _fail(d.error); statusEl.textContent = ''; return; }
-            const n = d.systems.length;
-            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Repository found — ${n} system${n !== 1 ? 's' : ''} detected</span>`;
-            // Pre-populate systems with auto-derived source_type
-            if (n > 0 && _wz.systems.length === 0) {
-                _wz.systems = d.systems.map(s => ({
-                    name: s.name,
-                    paths: s.paths,
-                    hint: s.hint,
-                    source_type: s.hint === 'plugin' ? 'plugin' : 'project',
-                }));
+            const r = await fetch('/api/browse-abs?path=' + encodeURIComponent(repo));
+            if (!r.ok) {
+                _fail('Repository path not found: ' + repo);
+                statusEl.textContent = '';
+                return;
             }
+            const gitCheck = await fetch('/api/detect-source-dirs?repo_path=' + encodeURIComponent(repo));
+            const gd = await gitCheck.json();
+            if (gd.error) { _fail(gd.error); statusEl.textContent = ''; return; }
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Repository found — ${gd.dirs.length} source director${gd.dirs.length !== 1 ? 'ies' : 'y'} detected</span>`;
         } catch (e) {
             _fail('Could not validate repository path: ' + e.message);
             statusEl.textContent = '';
             return;
+        }
+
+    } else if (step === 'sources') {
+        const active = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+        if (!_wz.source_dirs.length) {
+            _fail('No source directories detected — check your repository path in step 1');
+            return;
+        }
+        if (!active.length) {
+            _fail('All directories are marked as Ignored — mark at least one as Project or Plugin');
+            return;
+        }
+        // Reset systems if sources changed substantially (user re-detected)
+        if (_wz.systems.length && _wz._sourceDetectedFor !== _wz.repo_path) {
+            _wz.systems = [];
         }
 
     } else if (step === 'systems') {
@@ -851,12 +967,9 @@ async function wzCreate() {
                 claude_fast_mode: _wz.claude_fast_mode,
                 min_confidence: _wz.min_confidence,
                 config_path: _wz.config_path,
-                source_dirs: _wz.systems.flatMap(s =>
-                    s.paths.filter(p => p.trim()).map(p => ({
-                        path: p.trim(),
-                        source_type: s.source_type || 'project',
-                    }))
-                ),
+                source_dirs: _wz.source_dirs
+                    .filter(d => d.source_type !== 'ignored' && d.path)
+                    .map(d => ({path: d.path, source_type: d.source_type})),
             }),
         });
         const d = await r.json();

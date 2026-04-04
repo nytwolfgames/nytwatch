@@ -631,6 +631,130 @@ async def detect_systems_api(request: Request, repo_path: str = ""):
     return JSONResponse({"systems": candidates})
 
 
+@router.get("/api/detect-source-dirs")
+async def detect_source_dirs_api(request: Request, repo_path: str = ""):
+    """Return heuristically-classified source directories without touching the DB."""
+    from auditor.scanner.source_detector import _heuristic_classify
+    if not repo_path:
+        config = get_config(request)
+        repo_path = config.repo_path
+    rp = Path(repo_path).expanduser() if repo_path else None
+    if not rp or not rp.exists():
+        return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
+    classified, unclassified = _heuristic_classify(rp)
+    dirs = []
+    for path, stype in sorted(classified.items()):
+        dirs.append({"path": path, "source_type": stype, "auto": True})
+    for path in sorted(unclassified):
+        dirs.append({"path": path, "source_type": "project", "auto": False})
+    return JSONResponse({"dirs": dirs})
+
+
+def _build_suggest_systems_prompt(dir_info: dict) -> str:
+    import json
+    listing = json.dumps(dir_info, indent=2)
+    return f"""\
+You are helping configure a code analysis tool for an Unreal Engine C++ project.
+
+Below is the structure of the project's source folders. Each entry shows the source type (project/plugin), its immediate subdirectories, and any key files found at its root.
+
+Your task: suggest logical "systems" for code analysis. A system groups related source code that Claude should analyze together.
+
+Rules:
+- Each source directory must appear in exactly one system (no overlaps, no omissions)
+- Plugin directories should each be their own system (one plugin = one system), unless trivially small
+- Large project source directories with many subdirectories can be split into multiple systems by feature area
+- Small related project directories can be merged into one system
+- Use the directory path exactly as shown in the listing below (keep the trailing slash if present)
+- System names should be short and descriptive (e.g., "Combat", "AI", "Inventory", "MyPlugin")
+
+## Source directory structure
+
+{listing}
+
+## Output Format
+
+Return a JSON object with this exact structure:
+```json
+{{
+  "systems": [
+    {{"name": "SystemName", "paths": ["Source/MyGame/Combat/"]}},
+    {{"name": "AnotherSystem", "paths": ["Plugins/MyPlugin/Source/"]}}
+  ]
+}}
+```
+
+Return ONLY the JSON object. No markdown fences, no commentary.\
+"""
+
+
+@router.post("/api/suggest-systems")
+async def suggest_systems_api(request: Request):
+    """Ask Claude to suggest logical scanning systems based on classified source dirs."""
+    body = await request.json()
+    repo_path = body.get("repo_path", "")
+    source_dirs = body.get("source_dirs", [])  # [{path, source_type}]
+
+    if not repo_path:
+        config = get_config(request)
+        repo_path = config.repo_path
+
+    repo = Path(repo_path).expanduser()
+    if not repo.exists():
+        return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
+
+    active_dirs = [d for d in source_dirs if d.get("source_type") != "ignored"]
+    if not active_dirs:
+        return JSONResponse({"error": "No non-ignored source directories to analyse"}, status_code=400)
+
+    # Build a lightweight directory listing to give Claude context
+    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", ".git", ".vs", ".idea"}
+    _key_exts = {".h", ".cpp", ".cs", ".uplugin", ".uproject"}
+    dir_info: dict = {}
+    for entry in active_dirs:
+        p = entry["path"]
+        full = repo / p
+        if not full.exists():
+            continue
+        try:
+            subdirs = sorted(
+                item.name for item in full.iterdir()
+                if item.is_dir() and item.name not in _skip and not item.name.startswith(".")
+            )[:20]
+            files = sorted(
+                item.name for item in full.iterdir()
+                if item.is_file() and item.suffix in _key_exts
+            )[:10]
+            dir_info[p] = {
+                "type": entry.get("source_type", "project"),
+                "subdirs": subdirs,
+                "files": files,
+            }
+        except OSError:
+            dir_info[p] = {"type": entry.get("source_type", "project"), "subdirs": [], "files": []}
+
+    if not dir_info:
+        return JSONResponse({"error": "Could not read source directories"}, status_code=400)
+
+    prompt = _build_suggest_systems_prompt(dir_info)
+
+    try:
+        from auditor.analysis.engine import call_claude, _extract_json
+        raw = call_claude(prompt, fast=True, timeout=90, repo_path=repo_path)
+        data = _extract_json(raw)
+        systems = data.get("systems", [])
+        valid = []
+        for s in systems:
+            name = (s.get("name") or "").strip()
+            paths = [p for p in (s.get("paths") or []) if isinstance(p, str) and p.strip()]
+            if name and paths:
+                valid.append({"name": name, "paths": paths})
+        return JSONResponse({"systems": valid})
+    except Exception as e:
+        logger.exception("suggest-systems failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.get("/api/config/status")
 async def config_status(request: Request):
     from auditor.config import validate_config_errors, get_db_path, DEFAULT_CONFIG_PATH
