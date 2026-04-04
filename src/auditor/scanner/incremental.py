@@ -33,13 +33,21 @@ from auditor.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
 
-# Max parallel Claude processes per scan.  Keeps rate-limit pressure manageable
-# while providing real wall-clock speedup on multi-system projects.
+# Max parallel Claude processes per scan.
 _MAX_PARALLEL_SYSTEMS = 4
 
-# Files per agent chunk.  In agent mode Claude reads files itself, so a larger
-# chunk just means more paths in the prompt — not more tokens upfront.
+# Files per agent chunk.
 _CHUNK_SIZE = 40
+
+# Confidence level ordering — higher number = higher confidence.
+_CONFIDENCE_RANK: dict[str, int] = {"high": 2, "medium": 1, "low": 0}
+
+
+def _meets_confidence(finding_confidence: str, min_confidence: str) -> bool:
+    return (
+        _CONFIDENCE_RANK.get(finding_confidence, 0)
+        >= _CONFIDENCE_RANK.get(min_confidence, 1)
+    )
 
 
 def get_current_commit(repo_path: str) -> str:
@@ -70,11 +78,7 @@ def get_changed_files(
 
 
 def find_owning_system(file_path: str, systems: list[SystemDef]) -> Optional[str]:
-    """Return the system name whose path prefix most specifically matches file_path.
-
-    When multiple systems match (e.g. Campaign-Core covers Campaign/ and
-    Campaign-AI covers Campaign/AI/), the one with the longest prefix wins.
-    """
+    """Return the system name whose path prefix most specifically matches file_path."""
     norm_file = normalize_path(file_path)
     best_system: Optional[str] = None
     best_len = -1
@@ -124,17 +128,41 @@ def _process_system(
         log.warning("System '%s' not found in database, skipping", system_name)
         return 0, 0
 
-    ignored_prefixes = db.get_ignored_path_prefixes()
+    # ── Per-system overrides (fall back to global config when not set) ───────
+    effective_fast = system.claude_fast_mode if system.claude_fast_mode is not None else fast
+    effective_extensions = system.file_extensions if system.file_extensions else config.file_extensions
+    effective_min_confidence = system.min_confidence or config.min_confidence
+
+    # ── Build source-dir classification cache (avoids N DB round-trips) ──────
+    source_dirs = db.list_source_dirs()
+    # Sort longest prefix first for correct longest-prefix-match classification
+    source_dirs_sorted = sorted(
+        source_dirs, key=lambda d: len(d["path"]), reverse=True
+    )
+
+    def _classify_path(file_path: str) -> str:
+        norm = file_path.replace("\\", "/")
+        for sd in source_dirs_sorted:
+            stored = sd["path"].replace("\\", "/")
+            prefix = stored.rstrip("/") + "/"
+            if norm.startswith(prefix) or norm.startswith(stored):
+                stype = sd["source_type"]
+                return stype if stype == "ignored" else "active"
+        return "active"
+
+    ignored_prefixes = [
+        sd["path"].replace("\\", "/").rstrip("/") + "/"
+        for sd in source_dirs
+        if sd["source_type"] == "ignored"
+    ]
 
     def _is_ignored(path: str) -> bool:
         norm = path.replace("\\", "/")
         return any(norm.startswith(pfx) for pfx in ignored_prefixes)
 
     if changed_files is not None:
-        # Incremental: collect whole system for include-graph resolution, build
-        # neighbourhood around the changed files, extract paths for analysis.
         all_system_files = collect_system_files(
-            config.repo_path, system, config.file_extensions
+            config.repo_path, system, effective_extensions
         )
         if not all_system_files:
             log.info("No files found for system '%s'", system_name)
@@ -147,15 +175,15 @@ def _process_system(
             return 0, 0
         file_paths = [p for p in neighbourhood.keys() if not _is_ignored(p)]
     else:
-        # Full scan: list paths only (agent reads the files itself), apply
-        # ownership filter so sub-systems own their deeper paths.
-        all_paths = list_system_files(config.repo_path, system, config.file_extensions)
+        all_paths = list_system_files(config.repo_path, system, effective_extensions)
         if not all_paths:
             log.info("No files found for system '%s'", system_name)
             return 0, 0
-        file_paths = [p for p in all_paths
-                      if find_owning_system(p, all_systems) == system_name
-                      and not _is_ignored(p)]
+        file_paths = [
+            p for p in all_paths
+            if find_owning_system(p, all_systems) == system_name
+            and not _is_ignored(p)
+        ]
         excluded = len(all_paths) - len(file_paths)
         if excluded:
             log.info(
@@ -179,11 +207,12 @@ def _process_system(
         )
         for fname in sorted(chunk):
             log.info("  %s", fname)
+
         result = analyze_system(
             system_name=system_name,
             file_paths=chunk,
             repo_path=config.repo_path,
-            fast=fast,
+            fast=effective_fast,
             max_retries=2,
         )
         if result is None:
@@ -191,18 +220,31 @@ def _process_system(
             chunks_failed += 1
             continue
 
-        chunk_new = 0
-        for fo in result.findings:
-            line_range = f"{fo.line_start}-{fo.line_end}"
-            fingerprint = _compute_fingerprint(
-                fo.file_path, line_range, fo.category, fo.title
+        # ── Batch fingerprint check — one query instead of N ─────────────────
+        candidate_fingerprints = [
+            _compute_fingerprint(
+                fo.file_path, f"{fo.line_start}-{fo.line_end}", fo.category, fo.title
             )
+            for fo in result.findings
+        ]
+        existing_fingerprints = db.has_fingerprints_batch(candidate_fingerprints)
 
-            if db.has_fingerprint(fingerprint):
+        chunk_new = 0
+        for fo, fingerprint in zip(result.findings, candidate_fingerprints):
+            # Skip duplicates
+            if fingerprint in existing_fingerprints:
                 log.debug("Duplicate fingerprint, skipping: %s", fo.title)
                 continue
 
-            source_type = db.classify_path(fo.file_path)
+            # Skip findings below the configured confidence threshold
+            if not _meets_confidence(fo.confidence, effective_min_confidence):
+                log.debug(
+                    "Skipping low-confidence finding (%s < %s): %s",
+                    fo.confidence, effective_min_confidence, fo.title,
+                )
+                continue
+
+            source_type = _classify_path(fo.file_path)
             finding = Finding(
                 scan_id=scan_id,
                 title=fo.title,
@@ -256,8 +298,6 @@ def _process_system(
 
 
 def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optional[str] = None) -> str:
-    # Insert the scan record immediately so the UI can show it as running
-    # before any slow setup work (source detection, git calls) begins.
     scan_id = new_id()
     scan = Scan(
         id=scan_id,
@@ -328,18 +368,14 @@ def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optio
             systems_to_scan = [s for s in all_systems if s.name == system_name]
         system_map = map_files_to_systems(changed, systems_to_scan)
 
-        # Collect the systems that actually have changed files (skip uncategorized)
         active_entries = [
             (sname, files)
             for sname, files in system_map.items()
             if sname != "__uncategorized"
         ]
-        if not active_entries:
-            log.info("Skipping %d uncategorized file(s) — no matching systems", len(changed))
-        else:
-            skipped = len(system_map.get("__uncategorized", []))
-            if skipped:
-                log.info("Skipping %d uncategorized file(s)", skipped)
+        skipped = len(system_map.get("__uncategorized", []))
+        if skipped:
+            log.info("Skipping %d uncategorized file(s)", skipped)
 
         total_findings = 0
         total_files = len(changed)

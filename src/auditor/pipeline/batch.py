@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from auditor.config import AuditorConfig
 from auditor.database import Database
@@ -20,7 +19,6 @@ from auditor.pipeline.git_ops import (
 from auditor.pipeline.notifier import format_batch_complete_message, notify
 from auditor.pipeline.test_runner import run_tests
 from auditor.pipeline.test_writer import cleanup_test_files, write_test_files
-from auditor.scanner.chunker import collect_system_files
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +53,15 @@ def run_batch_pipeline(config: AuditorConfig, db: Database, batch_id: str):
         create_branch(repo_path, branch_name)
         branch_created = True
 
-        # Step 2: Collect current file contents for affected files
-        affected_files = set()
-        for f in findings:
-            affected_files.add(f["file_path"])
-
-        file_contents = {}
-        for fpath in affected_files:
-            full_path = Path(repo_path) / fpath
-            if full_path.exists():
-                file_contents[fpath] = full_path.read_text(errors="replace")
+        # Step 2: Collect the repo-relative paths of affected files.
+        # Claude reads their current contents itself via the Read tool —
+        # no need to embed file text in the prompt.
+        affected_file_paths = sorted({f["file_path"] for f in findings})
 
         # Step 3: Apply fixes
-        logger.info("Batch %s: applying %d fixes", batch_id, len(findings))
+        logger.info("Batch %s: applying %d fixes across %d files", batch_id, len(findings), len(affected_file_paths))
         success, patch_or_error, notes = apply_batch_fixes(
-            repo_path, findings, file_contents
+            repo_path, findings, affected_file_paths
         )
 
         if not success:

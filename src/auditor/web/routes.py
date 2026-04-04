@@ -1021,7 +1021,7 @@ async def suggest_systems_api(request: Request):
         import subprocess as _sp
         from auditor.analysis.engine import call_claude, _extract_json
         try:
-            raw = call_claude(prompt, fast=True, timeout=90, repo_path=repo_path, use_tools=False)
+            raw = call_claude(prompt, fast=False, timeout=90, repo_path=repo_path, use_tools=False)
         except _sp.CalledProcessError as cpe:
             # Surface Claude's stderr so the user can diagnose the failure
             stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()

@@ -153,25 +153,29 @@ Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.
 """
 
 
-def _format_file_contents(file_contents: dict[str, str]) -> str:
-    """Format a dict of {rel_path: content} into a readable block for prompts."""
-    parts = []
-    for path, content in file_contents.items():
-        parts.append(f"### {path}\n```cpp\n{content}\n```")
-    return "\n\n".join(parts)
-
-
 def build_batch_apply_prompt(
-    findings: list[dict], file_contents: dict[str, str]
+    findings: list[dict], file_paths: list[str]
 ) -> str:
-    if not findings or not file_contents:
+    """Build the batch-apply prompt.
+
+    Uses agent mode — file contents are NOT embedded in the prompt.  Instead,
+    Claude reads each file itself with the Read tool (same approach as the
+    scan prompt), keeping the prompt small regardless of file sizes.
+    """
+    if not findings or not file_paths:
         return ""
 
-    files_block = _format_file_contents(file_contents)
+    paths_block = "\n".join(f"- {p}" for p in file_paths)
     findings_json = json.dumps(findings, indent=2)
 
     return f"""\
-You are an Unreal Engine C++ code auditor applying approved fixes. Given the findings below and the current source files, produce a single unified diff that applies ALL fixes together.
+You are an Unreal Engine C++ code auditor applying approved fixes.
+
+Use the Read tool to read the current contents of each file listed below, then produce a single unified diff that applies ALL findings together.
+
+## Files to Read
+
+{paths_block}
 
 ## Approved Findings
 
@@ -179,23 +183,20 @@ You are an Unreal Engine C++ code auditor applying approved fixes. Given the fin
 {findings_json}
 ```
 
-## Current Source Files
-
-{files_block}
-
 ---
 
 ## Instructions
 
-1. Apply every finding's `suggested_fix` to the current file contents.
-2. When multiple findings affect the same file, merge them correctly — watch for overlapping line ranges.
-3. Preserve all existing code that is not part of a fix.
-4. Produce one unified diff covering all changes across all files.
-5. Use standard unified diff format (--- a/path, +++ b/path, @@ line ranges @@).
+1. Read every file in the list above before producing any output.
+2. Apply every finding's `suggested_fix` to the current file contents.
+3. When multiple findings affect the same file, merge them correctly — watch for overlapping line ranges.
+4. Preserve all existing code that is not part of a fix.
+5. Produce one unified diff covering all changes across all files.
+6. Use standard unified diff format (--- a/path, +++ b/path, @@ line ranges @@).
 
 ## Output Format
 
-Return a JSON object matching this structure exactly:
+Return a JSON object:
 
 ```json
 {{

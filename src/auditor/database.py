@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -113,21 +114,33 @@ class Database:
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Single write lock serialises all DML across threads.
+        # check_same_thread=False allows the connection to be used from any
+        # thread (safe with WAL + this lock).
+        self._lock = threading.Lock()
         self._conn: Optional[sqlite3.Connection] = None
 
     @property
     def conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path))
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA foreign_keys=ON")
+            with self._lock:
+                # Double-checked locking: another thread may have initialised
+                # the connection while we were waiting for the lock.
+                if self._conn is None:
+                    c = sqlite3.connect(str(self.db_path), check_same_thread=False)
+                    c.row_factory = sqlite3.Row
+                    c.execute("PRAGMA journal_mode=WAL")
+                    c.execute("PRAGMA foreign_keys=ON")
+                    # NORMAL sync is safe in WAL mode and avoids an fsync per commit.
+                    c.execute("PRAGMA synchronous=NORMAL")
+                    self._conn = c
         return self._conn
 
     def init_schema(self):
-        self.conn.executescript(SCHEMA_SQL)
-        self._migrate()
-        self.conn.commit()
+        with self._lock:
+            self.conn.executescript(SCHEMA_SQL)
+            self._migrate()
+            self.conn.commit()
 
     def _migrate(self):
         """Apply incremental schema migrations for existing databases."""
@@ -140,9 +153,10 @@ class Database:
             )
 
     def close(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn:
+                self._conn.close()
+                self._conn = None
 
     # --- Config ---
 
@@ -153,26 +167,28 @@ class Database:
         return row["value"] if row else default
 
     def set_config(self, key: str, value: str):
-        self.conn.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-            (key, value),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+            self.conn.commit()
 
     # --- Scans ---
 
     def insert_scan(self, scan: Scan):
-        self.conn.execute(
-            """INSERT INTO scans (id, scan_type, system_name, started_at,
-               completed_at, base_commit, files_scanned, findings_count, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                scan.id, scan.scan_type.value, scan.system_name, scan.started_at,
-                scan.completed_at, scan.base_commit, scan.files_scanned,
-                scan.findings_count, scan.status.value,
-            ),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO scans (id, scan_type, system_name, started_at,
+                   completed_at, base_commit, files_scanned, findings_count, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    scan.id, scan.scan_type.value, scan.system_name, scan.started_at,
+                    scan.completed_at, scan.base_commit, scan.files_scanned,
+                    scan.findings_count, scan.status.value,
+                ),
+            )
+            self.conn.commit()
 
     def update_scan(self, scan_id: str, **kwargs):
         sets = []
@@ -181,15 +197,17 @@ class Database:
             sets.append(f"{k} = ?")
             vals.append(v.value if hasattr(v, "value") else v)
         vals.append(scan_id)
-        self.conn.execute(
-            f"UPDATE scans SET {', '.join(sets)} WHERE id = ?", vals
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                f"UPDATE scans SET {', '.join(sets)} WHERE id = ?", vals
+            )
+            self.conn.commit()
 
     def delete_scan(self, scan_id: str) -> None:
-        self.conn.execute("DELETE FROM scan_logs WHERE scan_id = ?", (scan_id,))
-        self.conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("DELETE FROM scan_logs WHERE scan_id = ?", (scan_id,))
+            self.conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
+            self.conn.commit()
 
     def get_scan(self, scan_id: str) -> Optional[dict]:
         row = self.conn.execute(
@@ -212,34 +230,36 @@ class Database:
     def fail_stale_scans(self) -> int:
         """Mark any scans still in 'running' state as failed (left over from a crashed session)."""
         from auditor.models import now_iso
-        cursor = self.conn.execute(
-            "UPDATE scans SET status = 'failed', completed_at = ? WHERE status = 'running'",
-            (now_iso(),),
-        )
-        self.conn.commit()
+        with self._lock:
+            cursor = self.conn.execute(
+                "UPDATE scans SET status = 'failed', completed_at = ? WHERE status = 'running'",
+                (now_iso(),),
+            )
+            self.conn.commit()
         return cursor.rowcount
 
     # --- Findings ---
 
     def insert_finding(self, finding: Finding):
-        self.conn.execute(
-            """INSERT INTO findings (id, scan_id, title, description, severity,
-               category, confidence, file_path, line_start, line_end,
-               code_snippet, suggested_fix, fix_diff, can_auto_fix, reasoning,
-               test_code, test_description, source, status, batch_id, fingerprint, created_at, reviewed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                finding.id, finding.scan_id, finding.title, finding.description,
-                finding.severity.value, finding.category.value, finding.confidence.value,
-                finding.file_path, finding.line_start, finding.line_end,
-                finding.code_snippet, finding.suggested_fix, finding.fix_diff,
-                int(finding.can_auto_fix), finding.reasoning,
-                finding.test_code, finding.test_description,
-                finding.source.value, finding.status.value, finding.batch_id,
-                finding.fingerprint, finding.created_at, finding.reviewed_at,
-            ),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO findings (id, scan_id, title, description, severity,
+                   category, confidence, file_path, line_start, line_end,
+                   code_snippet, suggested_fix, fix_diff, can_auto_fix, reasoning,
+                   test_code, test_description, source, status, batch_id, fingerprint, created_at, reviewed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    finding.id, finding.scan_id, finding.title, finding.description,
+                    finding.severity.value, finding.category.value, finding.confidence.value,
+                    finding.file_path, finding.line_start, finding.line_end,
+                    finding.code_snippet, finding.suggested_fix, finding.fix_diff,
+                    int(finding.can_auto_fix), finding.reasoning,
+                    finding.test_code, finding.test_description,
+                    finding.source.value, finding.status.value, finding.batch_id,
+                    finding.fingerprint, finding.created_at, finding.reviewed_at,
+                ),
+            )
+            self.conn.commit()
 
     def get_finding(self, finding_id: str) -> Optional[dict]:
         row = self.conn.execute(
@@ -308,15 +328,17 @@ class Database:
             updates["reviewed_at"] = now_iso()
         sets = ", ".join(f"{k} = ?" for k in updates)
         vals = list(updates.values()) + [finding_id]
-        self.conn.execute(f"UPDATE findings SET {sets} WHERE id = ?", vals)
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(f"UPDATE findings SET {sets} WHERE id = ?", vals)
+            self.conn.commit()
 
     def set_finding_batch(self, finding_id: str, batch_id: str):
-        self.conn.execute(
-            "UPDATE findings SET batch_id = ? WHERE id = ?",
-            (batch_id, finding_id),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                "UPDATE findings SET batch_id = ? WHERE id = ?",
+                (batch_id, finding_id),
+            )
+            self.conn.commit()
 
     def count_findings_for_path_prefixes(self, path_prefixes: list[str]) -> int:
         if not path_prefixes:
@@ -334,6 +356,22 @@ class Database:
             (fingerprint,),
         ).fetchone()
         return row is not None
+
+    def has_fingerprints_batch(self, fingerprints: list[str]) -> set[str]:
+        """Return the subset of fingerprints already stored with a live status.
+
+        A single IN query replaces N individual has_fingerprint() calls.
+        """
+        if not fingerprints:
+            return set()
+        placeholders = ",".join("?" * len(fingerprints))
+        rows = self.conn.execute(
+            f"SELECT fingerprint FROM findings "
+            f"WHERE fingerprint IN ({placeholders}) "
+            f"AND status IN ('pending','approved','applied','verified')",
+            fingerprints,
+        ).fetchall()
+        return {row["fingerprint"] for row in rows}
 
     def get_approved_findings(self) -> list[dict]:
         rows = self.conn.execute(
@@ -356,17 +394,18 @@ class Database:
     # --- Batches ---
 
     def insert_batch(self, batch: Batch):
-        self.conn.execute(
-            """INSERT INTO batches (id, created_at, status, branch_name,
-               build_log, test_log, commit_sha, pr_url, finding_ids, completed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                batch.id, batch.created_at, batch.status.value, batch.branch_name,
-                batch.build_log, batch.test_log, batch.commit_sha, batch.pr_url,
-                json.dumps(batch.finding_ids), batch.completed_at,
-            ),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO batches (id, created_at, status, branch_name,
+                   build_log, test_log, commit_sha, pr_url, finding_ids, completed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    batch.id, batch.created_at, batch.status.value, batch.branch_name,
+                    batch.build_log, batch.test_log, batch.commit_sha, batch.pr_url,
+                    json.dumps(batch.finding_ids), batch.completed_at,
+                ),
+            )
+            self.conn.commit()
 
     def update_batch(self, batch_id: str, **kwargs):
         sets = []
@@ -380,10 +419,11 @@ class Database:
             else:
                 vals.append(v)
         vals.append(batch_id)
-        self.conn.execute(
-            f"UPDATE batches SET {', '.join(sets)} WHERE id = ?", vals
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                f"UPDATE batches SET {', '.join(sets)} WHERE id = ?", vals
+            )
+            self.conn.commit()
 
     def get_batch(self, batch_id: str) -> Optional[dict]:
         row = self.conn.execute(
@@ -415,15 +455,17 @@ class Database:
         return [dict(r) for r in rows]
 
     def upsert_source_dir(self, path: str, source_type: str):
-        self.conn.execute(
-            "INSERT OR REPLACE INTO source_dirs (path, source_type) VALUES (?, ?)",
-            (path, source_type),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO source_dirs (path, source_type) VALUES (?, ?)",
+                (path, source_type),
+            )
+            self.conn.commit()
 
     def delete_source_dir(self, path: str):
-        self.conn.execute("DELETE FROM source_dirs WHERE path = ?", (path,))
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("DELETE FROM source_dirs WHERE path = ?", (path,))
+            self.conn.commit()
 
     def has_source_dir(self, path: str) -> bool:
         row = self.conn.execute(
@@ -477,25 +519,26 @@ class Database:
 
     def replace_systems(self, systems: list[dict]) -> None:
         """Replace ALL systems with the given list (atomic)."""
-        self.conn.execute("DELETE FROM systems")
-        for i, s in enumerate(systems):
-            fe = s.get("file_extensions")
-            cfm = s.get("claude_fast_mode")
-            self.conn.execute(
-                """INSERT INTO systems
-                   (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    s["name"],
-                    s.get("source_dir") or "",
-                    json.dumps(s.get("paths", [])),
-                    s.get("min_confidence") or None,
-                    json.dumps(fe) if fe is not None else None,
-                    int(cfm) if cfm is not None else None,
-                    i,
-                ),
-            )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("DELETE FROM systems")
+            for i, s in enumerate(systems):
+                fe = s.get("file_extensions")
+                cfm = s.get("claude_fast_mode")
+                self.conn.execute(
+                    """INSERT INTO systems
+                       (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        s["name"],
+                        s.get("source_dir") or "",
+                        json.dumps(s.get("paths", [])),
+                        s.get("min_confidence") or None,
+                        json.dumps(fe) if fe is not None else None,
+                        int(cfm) if cfm is not None else None,
+                        i,
+                    ),
+                )
+            self.conn.commit()
 
     def upsert_system(self, system: dict) -> None:
         """Insert or replace a single system, preserving sort_order if it already exists."""
@@ -507,34 +550,40 @@ class Database:
         sort_order = existing["sort_order"] if existing else (
             self.conn.execute("SELECT COALESCE(MAX(sort_order)+1,0) FROM systems").fetchone()[0]
         )
-        self.conn.execute(
-            """INSERT OR REPLACE INTO systems
-               (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                system["name"],
-                system.get("source_dir") or "",
-                json.dumps(system.get("paths", [])),
-                system.get("min_confidence") or None,
-                json.dumps(fe) if fe is not None else None,
-                int(cfm) if cfm is not None else None,
-                sort_order,
-            ),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO systems
+                   (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    system["name"],
+                    system.get("source_dir") or "",
+                    json.dumps(system.get("paths", [])),
+                    system.get("min_confidence") or None,
+                    json.dumps(fe) if fe is not None else None,
+                    int(cfm) if cfm is not None else None,
+                    sort_order,
+                ),
+            )
+            self.conn.commit()
 
     def delete_system(self, name: str) -> None:
-        self.conn.execute("DELETE FROM systems WHERE name = ?", (name,))
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("DELETE FROM systems WHERE name = ?", (name,))
+            self.conn.commit()
 
     # --- Scan Logs ---
 
     def insert_scan_log(self, scan_id: str, level: str, logger_name: str, message: str):
-        self.conn.execute(
-            "INSERT INTO scan_logs (scan_id, logged_at, level, logger, message) VALUES (?, ?, ?, ?, ?)",
-            (scan_id, now_iso(), level, logger_name, message),
-        )
-        self.conn.commit()
+        # No commit here — log lines are committed in batches by the next
+        # meaningful write (e.g. update_scan at chunk completion).  The single
+        # shared connection can read its own uncommitted rows, so the UI always
+        # sees the latest logs without the overhead of an fsync per line.
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO scan_logs (scan_id, logged_at, level, logger, message) VALUES (?, ?, ?, ?, ?)",
+                (scan_id, now_iso(), level, logger_name, message),
+            )
 
     def get_scan_findings_from(self, scan_id: str, offset: int = 0) -> list[dict]:
         """Return findings for a scan ordered by rowid, starting from offset."""

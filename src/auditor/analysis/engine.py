@@ -14,7 +14,7 @@ from typing import Optional
 from pydantic import ValidationError
 
 from auditor.analysis.schemas import ScanResult, BatchApplyResult
-from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt
+from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt  # noqa: F401
 from auditor.models import new_id
 
 log = logging.getLogger(__name__)
@@ -342,17 +342,24 @@ def analyze_system(
 
 def generate_batch_patch(
     findings: list[dict],
-    file_contents: dict[str, str],
+    file_paths: list[str],
+    repo_path: str,
     max_retries: int = 2,
 ) -> Optional[BatchApplyResult]:
+    """Generate a unified patch for all approved findings using agent mode.
+
+    Claude reads the affected files itself via the Read tool — no file contents
+    are embedded in the prompt.  ``repo_path`` is set as the working directory
+    so relative paths resolve correctly.
+    """
     if not findings:
         log.warning("No findings provided for batch patch")
         return None
-    if not file_contents:
-        log.warning("No file contents provided for batch patch")
+    if not file_paths:
+        log.warning("No file paths provided for batch patch")
         return None
 
-    prompt = build_batch_apply_prompt(findings, file_contents)
+    prompt = build_batch_apply_prompt(findings, file_paths)
     if not prompt:
         log.error("Failed to build batch apply prompt")
         return None
@@ -363,11 +370,11 @@ def generate_batch_patch(
             attempt,
             max_retries,
             len(findings),
-            len(file_contents),
+            len(file_paths),
         )
 
         try:
-            raw = call_claude(prompt, fast=False)
+            raw = call_claude(prompt, fast=False, repo_path=repo_path, use_tools=True)
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as exc:
             log.error("Claude call failed on attempt %d: %s", attempt, exc)
             if attempt == max_retries:
