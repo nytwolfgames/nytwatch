@@ -478,6 +478,15 @@ async def get_systems_api(request: Request):
     return JSONResponse({"systems": db.list_systems()})
 
 
+@router.get("/api/source-dirs")
+async def get_source_dirs_api(request: Request):
+    """Return active (non-ignored) source directories from the DB."""
+    db = get_db(request)
+    dirs = db.list_source_dirs()
+    active = [d for d in dirs if d["source_type"] != "ignored"]
+    return JSONResponse({"source_dirs": active})
+
+
 @router.post("/api/systems")
 async def save_systems_api(request: Request):
     db = get_db(request)
@@ -842,18 +851,12 @@ async def config_status(request: Request):
     config = get_config(request)
     db = get_db(request)
 
-    db_systems = db.list_systems()
-    errors = validate_config_errors(config, systems=db_systems)
+    errors = validate_config_errors(config, systems=db.list_systems())
     db_path = get_db_path(config)
     db_size = db_path.stat().st_size if db_path.exists() else 0
     last_commit = db.get_config("last_scan_commit", "")
 
     repo = Path(config.repo_path).expanduser()
-    system_status = []
-    for s in db_systems:
-        path_checks = [{"path": p, "exists": (repo / p).exists()} for p in s["paths"]]
-        system_status.append({"name": s["name"], "paths": path_checks})
-
     config_path = getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH))
     return JSONResponse({
         "config_path": config_path,
@@ -862,7 +865,6 @@ async def config_status(request: Request):
         "errors": errors,
         "last_commit": last_commit,
         "db_size_bytes": db_size,
-        "systems": system_status,
     })
 
 
@@ -961,6 +963,16 @@ async def settings_page(request: Request):
     source_dirs = db.list_source_dirs()
     active_dirs = [d for d in source_dirs if d["source_type"] != "ignored"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
+
+    # Count systems per source_dir for display
+    all_systems = db.list_systems()
+    sys_count: dict[str, int] = {}
+    for s in all_systems:
+        sd = (s.get("source_dir") or "").strip()
+        sys_count[sd] = sys_count.get(sd, 0) + 1
+    for d in active_dirs:
+        d["system_count"] = sys_count.get(d["path"], 0)
+
     config_path = getattr(request.app.state, "config_path", "") or ""
     return templates.TemplateResponse(request, "settings.html", {
         "active_dirs": active_dirs,

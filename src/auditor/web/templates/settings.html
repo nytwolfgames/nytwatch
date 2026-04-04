@@ -59,6 +59,10 @@
             {% for d in active_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
+                <span class="body-sm text-variant" style="white-space:nowrap;margin-right:8px;"
+                      title="{{ d.system_count }} system(s) under this directory">
+                    {{ d.system_count }} system{{ 's' if d.system_count != 1 else '' }}
+                </span>
                 <div class="type-toggle">
                     <button class="tgl-on tgl-active" disabled>Active</button>
                     <button onclick="moveDir('{{ d.path }}', 'ignored')">Ignored</button>
@@ -288,19 +292,6 @@ function renderHealth(d) {
             ${!d.repo_exists ? '<div class="body-sm" style="color:#ef4444;margin-top:2px;">Path not found</div>' : ''}
         </div>
     </div>`;
-
-    for (const s of d.systems || []) {
-        const bad = s.paths.filter(p => !p.exists);
-        html += `<div class="h-item">
-            <div class="h-dot ${bad.length ? 'h-warn' : 'h-ok'}"></div>
-            <div>
-                <div class="body-sm"><strong>${escH(s.name)}</strong></div>
-                ${s.paths.map(p => `<div class="mono body-sm" style="margin-top:2px;${p.exists ? '' : 'color:#f59e0b;'}">
-                    ${p.exists ? '✓' : '⚠'} ${escH(p.path)}
-                </div>`).join('')}
-            </div>
-        </div>`;
-    }
 
     if (hasErrors) {
         for (const err of d.errors) {
