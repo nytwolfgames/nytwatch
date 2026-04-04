@@ -104,57 +104,6 @@
     </div>
 </div>
 
-<!-- Systems -->
-<h2 class="headline-md mb-2 mt-8">Systems</h2>
-<p class="body-md text-variant mb-6">
-    Systems define which gameplay modules within each active source directory are scanned together.
-    Each system belongs to one active source directory. Use the <strong>Setup Wizard</strong> to configure systems, or manage them inline below.
-</p>
-
-{% if systems_by_dir %}
-{% for entry in systems_by_dir %}
-<div class="card mb-4">
-    <div class="flex items-center gap-3 mb-3">
-        <span class="mono label-sm" style="flex:1;">{{ entry.source_dir }}</span>
-        <button onclick="openAddSystemForm('{{ entry.source_dir }}')" class="btn btn-sm">+ Add System</button>
-    </div>
-    {% if entry.systems %}
-    <div class="dir-list">
-        {% for s in entry.systems %}
-        <div class="dir-item" style="align-items:flex-start;">
-            <div style="flex:1;">
-                <div class="body-sm" style="font-weight:600;">{{ s.name }}</div>
-                <div class="mono body-sm text-variant" style="margin-top:2px;">{{ s.paths | join(', ') }}</div>
-            </div>
-            <button onclick="deleteSystem('{{ s.name }}')"
-                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.1rem;padding:2px 6px;flex-shrink:0;"
-                    title="Delete system">&times;</button>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <p class="body-sm text-variant">No systems yet — click "+ Add System".</p>
-    {% endif %}
-    <div id="add-sys-form-{{ entry.source_dir | replace('/', '_') | replace('.', '_') }}"
-         style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--outline);">
-        <div class="flex gap-2 items-center flex-wrap">
-            <input type="text" placeholder="System name" class="input input-sm" style="width:180px;"
-                   id="new-sys-name-{{ entry.source_dir | replace('/', '_') | replace('.', '_') }}">
-            <input type="text" placeholder="Path (defaults to source dir)" class="input input-sm" style="flex:1;min-width:180px;"
-                   id="new-sys-path-{{ entry.source_dir | replace('/', '_') | replace('.', '_') }}"
-                   value="{{ entry.source_dir }}">
-            <button onclick="addSystem('{{ entry.source_dir }}')" class="btn btn-sm btn-primary">Add</button>
-            <button onclick="closeAddSystemForm('{{ entry.source_dir }}')" class="btn btn-sm">Cancel</button>
-        </div>
-    </div>
-</div>
-{% endfor %}
-{% else %}
-<div class="card">
-    <p class="body-sm text-variant">No systems configured. Use <strong>+ Setup New Project</strong> to configure systems via the wizard.</p>
-</div>
-{% endif %}
-
 <!-- ── Setup Wizard Modal ───────────────────────────────────────────────────── -->
 <div id="wizard-overlay"
      style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
@@ -309,46 +258,6 @@ async function addDir() {
         const data = await res.json();
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to add');
-    } catch (e) { alert('Failed: ' + e.message); }
-}
-
-function openAddSystemForm(sourceDir) {
-    const safeId = sourceDir.replace(/[^a-z0-9]/gi, '_');
-    document.getElementById('add-sys-form-' + safeId).style.display = '';
-}
-function closeAddSystemForm(sourceDir) {
-    const safeId = sourceDir.replace(/[^a-z0-9]/gi, '_');
-    document.getElementById('add-sys-form-' + safeId).style.display = 'none';
-}
-
-async function addSystem(sourceDir) {
-    const safeId = sourceDir.replace(/[^a-z0-9]/gi, '_');
-    const name = document.getElementById('new-sys-name-' + safeId)?.value.trim();
-    const path = document.getElementById('new-sys-path-' + safeId)?.value.trim();
-    if (!name) { alert('System name is required'); return; }
-    try {
-        const res = await fetch('/settings/systems', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, source_dir: sourceDir, paths: [path || sourceDir]}),
-        });
-        const data = await res.json();
-        if (data.ok) location.reload();
-        else alert(data.error || 'Failed to add system');
-    } catch (e) { alert('Failed: ' + e.message); }
-}
-
-async function deleteSystem(name) {
-    if (!confirm(`Delete system "${name}"?`)) return;
-    try {
-        const res = await fetch('/settings/systems', {
-            method: 'DELETE',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name}),
-        });
-        const data = await res.json();
-        if (data.ok) location.reload();
-        else alert(data.error || 'Failed to delete system');
     } catch (e) { alert('Failed: ' + e.message); }
 }
 
@@ -597,9 +506,9 @@ function wzRender() {
                             value="${escH(_wz.build.project_file)}"
                             placeholder="E:\\Projects\\MyGame\\MyGame.uproject"
                             oninput="_wz.build.project_file = this.value.trim()">
-                        <button onclick="spOpen({inputId:'wz-proj-file',abs:true},this)" class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
+                        <button onclick="spOpen({inputId:'wz-proj-file',abs:true,fileFilter:'.uproject'},this)" class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
                     </div>
-                    <div class="body-sm text-variant mt-1">Required for automated fix application and test runs.</div>
+                    <div id="wz-uproject-status" class="body-sm text-variant mt-1">Required for automated fix application and test runs.</div>
                 </div>
                 <details style="margin-top:4px;">
                     <summary class="body-sm text-variant" style="cursor:pointer;user-select:none;">Timeout settings</summary>
@@ -620,6 +529,8 @@ function wzRender() {
                 </details>
             </div>
         `;
+        // Auto-detect .uproject if the field is still empty
+        if (!_wz.build.project_file) wzFindUproject();
 
     } else if (step === 'schedule') {
         el.innerHTML = `
@@ -907,9 +818,22 @@ function wzRerender() {
 
 function wzSysName(i, v) { _wz.systems[i].name = v; wzCheckOverlaps(); }
 function wzAddSysUnder(srcDir) {
-    const defaultPath = srcDir ? (srcDir.endsWith('/') ? srcDir : srcDir + '/') : '';
+    const existingUnder = _wz.systems.filter(s => s.source_dir === srcDir);
+    // First system under a source dir defaults to the root path (scan everything).
+    // Subsequent systems start with an empty path so the user picks a specific subdirectory.
+    const defaultPath = (existingUnder.length === 0 && srcDir)
+        ? (srcDir.endsWith('/') ? srcDir : srcDir + '/')
+        : '';
+    const newIdx = _wz.systems.length;
     _wz.systems.push({name: '', paths: [defaultPath], source_dir: srcDir || '', hint: ''});
     wzRerender();
+    // Auto-open the browser for new systems that start with an empty path
+    if (!defaultPath) {
+        setTimeout(() => {
+            const pathBtn = document.querySelector(`#wz-pr-${newIdx}-0 button`);
+            if (pathBtn) spOpen({si: newIdx, pi: 0, srcDir: srcDir || ''}, pathBtn);
+        }, 50);
+    }
 }
 function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
 
@@ -934,15 +858,17 @@ function wzCheckOverlaps() {
     const all = [];
     for (const s of _wz.systems) {
         for (const p of s.paths) {
-            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/,'/')});
+            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/, '/')});
         }
     }
     const warns = [];
     for (let i = 0; i < all.length; i++) {
         for (let j = i + 1; j < all.length; j++) {
             const a = all[i], b = all[j];
-            if (a.path.startsWith(b.path) || b.path.startsWith(a.path)) {
-                const msg = `Path overlap: "${a.path}" (${a.sys}) and "${b.path}" (${b.sys})`;
+            // Only flag exact duplicates — parent/child paths are valid under
+            // longest-prefix ownership (the more specific path always wins).
+            if (a.path === b.path) {
+                const msg = `Duplicate path: "${a.path}" is used by both "${a.sys}" and "${b.sys}"`;
                 if (!warns.includes(msg)) warns.push(msg);
             }
         }
@@ -954,6 +880,27 @@ function wzCheckOverlaps() {
             <span class="body-sm">${escH(w)}</span>
         </div>`
     ).join('');
+}
+
+// ── Step 4: Build ────────────────────────────────────────────────────────────
+async function wzFindUproject() {
+    const statusEl = document.getElementById('wz-uproject-status');
+    const input = document.getElementById('wz-proj-file');
+    if (!statusEl || !input) return;
+    statusEl.textContent = 'Searching for .uproject…';
+    try {
+        const r = await fetch('/api/find-uproject?repo_path=' + encodeURIComponent(_wz.repo_path));
+        const d = await r.json();
+        if (d.uproject) {
+            input.value = d.uproject;
+            _wz.build.project_file = d.uproject;
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Found automatically</span>`;
+        } else {
+            statusEl.textContent = 'No .uproject found in repo root — browse to set manually.';
+        }
+    } catch (e) {
+        statusEl.textContent = 'Required for automated fix application and test runs.';
+    }
 }
 
 // ── Step 6: Review ────────────────────────────────────────────────────────────
@@ -1143,7 +1090,7 @@ async function wzCreate() {
                     ✓ Config saved to <span class="mono">${escH(d.config_path)}</span>
                 </div>
                 <div class="flex gap-2">
-                    <button onclick="switchProject('${escH(d.config_path)}')" class="btn btn-sm btn-primary scan-safe">
+                    <button onclick="switchProject(this.dataset.path)" data-path="${escH(d.config_path)}" class="btn btn-sm btn-primary scan-safe">
                         Switch to this project
                     </button>
                     <button onclick="closeWizard()" class="btn btn-sm scan-safe">Close</button>
@@ -1208,6 +1155,7 @@ async function spNavigate(path) {
         let url;
         if (_spCtx?.abs) {
             url = '/api/browse-abs?path=' + encodeURIComponent(_spCurrent);
+            if (_spCtx.fileFilter) url += '&file_ext=' + encodeURIComponent(_spCtx.fileFilter);
         } else {
             const base = _wz.repo_path || '';
             const relPath = _spCurrent.replace(/\/?$/, '');
@@ -1254,10 +1202,18 @@ function spRender(data) {
 
     // ── Entries ───────────────────────────────────────────────────────────────
     const el = document.getElementById('sp-entries');
-    if (!data.entries?.length) {
-        el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
+    const fileFilter = _spCtx?.fileFilter || '';
+    const dirs  = (data.entries || []).filter(e => !e.is_file);
+    const files = (data.entries || []).filter(e =>  e.is_file);
+    const hasContent = dirs.length || files.length;
+
+    if (!hasContent) {
+        const emptyMsg = fileFilter
+            ? `No ${escH(fileFilter)} files or subdirectories here`
+            : 'No subdirectories';
+        el.innerHTML = `<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">${emptyMsg}</div>`;
     } else {
-        el.innerHTML = data.entries.map(e => {
+        const dirRows = dirs.map(e => {
             const pathEsc = e.path.replace(/\\/g, '/').replace(/'/g, "\\'");
             return `<div onclick="spNavigate('${pathEsc}')"
                   style="display:flex;align-items:center;padding:7px 14px;cursor:pointer;
@@ -1267,13 +1223,27 @@ function spRender(data) {
                 <span style="flex:1;font-size:0.8rem;font-family:monospace;
                              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📁 ${escH(e.name)}</span>
             </div>`;
-        }).join('');
+        });
+        const fileRows = files.map(e => {
+            const pathEsc = e.path.replace(/\\/g, '/').replace(/'/g, "\\'");
+            return `<div onclick="spSelect('${pathEsc}')"
+                  style="display:flex;align-items:center;padding:7px 14px;cursor:pointer;
+                         border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+                  onmouseenter="this.style.background='var(--surface-container)'"
+                  onmouseleave="this.style.background=''">
+                <span style="flex:1;font-size:0.8rem;font-family:monospace;
+                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                             color:var(--primary);">📄 ${escH(e.name)}</span>
+                <span style="font-size:0.7rem;color:var(--on-surface-variant);margin-left:6px;white-space:nowrap;">click to select</span>
+            </div>`;
+        });
+        el.innerHTML = dirRows.concat(fileRows).join('');
     }
 
-    // ── Select-current button ─────────────────────────────────────────────────
+    // ── Select-current button — hidden in file-picker mode (select via file row) ─
     const selectBtn = document.getElementById('sp-select-btn');
     const curPath = (data.path || '').replace(/\\/g, '/');
-    if (!curPath) {
+    if (!curPath || fileFilter) {
         selectBtn.style.display = 'none';
     } else {
         selectBtn.style.display = '';
@@ -1298,6 +1268,11 @@ function spSelect(path) {
         if (input) {
             input.value = norm.replace(/\/$/, '');
             input.dispatchEvent(new Event('input'));
+        }
+        // If this was a file selection, update the status hint
+        if (ctx.fileFilter) {
+            const statusEl = document.getElementById('wz-uproject-status');
+            if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e;">✓ Selected</span>`;
         }
     } else if (ctx?.si != null) {
         // Repo-relative → store in wizard system path (keep trailing slash)

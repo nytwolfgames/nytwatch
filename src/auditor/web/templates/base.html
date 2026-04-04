@@ -36,9 +36,48 @@
         body.scan-running .main-content form { pointer-events: none; opacity: .45; }
 
         body.scan-running .main-content { margin-top: 42px; }
+
+        #scan-due-banner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 999;
+            background: #1e3a5f;
+            color: #fff;
+            padding: 10px 20px;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        }
+        #scan-due-banner.visible { display: flex; }
+        #scan-due-banner .sdb-actions { display: flex; gap: 8px; margin-left: auto; }
+        #scan-due-banner button {
+            border: 1px solid rgba(255,255,255,.4);
+            color: #fff;
+            padding: 4px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        #scan-due-banner #sdb-start-btn  { background: rgba(255,255,255,.2); }
+        #scan-due-banner #sdb-dismiss-btn { background: transparent; opacity: .7; }
+        body.scan-due .main-content { margin-top: 42px; }
     </style>
 </head>
 <body class="app-layout">
+    <!-- Scheduled scan ready banner -->
+    <div id="scan-due-banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="scan-due-text">Scheduled scan is ready</span>
+        <div class="sdb-actions">
+            <button id="sdb-start-btn"   onclick="scanDueStart()">Start scan</button>
+            <button id="sdb-dismiss-btn" onclick="scanDueDismiss()">Dismiss</button>
+        </div>
+    </div>
+
     <!-- Scan in progress banner -->
     <div id="scan-banner">
         <svg id="scan-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -185,6 +224,47 @@
             }
         }
 
+        // ── Scheduled scan notification ───────────────────────────────────────
+        let _scanDueType = 'incremental';
+
+        function showScanDueBanner(scanType, reason) {
+            _scanDueType = scanType || 'incremental';
+            const banner = document.getElementById('scan-due-banner');
+            const text   = document.getElementById('scan-due-text');
+            const reasonLabel = reason === 'new_commits' ? 'New commits detected' : 'Scheduled scan ready';
+            const typeLabel   = _scanDueType === 'rotation' ? 'full rotation' : 'incremental';
+            text.textContent  = `${reasonLabel} — run ${typeLabel} scan?`;
+            banner.classList.add('visible');
+            document.body.classList.add('scan-due');
+        }
+
+        function hideScanDueBanner() {
+            document.getElementById('scan-due-banner').classList.remove('visible');
+            document.body.classList.remove('scan-due');
+        }
+
+        async function scanDueStart() {
+            document.getElementById('sdb-start-btn').disabled = true;
+            hideScanDueBanner();
+            try {
+                const r = await fetch('/scans/trigger', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({scan_type: _scanDueType}),
+                });
+                const d = await r.json();
+                if (!r.ok || !d.ok) alert(d.error || 'Failed to start scan');
+            } catch (e) {
+                alert('Failed to start scan: ' + e.message);
+            } finally {
+                document.getElementById('sdb-start-btn').disabled = false;
+            }
+        }
+
+        function scanDueDismiss() {
+            hideScanDueBanner();
+        }
+
         // Dispatch incoming WS messages to whichever handler is registered
         // (base.html handles scan_status; scans.html registers a log handler)
         const _wsHandlers = {};
@@ -199,9 +279,14 @@
                     const data = JSON.parse(event.data);
                     if (data.type === 'scan_status') {
                         handleScanStatusMessage(data);
+                        // Hide scan-due banner once a scan is actually running
+                        if (data.running) hideScanDueBanner();
                     }
                     if (data.type === 'findings_update') {
                         handleFindingsUpdate(data);
+                    }
+                    if (data.type === 'scan_due') {
+                        showScanDueBanner(data.scan_type, data.reason);
                     }
                     if (_wsHandlers[data.type]) {
                         _wsHandlers[data.type](data);

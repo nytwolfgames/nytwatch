@@ -30,10 +30,9 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
 
     @app.on_event("startup")
     async def startup():
-        import threading
         ws_manager.set_loop(asyncio.get_event_loop())
 
-        # Auto-trigger incremental scan if new commits arrived since last scan
+        # Notify the user if new commits arrived since the last scan
         if not config.repo_path:
             return  # No project configured yet
         try:
@@ -42,26 +41,14 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
             last_commit = db.get_config("last_scan_commit", "")
             if current_commit != last_commit:
                 logger.info(
-                    "New commits detected since last scan (%s → %s) — triggering incremental scan",
+                    "New commits detected since last scan (%s → %s) — notifying user",
                     last_commit or "none", current_commit[:8],
                 )
-                from auditor.scan_state import canceller
-                canceller.reset()
-
-                def _auto_scan():
-                    from auditor.database import Database
-                    from auditor.scanner.scheduler import run_scan
-                    thread_db = Database(get_db_path(config))
-                    try:
-                        run_scan(config, thread_db, scan_type="incremental")
-                    except Exception:
-                        logger.exception("Auto incremental scan failed")
-                    finally:
-                        thread_db.close()
-
-                threading.Thread(target=_auto_scan, daemon=True, name="auto-incremental").start()
+                # Delay slightly so the WS loop is ready for connected clients
+                await asyncio.sleep(1)
+                ws_manager.push_scan_due("incremental", reason="new_commits")
             else:
-                logger.info("No new commits since last scan (%s) — skipping auto scan", last_commit[:8] if last_commit else "none")
+                logger.info("No new commits since last scan (%s) — skipping notification", last_commit[:8] if last_commit else "none")
         except Exception:
             logger.exception("Failed to check for new commits on startup")
 
@@ -99,36 +86,38 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
 
     app.include_router(router)
 
-    # Set up scheduled scans if configured
+    # Set up scheduled scan notifications if configured
     if config.scan_schedule.incremental_interval_hours > 0:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
-            from auditor.scanner.scheduler import run_scan
+
+            def _notify_scan_due(scan_type: str = "incremental") -> None:
+                ws_manager.push_scan_due(scan_type, reason="schedule")
 
             scheduler = BackgroundScheduler()
             scheduler.add_job(
-                run_scan,
+                _notify_scan_due,
                 "interval",
                 hours=config.scan_schedule.incremental_interval_hours,
-                args=[config, db, "incremental"],
+                kwargs={"scan_type": "incremental"},
                 id="incremental_scan",
-                name="Incremental code scan",
+                name="Incremental code scan (notify)",
             )
 
             if config.scan_schedule.rotation_enabled:
                 scheduler.add_job(
-                    run_scan,
+                    _notify_scan_due,
                     "interval",
                     hours=config.scan_schedule.rotation_interval_hours,
-                    args=[config, db, "rotation"],
+                    kwargs={"scan_type": "rotation"},
                     id="rotation_scan",
-                    name="Rotation full scan",
+                    name="Rotation full scan (notify)",
                 )
 
             scheduler.start()
             app.state.scheduler = scheduler
             logger.info(
-                "Scheduled incremental scans every %d hours",
+                "Scheduled scan notifications every %d hours",
                 config.scan_schedule.incremental_interval_hours,
             )
         except Exception:

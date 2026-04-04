@@ -142,7 +142,7 @@ def list_project_configs() -> list[dict]:
             if not repo:
                 continue
             results.append({
-                "path": str(yaml_path),
+                "path": str(yaml_path).replace("\\", "/"),
                 "repo_path": repo,
                 "name": Path(repo).name if repo else yaml_path.stem,
             })

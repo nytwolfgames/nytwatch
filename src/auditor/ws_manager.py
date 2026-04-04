@@ -71,6 +71,14 @@ class ConnectionManager:
             },
         })
 
+    def push_scan_due(self, scan_type: str = "incremental", reason: str = "schedule") -> None:
+        """Notify connected clients that a scheduled scan is ready to run."""
+        self.broadcast_from_thread({
+            "type": "scan_due",
+            "scan_type": scan_type,
+            "reason": reason,
+        })
+
     def push_findings_update(
         self,
         scan_id: str,

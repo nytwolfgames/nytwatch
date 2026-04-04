@@ -61,10 +61,13 @@ async def dashboard(request: Request):
     db = get_db(request)
     config = get_config(request)
 
-    # First-run: no project configured yet → redirect to setup wizard
-    db_systems = db.list_systems()
-    if not config.repo_path or not db_systems:
+    # First-run: no project configured yet → redirect to setup wizard.
+    # Only redirect when there is genuinely no active project (no repo_path).
+    # A configured project with no systems yet is valid and should show the dashboard.
+    if not config.repo_path:
         return RedirectResponse(url="/settings?setup=1")
+
+    db_systems = db.list_systems()
 
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
@@ -330,11 +333,14 @@ async def scans_list(request: Request):
 # --- System config API ---
 
 @router.get("/api/browse-abs")
-async def browse_absolute(path: str = ""):
+async def browse_absolute(path: str = "", file_ext: str = ""):
     """Browse the local filesystem by absolute path.
 
     When path is empty on Windows, returns the list of available drive letters.
     On Unix, falls through to root.
+
+    If file_ext is provided (e.g. ".uproject"), matching files are included in
+    the response alongside directories, with is_file=True.
     """
     import os
     import string
@@ -366,13 +372,14 @@ async def browse_absolute(path: str = ""):
 
     entries = []
     try:
-        for entry in sorted(target.iterdir(), key=lambda e: e.name.lower()):
-            if not entry.is_dir():
-                continue
+        for entry in sorted(target.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
             if entry.name in _skip:
                 continue
             try:
-                entries.append({"name": entry.name, "path": _norm(entry) + "/"})
+                if entry.is_dir():
+                    entries.append({"name": entry.name, "path": _norm(entry) + "/", "is_file": False})
+                elif file_ext and entry.is_file() and entry.suffix.lower() == file_ext.lower():
+                    entries.append({"name": entry.name, "path": _norm(entry), "is_file": True})
             except (PermissionError, OSError):
                 pass
     except (PermissionError, OSError):
@@ -657,7 +664,7 @@ async def init_project(request: Request):
     set_active_config_path(config_path)
 
     logger.info("Project config created at: %s", config_path)
-    return JSONResponse({"ok": True, "config_path": str(config_path)})
+    return JSONResponse({"ok": True, "config_path": str(config_path).replace("\\", "/")})
 
 
 @router.get("/api/detect-systems")
@@ -671,6 +678,21 @@ async def detect_systems_api(request: Request, repo_path: str = ""):
         return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
     candidates = detect_systems_from_repo(repo_path)
     return JSONResponse({"systems": candidates})
+
+
+@router.get("/api/find-uproject")
+async def find_uproject_api(request: Request, repo_path: str = ""):
+    """Return the absolute path to the .uproject file in the given repo, if found."""
+    if not repo_path:
+        config = get_config(request)
+        repo_path = config.repo_path
+    rp = Path(repo_path).expanduser() if repo_path else None
+    if not rp or not rp.exists():
+        return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
+    matches = sorted(rp.glob("*.uproject"))
+    if not matches:
+        return JSONResponse({"uproject": None})
+    return JSONResponse({"uproject": str(matches[0]).replace("\\", "/")})
 
 
 @router.get("/api/detect-source-dirs")
@@ -939,50 +961,13 @@ async def settings_page(request: Request):
     source_dirs = db.list_source_dirs()
     active_dirs = [d for d in source_dirs if d["source_type"] != "ignored"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
-    # Build systems grouped by source_dir for the settings page view
-    active_dir_paths = {d["path"] for d in active_dirs}
-    systems_by_dir = []
-    for ad in active_dirs:
-        dir_systems = [s for s in db.list_systems() if s["source_dir"] == ad["path"]]
-        systems_by_dir.append({"source_dir": ad["path"], "systems": dir_systems})
     config_path = getattr(request.app.state, "config_path", "") or ""
     return templates.TemplateResponse(request, "settings.html", {
         "active_dirs": active_dirs,
         "ignored_dirs": ignored_dirs,
-        "systems_by_dir": systems_by_dir,
         "config": config,
         "config_path": config_path,
     })
-
-
-@router.post("/settings/systems")
-async def add_system(request: Request):
-    db = get_db(request)
-    body = await request.json()
-    name = body.get("name", "").strip()
-    source_dir = body.get("source_dir", "").strip()
-    paths = body.get("paths", [])
-    if not name:
-        return JSONResponse({"error": "System name is required"}, status_code=400)
-    if not source_dir:
-        return JSONResponse({"error": "source_dir is required"}, status_code=400)
-    if not paths:
-        paths = [source_dir]
-    db.upsert_system({"name": name, "source_dir": source_dir, "paths": paths})
-    logger.info("System added/updated: '%s' under '%s'", name, source_dir)
-    return JSONResponse({"ok": True})
-
-
-@router.delete("/settings/systems")
-async def remove_system(request: Request):
-    db = get_db(request)
-    body = await request.json()
-    name = body.get("name", "").strip()
-    if not name:
-        return JSONResponse({"error": "System name is required"}, status_code=400)
-    db.delete_system(name)
-    logger.info("System deleted: '%s'", name)
-    return JSONResponse({"ok": True})
 
 
 @router.post("/settings/source-dirs")
