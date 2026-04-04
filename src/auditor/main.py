@@ -4,12 +4,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from auditor.config import AuditorConfig, get_db_path, init_config, load_config
+from auditor.config import AuditorConfig, DEFAULT_CONFIG_PATH, get_db_path, init_config, load_config
 from auditor.database import Database
 from auditor.web.routes import router
 
@@ -21,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger("auditor")
 
 
-def create_app(config: AuditorConfig) -> FastAPI:
+def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI:
     import asyncio
     from auditor.ws_manager import manager as ws_manager
 
@@ -67,6 +68,7 @@ def create_app(config: AuditorConfig) -> FastAPI:
 
     app.state.db = db
     app.state.config = config
+    app.state.config_path = str(config_path or DEFAULT_CONFIG_PATH)
 
     stale = db.fail_stale_scans()
     if stale:
@@ -170,17 +172,19 @@ def run():
         return
 
     if args.command == "serve" or args.command is None:
-        config_path = getattr(args, "config", None)
+        config_path_str = getattr(args, "config", None)
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8420)
 
+        resolved_config_path = Path(config_path_str).expanduser() if config_path_str else DEFAULT_CONFIG_PATH
+
         try:
-            config = load_config(Path(config_path) if config_path else None)
+            config = load_config(resolved_config_path)
         except FileNotFoundError as e:
             print(str(e))
             sys.exit(1)
 
-        app = create_app(config)
+        app = create_app(config, config_path=resolved_config_path)
         logger.info("Starting Code Auditor on http://%s:%d", host, port)
         uvicorn.run(app, host=host, port=port, log_level="info")
         return

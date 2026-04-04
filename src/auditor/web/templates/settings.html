@@ -2,22 +2,58 @@
 {% block title %}Settings - Code Auditor{% endblock %}
 
 {% block content %}
-<h1 class="headline-lg mb-6">Source Directory Classification</h1>
+<div class="flex items-center justify-between mb-6">
+    <h1 class="headline-lg">Settings</h1>
+    <button onclick="openWizard()" class="btn btn-primary scan-safe">+ Setup New Project</button>
+</div>
+
+<!-- Active Project -->
+<div class="card mb-6">
+    <div class="section-label mb-3">Active Project</div>
+    <div class="flex items-center gap-4 flex-wrap">
+        <div style="flex:1;min-width:180px;">
+            <div class="label-lg mb-1">{{ config.repo_path }}</div>
+            <div class="mono body-sm text-variant">{{ config_path }}</div>
+        </div>
+        <div class="flex items-center gap-2">
+            <label class="body-sm text-variant" style="white-space:nowrap;">Switch to:</label>
+            <select id="project-switcher" class="input" style="width:280px;max-width:100%;"
+                    onchange="switchProject(this.value)" disabled>
+                <option value="">Loading…</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Config Health -->
+<div class="card mb-6">
+    <div class="flex items-center gap-3 mb-3">
+        <div class="section-label" style="flex:1;">Config Health</div>
+        <button onclick="loadHealth()" class="btn btn-sm scan-safe">Refresh</button>
+        <button onclick="repairConfig()" id="repair-btn" class="btn btn-sm scan-safe"
+                style="display:none;">Repair Config</button>
+    </div>
+    <div id="health-content">
+        <div class="body-sm text-variant">Checking…</div>
+    </div>
+</div>
+
+<!-- Source Directory Classification -->
+<h2 class="headline-md mb-2 mt-8">Source Directory Classification</h2>
 <p class="body-md text-variant mb-6">
     Directories are auto-detected as Project or Plugin using Unreal Engine heuristics and AI classification.
     You can override any classification below. Changes take effect on the next scan.
 </p>
 
 <div class="grid grid-2 gap-6">
-    <!-- Project Directories -->
     <div class="card">
         <div class="section-label mb-4">Project Directories</div>
         {% if project_dirs %}
         <div class="dir-list">
             {% for d in project_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
-                <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
-                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
+                <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
+                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
                     <option value="project" selected>Project</option>
                     <option value="plugin">Plugin</option>
                     <option value="ignored">Ignored</option>
@@ -30,15 +66,14 @@
         {% endif %}
     </div>
 
-    <!-- Plugin Directories -->
     <div class="card">
         <div class="section-label mb-4">Plugin Directories</div>
         {% if plugin_dirs %}
         <div class="dir-list">
             {% for d in plugin_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
-                <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
-                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
+                <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
+                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
                     <option value="project">Project</option>
                     <option value="plugin" selected>Plugin</option>
                     <option value="ignored">Ignored</option>
@@ -52,7 +87,6 @@
     </div>
 </div>
 
-<!-- Ignored Directories -->
 <div class="card mt-6">
     <div class="section-label mb-2">Ignored Directories</div>
     <p class="body-sm text-variant mb-4">These directories contain no scannable C++ code and are skipped during analysis.</p>
@@ -60,8 +94,8 @@
     <div class="dir-list">
         {% for d in ignored_dirs %}
         <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
-            <span class="mono body-sm" style="flex: 1; word-break: break-all; opacity: 0.6;">{{ d.path }}</span>
-            <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
+            <span class="mono body-sm" style="flex:1;word-break:break-all;opacity:0.6;">{{ d.path }}</span>
+            <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width:7rem;">
                 <option value="project">Project</option>
                 <option value="plugin">Plugin</option>
                 <option value="ignored" selected>Ignored</option>
@@ -77,8 +111,8 @@
 <div class="card mt-6">
     <div class="section-label mb-4">Add Directory</div>
     <div class="flex gap-3 items-center">
-        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex: 1;">
-        <select id="new-dir-type" class="input" style="width: 10rem;">
+        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex:1;">
+        <select id="new-dir-type" class="input" style="width:10rem;">
             <option value="project">Project</option>
             <option value="plugin">Plugin</option>
             <option value="ignored">Ignored</option>
@@ -86,42 +120,113 @@
         <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
     </div>
 </div>
+
+<!-- ── Setup Wizard Modal ───────────────────────────────────────────────────── -->
+<div id="wizard-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:700px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;margin:auto;">
+        <!-- Header -->
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Setup New Project</span>
+            <button onclick="closeWizard()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <!-- Step indicator -->
+        <div style="padding:20px 24px 0;" id="wz-indicator"></div>
+        <!-- Step content -->
+        <div style="padding:24px;" id="wz-content"></div>
+        <!-- Footer -->
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;">
+            <button onclick="wzBack()" id="wz-back-btn" class="btn btn-sm" style="display:none;">← Back</button>
+            <span id="wz-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="wzNext()" id="wz-next-btn" class="btn btn-sm btn-primary">Next →</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Shared path browser popup ──────────────────────────────────────────── -->
+<div id="sp-picker"
+     style="display:none;position:fixed;z-index:2100;background:var(--surface);
+            border:1px solid var(--outline);border-radius:8px;
+            box-shadow:0 8px 24px rgba(0,0,0,.4);width:420px;
+            flex-direction:column;overflow:hidden;max-height:360px;">
+    <div id="sp-crumb"
+         style="padding:9px 14px;border-bottom:1px solid var(--outline);
+                font-size:0.78rem;flex-shrink:0;line-height:1.8;"></div>
+    <div id="sp-entries" style="flex:1;overflow-y:auto;"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--outline);flex-shrink:0;">
+        <button id="sp-select-btn" onclick="spSelectCurrent()"
+                class="btn btn-sm btn-primary" style="width:100%;"></button>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <style>
-.dir-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-}
+/* Source dir classification */
+.dir-list { display:flex; flex-direction:column; gap:var(--sp-2); }
 .dir-item {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
-    background: var(--surface-container-low);
-    border-radius: 6px;
+    display:flex; align-items:center; gap:var(--sp-3);
+    padding:var(--sp-2) var(--sp-3);
+    background:var(--surface-container-low); border-radius:6px;
 }
-.dir-item-ignored {
-    opacity: 0.7;
-    border-left: 3px solid var(--outline);
+.dir-item-ignored { opacity:.7; border-left:3px solid var(--outline); }
+
+/* Wizard step indicator */
+.wz-steps { display:flex; align-items:center; margin-bottom:4px; }
+.wz-step { display:flex; flex-direction:column; align-items:center; gap:4px; flex-shrink:0; }
+.wz-circle {
+    width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.75rem; font-weight:600;
+    background:var(--surface-container-high); color:var(--on-surface-variant);
+    border:2px solid var(--outline); transition:all .2s;
 }
+.wz-step.active .wz-circle { background:var(--primary,#004ac6); color:#fff; border-color:var(--primary,#004ac6); }
+.wz-step.done .wz-circle { background:#166534; color:#fff; border-color:transparent; }
+.wz-label { font-size:0.7rem; color:var(--on-surface-variant); white-space:nowrap; }
+.wz-step.active .wz-label { color:var(--on-surface); font-weight:500; }
+.wz-line { flex:1; height:2px; background:var(--outline); margin:0 4px; margin-bottom:20px; }
+.wz-step.done ~ .wz-line,
+.wz-step.done + .wz-line { background:var(--primary,#004ac6); }
+
+/* Wizard system cards */
+.wz-sys-card {
+    background:var(--surface-container); border-radius:8px;
+    padding:14px; margin-bottom:10px; border:1px solid var(--outline);
+}
+
+/* Health items */
+.h-item { display:flex; align-items:flex-start; gap:8px; padding:6px 0;
+    border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.06)); }
+.h-item:last-child { border-bottom:none; }
+.h-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+.h-ok { background:#22c55e; }
+.h-warn { background:#f59e0b; }
+.h-err { background:#ef4444; }
 </style>
+
 <script>
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escH(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Source dir classification (existing) ──────────────────────────────────────
 async function moveDir(path, newType) {
     try {
         const res = await fetch('/settings/source-dirs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: path, source_type: newType}),
+            body: JSON.stringify({path, source_type: newType}),
         });
         const data = await res.json();
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to update');
-    } catch (e) {
-        alert('Failed: ' + e.message);
-    }
+    } catch (e) { alert('Failed: ' + e.message); }
 }
 
 async function addDir() {
@@ -132,14 +237,679 @@ async function addDir() {
         const res = await fetch('/settings/source-dirs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: path, source_type: sourceType}),
+            body: JSON.stringify({path, source_type: sourceType}),
         });
         const data = await res.json();
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to add');
+    } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// ── Health panel ──────────────────────────────────────────────────────────────
+async function loadHealth() {
+    const el = document.getElementById('health-content');
+    try {
+        const r = await fetch('/api/config/status');
+        const d = await r.json();
+        renderHealth(d);
+    } catch (e) {
+        el.innerHTML = `<div class="body-sm" style="color:#ef4444;">Failed to load: ${escH(e.message)}</div>`;
+    }
+}
+
+function renderHealth(d) {
+    const el = document.getElementById('health-content');
+    const repairBtn = document.getElementById('repair-btn');
+    const hasErrors = d.errors && d.errors.length > 0;
+    repairBtn.style.display = hasErrors ? '' : 'none';
+
+    let html = '';
+
+    html += `<div class="h-item">
+        <div class="h-dot ${d.repo_exists ? 'h-ok' : 'h-err'}"></div>
+        <div>
+            <div class="body-sm">Repo: <span class="mono">${escH(d.repo_path)}</span></div>
+            ${!d.repo_exists ? '<div class="body-sm" style="color:#ef4444;margin-top:2px;">Path not found</div>' : ''}
+        </div>
+    </div>`;
+
+    for (const s of d.systems || []) {
+        const bad = s.paths.filter(p => !p.exists);
+        html += `<div class="h-item">
+            <div class="h-dot ${bad.length ? 'h-warn' : 'h-ok'}"></div>
+            <div>
+                <div class="body-sm"><strong>${escH(s.name)}</strong></div>
+                ${s.paths.map(p => `<div class="mono body-sm" style="margin-top:2px;${p.exists ? '' : 'color:#f59e0b;'}">
+                    ${p.exists ? '✓' : '⚠'} ${escH(p.path)}
+                </div>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    if (hasErrors) {
+        for (const err of d.errors) {
+            html += `<div class="h-item">
+                <div class="h-dot h-err"></div>
+                <div class="body-sm" style="color:#ef4444;">${escH(err)}</div>
+            </div>`;
+        }
+    }
+
+    const dbKb = Math.round((d.db_size_bytes || 0) / 1024);
+    html += `<div class="flex gap-6 mt-4 flex-wrap">
+        <div class="body-sm text-variant">DB: ${dbKb} KB</div>
+        <div class="body-sm text-variant">Last commit: <span class="mono">${escH(d.last_commit ? d.last_commit.slice(0,8) : 'none')}</span></div>
+        <div class="body-sm text-variant">Config: <span class="mono">${escH(d.config_path)}</span></div>
+    </div>`;
+
+    el.innerHTML = html;
+}
+
+async function repairConfig() {
+    const btn = document.getElementById('repair-btn');
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/config/repair', {method: 'POST'});
+        const d = await r.json();
+        if (d.ok) await loadHealth();
+        else alert(d.error || 'Repair failed');
+    } catch (e) { alert('Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+}
+
+// ── Project switcher ──────────────────────────────────────────────────────────
+async function loadProjects() {
+    try {
+        const r = await fetch('/api/projects');
+        const d = await r.json();
+        const sel = document.getElementById('project-switcher');
+        if (!d.projects.length) {
+            sel.innerHTML = '<option value="">No other configs found</option>';
+        } else {
+            sel.innerHTML = d.projects.map(p =>
+                `<option value="${escH(p.path)}" ${p.path === d.current ? 'selected' : ''}>${escH(p.name)}</option>`
+            ).join('');
+        }
+        sel.disabled = false;
+    } catch (e) {
+        console.warn('Failed to load projects:', e.message);
+    }
+}
+
+async function switchProject(path) {
+    if (!path) return;
+    const sel = document.getElementById('project-switcher');
+    sel.disabled = true;
+    try {
+        const r = await fetch('/api/projects/switch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            location.reload();
+        } else {
+            alert(d.error || 'Failed to switch project');
+            await loadProjects();
+        }
     } catch (e) {
         alert('Failed: ' + e.message);
+        sel.disabled = false;
     }
+}
+
+// ── Wizard state ──────────────────────────────────────────────────────────────
+const WZ_STEPS = [
+    {id: 'repo',     label: 'Repository'},
+    {id: 'systems',  label: 'Systems'},
+    {id: 'build',    label: 'Build'},
+    {id: 'schedule', label: 'Schedule'},
+    {id: 'review',   label: 'Review'},
+];
+
+let _wz = {};
+
+function _wzReset() {
+    _wz = {
+        step: 0,
+        repo_path: '',
+        systems: [],
+        build: {ue_editor_cmd: '', project_file: '', build_timeout_seconds: 1800, test_timeout_seconds: 600},
+        scan_schedule: {incremental_interval_hours: 4, rotation_enabled: false, rotation_interval_hours: 24},
+        claude_fast_mode: true,
+        min_confidence: 'medium',
+        config_path: '',
+    };
+}
+
+function openWizard() {
+    _wzReset();
+    document.getElementById('wizard-overlay').style.display = 'flex';
+    wzRender();
+}
+
+function closeWizard() {
+    document.getElementById('wizard-overlay').style.display = 'none';
+    spClose();
+}
+
+// ── Wizard rendering ──────────────────────────────────────────────────────────
+function wzRenderIndicator() {
+    const el = document.getElementById('wz-indicator');
+    el.innerHTML = '<div class="wz-steps">' +
+        WZ_STEPS.map((s, i) => {
+            const cls = i < _wz.step ? 'done' : i === _wz.step ? 'active' : '';
+            const circle = i < _wz.step ? '✓' : (i + 1);
+            const line = i < WZ_STEPS.length - 1 ? '<div class="wz-line"></div>' : '';
+            return `<div class="wz-step ${cls}">
+                <div class="wz-circle">${circle}</div>
+                <div class="wz-label">${s.label}</div>
+            </div>${line}`;
+        }).join('') +
+    '</div>';
+}
+
+function wzRender() {
+    wzRenderIndicator();
+    document.getElementById('wz-back-btn').style.display = _wz.step > 0 ? '' : 'none';
+    document.getElementById('wz-next-btn').textContent =
+        _wz.step === WZ_STEPS.length - 1 ? 'Create Project' : 'Next →';
+    document.getElementById('wz-err').textContent = '';
+
+    const el = document.getElementById('wz-content');
+    const step = WZ_STEPS[_wz.step].id;
+
+    if (step === 'repo') {
+        el.innerHTML = `
+            <div class="label-lg mb-3">Repository Path</div>
+            <p class="body-sm text-variant mb-4">Absolute path to the root of your Unreal Engine repository.</p>
+            <input id="wz-repo" type="text" class="input" style="width:100%;"
+                value="${escH(_wz.repo_path)}" placeholder="/absolute/path/to/your/repo"
+                oninput="_wz.repo_path = this.value.trim()">
+            <div id="wz-repo-status" class="body-sm mt-2" style="min-height:18px;"></div>
+        `;
+        document.getElementById('wz-repo').focus();
+
+    } else if (step === 'systems') {
+        wzRenderSystems(el);
+
+    } else if (step === 'build') {
+        el.innerHTML = `
+            <div class="label-lg mb-3">Build Settings <span class="body-sm text-variant">(optional — skip if not applying fixes)</span></div>
+            <div style="display:grid;gap:14px;">
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">UnrealEditor-Cmd path</label>
+                    <input id="wz-ue-cmd" type="text" class="input" style="width:100%;"
+                        value="${escH(_wz.build.ue_editor_cmd)}"
+                        placeholder="/path/to/UnrealEditor-Cmd"
+                        oninput="_wz.build.ue_editor_cmd = this.value">
+                </div>
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">.uproject file</label>
+                    <input id="wz-proj-file" type="text" class="input" style="width:100%;"
+                        value="${escH(_wz.build.project_file)}"
+                        placeholder="/path/to/MyGame.uproject"
+                        oninput="_wz.build.project_file = this.value">
+                </div>
+                <div class="flex gap-4">
+                    <div style="flex:1;">
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Build timeout (s)</label>
+                        <input type="number" class="input" style="width:100%;"
+                            value="${_wz.build.build_timeout_seconds}"
+                            oninput="_wz.build.build_timeout_seconds = +this.value || 1800">
+                    </div>
+                    <div style="flex:1;">
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Test timeout (s)</label>
+                        <input type="number" class="input" style="width:100%;"
+                            value="${_wz.build.test_timeout_seconds}"
+                            oninput="_wz.build.test_timeout_seconds = +this.value || 600">
+                    </div>
+                </div>
+            </div>
+        `;
+
+    } else if (step === 'schedule') {
+        el.innerHTML = `
+            <div class="label-lg mb-3">Scan Schedule</div>
+            <div style="display:grid;gap:18px;">
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                        Incremental scan interval:
+                        <strong id="wz-inc-label">${_wz.scan_schedule.incremental_interval_hours}h</strong>
+                    </label>
+                    <input type="range" min="1" max="24" style="width:100%;"
+                        value="${_wz.scan_schedule.incremental_interval_hours}"
+                        oninput="_wz.scan_schedule.incremental_interval_hours=+this.value;document.getElementById('wz-inc-label').textContent=this.value+'h'">
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="wz-rotation"
+                        ${_wz.scan_schedule.rotation_enabled ? 'checked' : ''}
+                        onchange="_wz.scan_schedule.rotation_enabled=this.checked;document.getElementById('wz-rot-opts').style.display=this.checked?'':'none'">
+                    <label for="wz-rotation" class="body-sm">Enable rotation (periodic full scan)</label>
+                </div>
+                <div id="wz-rot-opts" style="${_wz.scan_schedule.rotation_enabled ? '' : 'display:none'}">
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                        Rotation interval:
+                        <strong id="wz-rot-label">${_wz.scan_schedule.rotation_interval_hours}h</strong>
+                    </label>
+                    <input type="range" min="12" max="168" step="12" style="width:100%;"
+                        value="${_wz.scan_schedule.rotation_interval_hours}"
+                        oninput="_wz.scan_schedule.rotation_interval_hours=+this.value;document.getElementById('wz-rot-label').textContent=this.value+'h'">
+                </div>
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Min Confidence</label>
+                    <select class="input input-sm" onchange="_wz.min_confidence=this.value">
+                        ${['low','medium','high'].map(c =>
+                            `<option value="${c}" ${_wz.min_confidence===c?'selected':''}>${c}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="wz-fast"
+                        ${_wz.claude_fast_mode ? 'checked' : ''}
+                        onchange="_wz.claude_fast_mode=this.checked">
+                    <label for="wz-fast" class="body-sm">Claude fast mode</label>
+                </div>
+            </div>
+        `;
+
+    } else if (step === 'review') {
+        wzRenderReview(el);
+    }
+}
+
+// ── Step 2: Systems ───────────────────────────────────────────────────────────
+function wzRenderSystems(el) {
+    let html = `
+        <div class="flex items-center gap-2 mb-3">
+            <div class="label-lg" style="flex:1;">Systems</div>
+            <button onclick="wzDetect(this)" class="btn btn-sm scan-safe" id="wz-detect-btn">Detect from repo</button>
+            <button onclick="wzAddSys()" class="btn btn-sm scan-safe">+ Add System</button>
+        </div>
+        <p class="body-sm text-variant mb-4">
+            Each system maps to one or more source directories.
+            Use "Detect from repo" to auto-find modules and plugins.
+        </p>
+        <div id="wz-sys-list">`;
+
+    if (!_wz.systems.length) {
+        html += `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            No systems yet — click "Detect from repo" or "+ Add System"
+        </div>`;
+    } else {
+        html += _wz.systems.map((s, i) => wzSysCard(s, i)).join('');
+    }
+    html += '</div><div id="wz-overlaps"></div>';
+    el.innerHTML = html;
+    wzCheckOverlaps();
+}
+
+function wzSysCard(s, i) {
+    const paths = s.paths.map((p, pi) => wzPathRow(i, pi, p)).join('');
+    return `<div class="wz-sys-card" id="wz-card-${i}">
+        <div class="flex items-center gap-2 mb-3">
+            <input type="text" class="input input-sm" style="flex:1;" placeholder="System name"
+                value="${escH(s.name)}" oninput="wzSysName(${i},this.value)">
+            ${s.hint ? `<span class="badge" style="font-size:0.65rem;background:var(--surface-container-high);">${escH(s.hint)}</span>` : ''}
+            <button onclick="wzRemoveSys(${i})" class="scan-safe"
+                style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.2rem;padding:2px 6px;">&times;</button>
+        </div>
+        <div id="wz-paths-${i}">${paths}</div>
+        <button onclick="wzAddPath(${i})" class="btn btn-sm scan-safe" style="margin-top:6px;font-size:0.78rem;">+ Add Path</button>
+    </div>`;
+}
+
+function wzPathRow(si, pi, path) {
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" id="wz-pr-${si}-${pi}">
+        <button onclick="spOpen({si:${si},pi:${pi}},this)" class="scan-safe"
+            style="flex:1;text-align:left;background:var(--surface-container-low);border:1px solid var(--outline);
+                   border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.78rem;font-family:monospace;
+                   color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${escH(path)}">
+            📁 ${path ? escH(path) : '<span style="opacity:.5">click to browse</span>'}
+        </button>
+        <button onclick="wzRemovePath(${si},${pi})" class="scan-safe"
+            style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                   font-size:1.1rem;padding:2px 6px;">&times;</button>
+    </div>`;
+}
+
+function wzRerender() {
+    const el = document.getElementById('wz-sys-list');
+    if (!el) return;
+    if (!_wz.systems.length) {
+        el.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            No systems yet — click "Detect from repo" or "+ Add System"
+        </div>`;
+    } else {
+        el.innerHTML = _wz.systems.map((s, i) => wzSysCard(s, i)).join('');
+    }
+    wzCheckOverlaps();
+}
+
+function wzSysName(i, v) { _wz.systems[i].name = v; wzCheckOverlaps(); }
+function wzAddSys() { _wz.systems.push({name:'', paths:[], hint:''}); wzRerender(); }
+function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
+
+function wzAddPath(si) {
+    _wz.systems[si].paths.push('');
+    wzRerender();
+    // Auto-open browser for the new blank path
+    const btn = document.querySelector(`#wz-pr-${si}-${_wz.systems[si].paths.length - 1} button`);
+    if (btn) spOpen({si, pi: _wz.systems[si].paths.length - 1}, btn);
+}
+
+function wzRemovePath(si, pi) {
+    _wz.systems[si].paths.splice(pi, 1);
+    spClose();
+    wzRerender();
+}
+
+function wzCheckOverlaps() {
+    const el = document.getElementById('wz-overlaps');
+    if (!el) return;
+    const all = [];
+    for (const s of _wz.systems) {
+        for (const p of s.paths) {
+            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/,'/')});
+        }
+    }
+    const warns = [];
+    for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+            const a = all[i], b = all[j];
+            if (a.path.startsWith(b.path) || b.path.startsWith(a.path)) {
+                const msg = `Path overlap: "${a.path}" (${a.sys}) and "${b.path}" (${b.sys})`;
+                if (!warns.includes(msg)) warns.push(msg);
+            }
+        }
+    }
+    el.innerHTML = warns.map(w =>
+        `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
+                     background:rgba(245,158,11,.1);border-radius:6px;margin-top:6px;">
+            <span style="color:#f59e0b;flex-shrink:0;">⚠</span>
+            <span class="body-sm">${escH(w)}</span>
+        </div>`
+    ).join('');
+}
+
+async function wzDetect(btn) {
+    if (!_wz.repo_path) {
+        document.getElementById('wz-err').textContent = 'Set the repository path in step 1 first';
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Detecting…';
+    try {
+        const r = await fetch('/api/detect-systems?repo_path=' + encodeURIComponent(_wz.repo_path));
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        if (!d.systems.length) {
+            document.getElementById('wz-err').textContent =
+                'No systems detected automatically — add them manually';
+        } else {
+            const existing = new Set(_wz.systems.map(s => s.name));
+            for (const s of d.systems) {
+                if (!existing.has(s.name)) _wz.systems.push({name: s.name, paths: s.paths, hint: s.hint});
+            }
+            wzRerender();
+            document.getElementById('wz-err').textContent = '';
+        }
+    } catch (e) {
+        document.getElementById('wz-err').textContent = 'Detection failed: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Detect from repo';
+    }
+}
+
+// ── Step 5: Review ────────────────────────────────────────────────────────────
+function wzRenderReview(el) {
+    const systems = _wz.systems.filter(s => s.name && s.paths.filter(p=>p).length);
+    const totalPaths = systems.reduce((a, s) => a + s.paths.length, 0);
+
+    let yaml = `repo_path: ${_wz.repo_path}\nmin_confidence: ${_wz.min_confidence}\nclaude_fast_mode: ${_wz.claude_fast_mode}\n\nsystems:\n`;
+    for (const s of systems) {
+        yaml += `  - name: ${s.name}\n    paths:\n`;
+        for (const p of s.paths.filter(Boolean)) yaml += `      - ${p}\n`;
+    }
+    yaml += `\nscan_schedule:\n  incremental_interval_hours: ${_wz.scan_schedule.incremental_interval_hours}\n  rotation_enabled: ${_wz.scan_schedule.rotation_enabled}\n`;
+    if (_wz.scan_schedule.rotation_enabled) yaml += `  rotation_interval_hours: ${_wz.scan_schedule.rotation_interval_hours}\n`;
+    if (_wz.build.ue_editor_cmd || _wz.build.project_file) {
+        yaml += `\nbuild:\n`;
+        if (_wz.build.ue_editor_cmd) yaml += `  ue_editor_cmd: ${_wz.build.ue_editor_cmd}\n`;
+        if (_wz.build.project_file) yaml += `  project_file: ${_wz.build.project_file}\n`;
+    }
+
+    el.innerHTML = `
+        <div class="label-lg mb-3">Review & Confirm</div>
+        <p class="body-sm text-variant mb-4">
+            ${systems.length} system${systems.length !== 1 ? 's' : ''} across ${totalPaths} path${totalPaths !== 1 ? 's' : ''}.
+        </p>
+        <div style="background:var(--surface-container);border-radius:6px;padding:14px;
+                    font-family:monospace;font-size:0.78rem;white-space:pre;overflow-x:auto;
+                    line-height:1.7;max-height:240px;overflow-y:auto;margin-bottom:16px;">${escH(yaml)}</div>
+        <div>
+            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Save config to</label>
+            <input id="wz-cfgpath" type="text" class="input" style="width:100%;"
+                value="${escH(_wz.config_path || '~/.code-auditor/config.yaml')}"
+                oninput="_wz.config_path=this.value.trim()"
+                placeholder="~/.code-auditor/config.yaml">
+            <div class="body-sm text-variant mt-1">
+                Default overwrites the current config. Use a different path to set up a second project.
+            </div>
+        </div>
+        <div id="wz-result" style="margin-top:14px;"></div>
+    `;
+}
+
+// ── Wizard navigation ─────────────────────────────────────────────────────────
+function wzBack() {
+    if (_wz.step > 0) { _wz.step--; wzRender(); }
+}
+
+async function wzNext() {
+    const err = document.getElementById('wz-err');
+    err.textContent = '';
+    const step = WZ_STEPS[_wz.step].id;
+
+    if (step === 'repo') {
+        const path = document.getElementById('wz-repo')?.value.trim() || '';
+        _wz.repo_path = path;
+        if (!path) { err.textContent = 'Repository path is required'; return; }
+
+        const statusEl = document.getElementById('wz-repo-status');
+        statusEl.textContent = 'Validating…';
+        try {
+            const r = await fetch('/api/detect-systems?repo_path=' + encodeURIComponent(path));
+            const d = await r.json();
+            if (d.error) { err.textContent = d.error; statusEl.textContent = ''; return; }
+            const n = d.systems.length;
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Valid path — ${n} system${n !== 1 ? 's' : ''} detectable</span>`;
+        } catch (e) {
+            err.textContent = 'Could not validate path: ' + e.message;
+            statusEl.textContent = '';
+            return;
+        }
+
+    } else if (step === 'systems') {
+        const valid = _wz.systems.filter(s => s.name.trim() && s.paths.filter(p => p.trim()).length);
+        if (!valid.length) {
+            err.textContent = 'Add at least one system with a name and at least one path';
+            return;
+        }
+        _wz.systems = valid.map(s => ({...s, paths: s.paths.filter(p => p.trim())}));
+
+    } else if (step === 'review') {
+        await wzCreate();
+        return;
+    }
+
+    _wz.step++;
+    wzRender();
+}
+
+async function wzCreate() {
+    const btn = document.getElementById('wz-next-btn');
+    const result = document.getElementById('wz-result');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    try {
+        const r = await fetch('/api/projects/init', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                repo_path: _wz.repo_path,
+                systems: _wz.systems,
+                build: _wz.build,
+                scan_schedule: _wz.scan_schedule,
+                claude_fast_mode: _wz.claude_fast_mode,
+                min_confidence: _wz.min_confidence,
+                config_path: _wz.config_path || '',
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            result.innerHTML = `
+                <div style="color:#22c55e;font-weight:500;margin-bottom:10px;">
+                    ✓ Config saved to <span class="mono">${escH(d.config_path)}</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="switchProject('${escH(d.config_path)}')" class="btn btn-sm btn-primary scan-safe">
+                        Switch to this project
+                    </button>
+                    <button onclick="closeWizard()" class="btn btn-sm scan-safe">Close</button>
+                </div>`;
+            btn.style.display = 'none';
+            await loadProjects();
+        } else {
+            result.innerHTML = `<div style="color:#ef4444;">${escH(d.error || 'Unknown error')}</div>`;
+        }
+    } catch (e) {
+        result.innerHTML = `<div style="color:#ef4444;">Failed: ${escH(e.message)}</div>`;
+    } finally {
+        btn.disabled = false;
+        if (btn.style.display !== 'none') btn.textContent = 'Create Project';
+    }
+}
+
+// ── Shared path browser ───────────────────────────────────────────────────────
+// ctx: {si, pi} for wizard system path  |  null = unused
+let _spCtx = null;
+let _spCurrent = '';
+
+async function spOpen(ctx, anchorEl) {
+    _spCtx = ctx;
+    const startPath = ctx
+        ? (_wz.systems[ctx.si]?.paths[ctx.pi] || '').replace(/\/?$/, '')
+        : '';
+    await spNavigate(startPath);
+
+    const picker = document.getElementById('sp-picker');
+    picker.style.display = 'flex';
+    // Center below anchor if possible
+    const ar = anchorEl ? anchorEl.getBoundingClientRect() : {bottom: 200, left: 100};
+    const ph = picker.offsetHeight || 340, pw = picker.offsetWidth || 420;
+    let top = ar.bottom + 6;
+    if (top + ph > window.innerHeight - 10) top = Math.max(10, ar.top - ph - 6);
+    let left = ar.left;
+    if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+    picker.style.top = top + 'px';
+    picker.style.left = left + 'px';
+}
+
+async function spNavigate(path) {
+    _spCurrent = path.replace(/\\/g, '/').replace(/\/?$/, '');
+    const entries = document.getElementById('sp-entries');
+    entries.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
+    try {
+        const base = _wz.repo_path || '';
+        const url = '/api/browse?path=' + encodeURIComponent(_spCurrent)
+            + (base ? '&base=' + encodeURIComponent(base) : '');
+        const r = await fetch(url);
+        if (!r.ok) throw new Error();
+        spRender(await r.json());
+    } catch {
+        entries.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:#f87171;">Failed to load</div>';
+    }
+}
+
+function spRender(data) {
+    const parts = _spCurrent ? _spCurrent.split('/').filter(Boolean) : [];
+    let crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
+    let cum = '';
+    for (const p of parts) {
+        cum += (cum ? '/' : '') + p;
+        const cp = cum;
+        crumb += ` / <span onclick="spNavigate('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+    }
+    document.getElementById('sp-crumb').innerHTML = crumb;
+
+    const el = document.getElementById('sp-entries');
+    if (!data.entries?.length) {
+        el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
+    } else {
+        el.innerHTML = data.entries.map(e =>
+            `<div style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+                  onmouseenter="this.style.background='var(--surface-container)'"
+                  onmouseleave="this.style.background=''">
+                <span onclick="spNavigate('${e.path}')"
+                      style="flex:1;font-size:0.8rem;cursor:pointer;font-family:monospace;">📁 ${escH(e.name)}</span>
+                <button onclick="event.stopPropagation();spSelect('${e.path}')"
+                    style="background:none;border:1px solid var(--outline);border-radius:4px;padding:2px 8px;
+                           font-size:0.72rem;cursor:pointer;color:var(--on-surface-variant);white-space:nowrap;">Select</button>
+            </div>`
+        ).join('');
+    }
+    document.getElementById('sp-select-btn').textContent =
+        _spCurrent ? `Select "${_spCurrent}/"` : 'Select repo root';
+}
+
+function spSelectCurrent() {
+    spSelect(_spCurrent ? _spCurrent + '/' : '');
+}
+
+function spSelect(path) {
+    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    spClose();
+    if (_spCtx) {
+        const {si, pi} = _spCtx;
+        if (_wz.systems[si]) {
+            _wz.systems[si].paths[pi] = norm;
+            wzRerender();
+        }
+    }
+}
+
+function spClose() {
+    document.getElementById('sp-picker').style.display = 'none';
+    _spCtx = null;
+}
+
+// ── Keyboard / outside-click handlers ────────────────────────────────────────
+document.addEventListener('click', e => {
+    const picker = document.getElementById('sp-picker');
+    if (picker?.style.display !== 'none'
+        && !picker.contains(e.target)
+        && !e.target.closest('button[onclick*="spOpen"]')
+        && !e.target.closest('button[onclick*="spNavigate"]'))
+        spClose();
+}, true);
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('sp-picker')?.style.display !== 'none') { spClose(); return; }
+    if (document.getElementById('wizard-overlay')?.style.display !== 'none') closeWizard();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadProjects();
+loadHealth();
+
+// Auto-open wizard when redirected here with ?setup=1 (first-run)
+if (new URLSearchParams(location.search).get('setup') === '1') {
+    openWizard();
 }
 </script>
 {% endblock %}

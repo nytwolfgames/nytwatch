@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 class SystemDef(BaseModel):
     name: str
     paths: list[str]
+    # Per-system overrides — None means "inherit global setting"
+    min_confidence: Optional[str] = None
+    file_extensions: Optional[list[str]] = None
+    claude_fast_mode: Optional[bool] = None
 
 
 class ScanSchedule(BaseModel):
@@ -64,13 +68,169 @@ def load_config(path: Optional[Path] = None) -> AuditorConfig:
     return AuditorConfig(**raw)
 
 
+def _serialize_systems(systems: list[SystemDef]) -> list[dict]:
+    """Serialize systems list, including per-system overrides when set."""
+    result = []
+    for s in systems:
+        entry: dict = {"name": s.name, "paths": list(s.paths)}
+        if s.min_confidence is not None:
+            entry["min_confidence"] = s.min_confidence
+        if s.file_extensions is not None:
+            entry["file_extensions"] = list(s.file_extensions)
+        if s.claude_fast_mode is not None:
+            entry["claude_fast_mode"] = s.claude_fast_mode
+        result.append(entry)
+    return result
+
+
 def save_config(config: AuditorConfig, path: Optional[Path] = None) -> None:
     config_path = Path(path or DEFAULT_CONFIG_PATH).expanduser()
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
-    raw["systems"] = [{"name": s.name, "paths": list(s.paths)} for s in config.systems]
+    raw["systems"] = _serialize_systems(config.systems)
     with open(config_path, "w") as f:
         yaml.dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
+def save_full_config(config: AuditorConfig, path: Optional[Path] = None) -> None:
+    """Save all config fields (used by wizard and repair)."""
+    config_path = Path(path or DEFAULT_CONFIG_PATH).expanduser()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    raw: dict = {
+        "repo_path": config.repo_path,
+        "systems": _serialize_systems(config.systems),
+        "scan_schedule": {
+            "incremental_interval_hours": config.scan_schedule.incremental_interval_hours,
+            "rotation_enabled": config.scan_schedule.rotation_enabled,
+            "rotation_interval_hours": config.scan_schedule.rotation_interval_hours,
+        },
+        "build": {
+            "ue_editor_cmd": config.build.ue_editor_cmd,
+            "project_file": config.build.project_file,
+            "build_timeout_seconds": config.build.build_timeout_seconds,
+            "test_timeout_seconds": config.build.test_timeout_seconds,
+        },
+        "notifications": {
+            "desktop": config.notifications.desktop,
+        },
+        "data_dir": config.data_dir,
+        "claude_fast_mode": config.claude_fast_mode,
+        "min_confidence": config.min_confidence,
+        "file_extensions": list(config.file_extensions),
+    }
+    if config.notifications.slack_webhook:
+        raw["notifications"]["slack_webhook"] = config.notifications.slack_webhook
+    if config.notifications.discord_webhook:
+        raw["notifications"]["discord_webhook"] = config.notifications.discord_webhook
+    with open(config_path, "w") as f:
+        yaml.dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
+def list_project_configs() -> list[dict]:
+    """Scan ~/.code-auditor/ for *.yaml project config files."""
+    search_dir = DEFAULT_CONFIG_PATH.parent
+    results = []
+    if not search_dir.exists():
+        return results
+    for yaml_path in sorted(search_dir.glob("*.yaml")):
+        try:
+            with open(yaml_path) as f:
+                raw = yaml.safe_load(f) or {}
+            repo = raw.get("repo_path", "")
+            results.append({
+                "path": str(yaml_path),
+                "repo_path": repo,
+                "name": Path(repo).name if repo else yaml_path.stem,
+            })
+        except Exception:
+            pass
+    return results
+
+
+def validate_config_errors(config: AuditorConfig) -> list[str]:
+    """Return a list of human-readable validation problems."""
+    errors = []
+    repo = Path(config.repo_path).expanduser()
+    if not repo.exists():
+        errors.append(f"repo_path does not exist: {config.repo_path}")
+    elif not (repo / ".git").exists():
+        errors.append(f"repo_path is not a git repository: {config.repo_path}")
+
+    if not config.systems:
+        errors.append("No systems configured — add at least one system with paths")
+
+    seen_paths: dict[str, str] = {}
+    for sys in config.systems:
+        if not sys.name.strip():
+            errors.append("A system has an empty name")
+        if not sys.paths:
+            errors.append(f"System '{sys.name}' has no paths")
+        for p in sys.paths:
+            norm = p.replace("\\", "/").rstrip("/") + "/"
+            if norm in seen_paths:
+                errors.append(
+                    f"Path '{p}' is shared by '{seen_paths[norm]}' and '{sys.name}'"
+                )
+            else:
+                seen_paths[norm] = sys.name
+            if repo.exists() and not (repo / p).exists():
+                errors.append(f"System '{sys.name}': path not found in repo: {p}")
+    return errors
+
+
+def detect_systems_from_repo(repo_path: str) -> list[dict]:
+    """Auto-detect systems from repo structure using UE heuristics.
+
+    Looks for:
+    - *.uplugin files  → Plugin systems (Source/ subdirectory)
+    - Source/**/*.Build.cs → Game module systems
+    """
+    repo = Path(repo_path).expanduser().resolve()
+    if not repo.exists():
+        return []
+
+    _skip = {
+        "Binaries", "Intermediate", "Saved", "DerivedDataCache",
+        "Content", "__pycache__", "node_modules", ".git",
+    }
+
+    def _in_skip(p: Path) -> bool:
+        return any(part in _skip for part in p.relative_to(repo).parts)
+
+    candidates: list[dict] = []
+    seen_paths: set[str] = set()
+
+    # *.uplugin → Plugin system
+    for uplugin in sorted(repo.rglob("*.uplugin")):
+        try:
+            if _in_skip(uplugin):
+                continue
+            source = uplugin.parent / "Source"
+            base = source if source.exists() else uplugin.parent
+            rel = str(base.relative_to(repo)).replace("\\", "/").rstrip("/") + "/"
+            if rel not in seen_paths:
+                seen_paths.add(rel)
+                candidates.append({"name": uplugin.stem, "paths": [rel], "hint": "plugin"})
+        except ValueError:
+            pass
+
+    # Source/**/*.Build.cs → game module systems
+    source_root = repo / "Source"
+    if source_root.exists():
+        for build_cs in sorted(source_root.rglob("*.Build.cs")):
+            try:
+                if _in_skip(build_cs):
+                    continue
+                mod_dir = build_cs.parent
+                rel = str(mod_dir.relative_to(repo)).replace("\\", "/").rstrip("/") + "/"
+                if rel not in seen_paths:
+                    seen_paths.add(rel)
+                    name = build_cs.stem.replace(".Build", "")
+                    candidates.append({"name": name, "paths": [rel], "hint": "module"})
+            except ValueError:
+                pass
+
+    return candidates
 
 
 def get_data_dir(config: AuditorConfig) -> Path:

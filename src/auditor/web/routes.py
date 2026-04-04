@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from auditor.database import Database
@@ -38,6 +38,11 @@ def get_config(request: Request):
 async def dashboard(request: Request):
     db = get_db(request)
     config = get_config(request)
+
+    # First-run: no systems configured → redirect to setup wizard
+    if not config.systems:
+        return RedirectResponse(url="/settings?setup=1")
+
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
     systems = [
@@ -302,9 +307,23 @@ async def scans_list(request: Request):
 # --- System config API ---
 
 @router.get("/api/browse")
-async def browse_directory(request: Request, path: str = ""):
-    config = get_config(request)
-    repo = Path(config.repo_path).resolve()
+async def browse_directory(request: Request, path: str = "", base: str = ""):
+    """Browse a directory tree.
+
+    ``base`` is an optional absolute path to use as the root instead of the
+    configured repo_path.  This is used by the setup wizard when the user is
+    configuring a different repo than the currently active one.
+    """
+    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", "node_modules", ".git"}
+
+    if base:
+        repo = Path(base).expanduser().resolve()
+        if not repo.exists() or not repo.is_dir():
+            return JSONResponse({"error": "Base path not found or not a directory"}, status_code=400)
+    else:
+        config = get_config(request)
+        repo = Path(config.repo_path).resolve()
+
     norm = path.replace("\\", "/").strip("/")
     target = (repo / norm).resolve() if norm else repo
     try:
@@ -314,7 +333,6 @@ async def browse_directory(request: Request, path: str = ""):
     if not target.is_dir():
         return JSONResponse({"error": "Not a directory"}, status_code=404)
 
-    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", "node_modules", ".git"}
     entries = []
     try:
         for entry in sorted(target.iterdir(), key=lambda e: e.name.lower()):
@@ -337,7 +355,17 @@ async def browse_directory(request: Request, path: str = ""):
 @router.get("/api/systems")
 async def get_systems_api(request: Request):
     config = get_config(request)
-    return JSONResponse({"systems": [{"name": s.name, "paths": list(s.paths)} for s in config.systems]})
+    systems = []
+    for s in config.systems:
+        entry: dict = {"name": s.name, "paths": list(s.paths)}
+        if s.min_confidence is not None:
+            entry["min_confidence"] = s.min_confidence
+        if s.file_extensions is not None:
+            entry["file_extensions"] = list(s.file_extensions)
+        if s.claude_fast_mode is not None:
+            entry["claude_fast_mode"] = s.claude_fast_mode
+        systems.append(entry)
+    return JSONResponse({"systems": systems})
 
 
 @router.post("/api/systems")
@@ -351,10 +379,170 @@ async def save_systems_api(request: Request):
         if not s.get("paths"):
             return JSONResponse({"error": f"System '{s['name']}' has no paths"}, status_code=400)
     config = get_config(request)
-    config.systems = [SystemDef(name=s["name"].strip(), paths=s["paths"]) for s in systems_data]
-    save_config(config)
+    config.systems = [
+        SystemDef(
+            name=s["name"].strip(),
+            paths=s["paths"],
+            min_confidence=s.get("min_confidence") or None,
+            file_extensions=s.get("file_extensions") or None,
+            claude_fast_mode=s.get("claude_fast_mode"),
+        )
+        for s in systems_data
+    ]
+    config_path = Path(getattr(request.app.state, "config_path", ""))
+    save_config(config, config_path if config_path.exists() else None)
     request.app.state.config = config
     return JSONResponse({"ok": True})
+
+
+# --- Project management API ---
+
+@router.get("/api/projects")
+async def list_projects(request: Request):
+    from auditor.config import list_project_configs
+    projects = list_project_configs()
+    current_path = getattr(request.app.state, "config_path", "")
+    return JSONResponse({"projects": projects, "current": current_path})
+
+
+@router.post("/api/projects/switch")
+async def switch_project(request: Request):
+    from auditor.config import load_config, get_db_path
+    body = await request.json()
+    config_path_str = body.get("path", "").strip()
+    if not config_path_str:
+        return JSONResponse({"error": "No config path provided"}, status_code=400)
+    p = Path(config_path_str)
+    if not p.exists():
+        return JSONResponse({"error": f"Config file not found: {config_path_str}"}, status_code=404)
+    try:
+        new_config = load_config(p)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    # Switch in-memory config and database
+    from auditor.database import Database
+    old_db: Database = request.app.state.db
+    old_db.close()
+
+    new_db = Database(get_db_path(new_config))
+    new_db.init_schema()
+
+    request.app.state.config = new_config
+    request.app.state.config_path = str(p)
+    request.app.state.db = new_db
+
+    logger.info("Switched to project: %s", new_config.repo_path)
+    return JSONResponse({"ok": True, "repo_path": new_config.repo_path})
+
+
+@router.post("/api/projects/init")
+async def init_project(request: Request):
+    from auditor.config import (
+        AuditorConfig, SystemDef, ScanSchedule, BuildConfig,
+        NotificationConfig, save_full_config, DEFAULT_CONFIG_PATH,
+    )
+    body = await request.json()
+    repo_path = body.get("repo_path", "").strip()
+    if not repo_path:
+        return JSONResponse({"error": "repo_path is required"}, status_code=400)
+    if not Path(repo_path).expanduser().exists():
+        return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
+
+    systems_data = body.get("systems", [])
+    systems = [
+        SystemDef(name=s["name"].strip(), paths=s["paths"])
+        for s in systems_data
+        if s.get("name", "").strip()
+    ]
+
+    build_data = body.get("build", {})
+    schedule_data = body.get("scan_schedule", {})
+
+    config = AuditorConfig(
+        repo_path=repo_path,
+        systems=systems,
+        build=BuildConfig(
+            ue_editor_cmd=build_data.get("ue_editor_cmd", ""),
+            project_file=build_data.get("project_file", ""),
+            build_timeout_seconds=int(build_data.get("build_timeout_seconds", 1800)),
+            test_timeout_seconds=int(build_data.get("test_timeout_seconds", 600)),
+        ),
+        scan_schedule=ScanSchedule(
+            incremental_interval_hours=int(schedule_data.get("incremental_interval_hours", 4)),
+            rotation_enabled=bool(schedule_data.get("rotation_enabled", False)),
+            rotation_interval_hours=int(schedule_data.get("rotation_interval_hours", 24)),
+        ),
+        claude_fast_mode=bool(body.get("claude_fast_mode", True)),
+        min_confidence=body.get("min_confidence", "medium"),
+    )
+
+    config_path_str = body.get("config_path", "").strip()
+    config_path = Path(config_path_str).expanduser() if config_path_str else DEFAULT_CONFIG_PATH
+
+    try:
+        save_full_config(config, config_path)
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
+
+    logger.info("Project config created at: %s", config_path)
+    return JSONResponse({"ok": True, "config_path": str(config_path)})
+
+
+@router.get("/api/detect-systems")
+async def detect_systems_api(request: Request, repo_path: str = ""):
+    from auditor.config import detect_systems_from_repo
+    if not repo_path:
+        config = get_config(request)
+        repo_path = config.repo_path
+    rp = Path(repo_path).expanduser()
+    if not rp.exists():
+        return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
+    candidates = detect_systems_from_repo(repo_path)
+    return JSONResponse({"systems": candidates})
+
+
+@router.get("/api/config/status")
+async def config_status(request: Request):
+    from auditor.config import validate_config_errors, get_db_path, DEFAULT_CONFIG_PATH
+    config = get_config(request)
+    db = get_db(request)
+
+    errors = validate_config_errors(config)
+    db_path = get_db_path(config)
+    db_size = db_path.stat().st_size if db_path.exists() else 0
+    last_commit = db.get_config("last_scan_commit", "")
+
+    repo = Path(config.repo_path).expanduser()
+    system_status = []
+    for s in config.systems:
+        path_checks = [{"path": p, "exists": (repo / p).exists()} for p in s.paths]
+        system_status.append({"name": s.name, "paths": path_checks})
+
+    config_path = getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH))
+    return JSONResponse({
+        "config_path": config_path,
+        "repo_path": config.repo_path,
+        "repo_exists": repo.exists(),
+        "errors": errors,
+        "last_commit": last_commit,
+        "db_size_bytes": db_size,
+        "systems": system_status,
+    })
+
+
+@router.post("/api/config/repair")
+async def repair_config(request: Request):
+    """Re-save the active config with all Pydantic defaults filled in."""
+    from auditor.config import save_full_config, DEFAULT_CONFIG_PATH
+    config = get_config(request)
+    config_path = Path(getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH)))
+    try:
+        save_full_config(config, config_path)
+        logger.info("Config repaired at: %s", config_path)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @router.post("/scans/trigger")
@@ -367,8 +555,7 @@ async def trigger_scan(request: Request):
     scan_type = body.get("scan_type", "full")
     system_name = body.get("system_name") or None
 
-    # Reject if a scan is already running — avoids double-scan and protects the
-    # canceller singleton from being reset mid-flight.
+    # Reject if a scan is already running
     running = db.get_running_scan()
     if running:
         return JSONResponse(
@@ -418,7 +605,6 @@ async def cancel_scan(request: Request):
         canceller.cancel()
         logger.info("Scan cancellation requested")
 
-    # Notify clients that cancellation is in progress
     from auditor.ws_manager import manager as ws_manager
     running = db.get_running_scan()
     ws_manager.push_scan_status(running=running is not None, scan=running, cancelling=True)
@@ -434,15 +620,20 @@ async def cancel_scan(request: Request):
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
+    from auditor.config import DEFAULT_CONFIG_PATH
     db = get_db(request)
+    config = get_config(request)
     source_dirs = db.list_source_dirs()
     project_dirs = [d for d in source_dirs if d["source_type"] == "project"]
     plugin_dirs = [d for d in source_dirs if d["source_type"] == "plugin"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
+    config_path = getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH))
     return templates.TemplateResponse(request, "settings.html", {
         "project_dirs": project_dirs,
         "plugin_dirs": plugin_dirs,
         "ignored_dirs": ignored_dirs,
+        "config": config,
+        "config_path": config_path,
     })
 
 
@@ -551,7 +742,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
     await ws_manager.connect(websocket)
     try:
-        # Push current scan state immediately so the client doesn't have to wait
         db = websocket.app.state.db
         running = db.get_running_scan()
         await websocket.send_text(json.dumps({
@@ -560,7 +750,6 @@ async def websocket_endpoint(websocket: WebSocket):
             "scan": running,
             "cancelling": canceller.is_cancelled,
         }))
-        # Keep connection alive; client may send pings
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
