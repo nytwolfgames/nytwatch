@@ -118,7 +118,9 @@
 {% block scripts %}
 <script>
 async function recheckFromList(btn, findingId) {
-    btn.disabled = true;
+    const row = btn.closest('tr');
+    const siblings = row ? row.querySelectorAll('button') : [];
+    siblings.forEach(b => b.disabled = true);
     btn.style.animation = 'spin 1s linear infinite';
     try {
         const res = await fetch(`/findings/${findingId}/recheck`, { method: 'POST' });
@@ -128,15 +130,13 @@ async function recheckFromList(btn, findingId) {
             return;
         }
         if (!data.still_valid) {
-            const row = btn.closest('tr');
             if (row) row.remove();
         }
-        // still_valid: no feedback needed — icon returns to normal
     } catch (e) {
         alert('Recheck failed: ' + e.message);
     } finally {
-        btn.disabled = false;
         btn.style.animation = '';
+        siblings.forEach(b => b.disabled = false);
     }
 }
 

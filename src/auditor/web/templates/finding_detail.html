@@ -42,7 +42,7 @@
     </div>
     {% for loc in finding['locations_list'] %}
     <div class="mono body-sm" style="padding:var(--sp-2) 0;{% if not loop.last %}border-bottom:1px solid var(--outline-variant);{% endif %}color:var(--on-surface-variant);">
-        {{ loc['file_path'] }}:{{ loc['line_start'] }}–{{ loc['line_end'] }}
+        {{ loc['file_path'] }}{% if loc['line_start'] is not none %}:{{ loc['line_start'] }}–{{ loc['line_end'] }}{% endif %}
     </div>
     {% endfor %}
 </div>
@@ -182,7 +182,8 @@
 async function recheckFinding() {
     const btn = document.getElementById('recheck-btn');
     const icon = document.getElementById('recheck-icon');
-    btn.disabled = true;
+    const actionBtns = document.querySelectorAll('.flex.gap-2 button');
+    actionBtns.forEach(b => b.disabled = true);
     if (icon) icon.style.animation = 'spin 1s linear infinite';
     try {
         const res = await fetch('/findings/{{ finding.id }}/recheck', { method: 'POST' });
@@ -199,7 +200,7 @@ async function recheckFinding() {
     } catch (e) {
         alert('Recheck failed: ' + e.message);
     } finally {
-        btn.disabled = false;
+        actionBtns.forEach(b => b.disabled = false);
         if (icon) icon.style.animation = '';
     }
 }

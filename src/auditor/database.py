@@ -282,19 +282,43 @@ class Database:
         if not row:
             return None
         d = {k: row[k] for k in row.keys()}
-        d["locations_list"] = self._parse_locations(d.get("locations"))
+        d["locations_list"] = self._parse_locations(
+            d.get("locations"), d.get("fix_diff"), d.get("file_path")
+        )
         return d
 
     @staticmethod
-    def _parse_locations(raw) -> list:
-        """Deserialise the locations JSON column into a plain list of dicts."""
-        if not raw:
+    def _parse_locations(raw, fix_diff: str = None, primary_file_path: str = None) -> list:
+        """Deserialise the locations JSON column into a plain list of dicts.
+
+        If ``locations`` is NULL but ``fix_diff`` references multiple files,
+        the extra file paths are inferred from the diff's ``--- a/`` headers
+        so grouped findings still display all affected files.
+        """
+        import re as _re
+
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list) and parsed:
+                    return parsed
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+        # Fallback: extract extra files from a multi-file unified diff
+        if not fix_diff:
             return []
-        try:
-            parsed = json.loads(raw)
-            return parsed if isinstance(parsed, list) else []
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return []
+
+        primary_norm = (primary_file_path or "").replace("\\", "/")
+        seen: set[str] = {primary_norm}
+        extra: list[dict] = []
+        for m in _re.finditer(r"^--- a/(.+)$", fix_diff, _re.MULTILINE):
+            path = m.group(1).strip()
+            norm = path.replace("\\", "/")
+            if norm and norm != "/dev/null" and norm not in seen:
+                seen.add(norm)
+                extra.append({"file_path": path, "line_start": None, "line_end": None})
+        return extra
 
     def list_findings(
         self,
@@ -356,7 +380,9 @@ class Database:
         result = []
         for r in rows:
             d = {k: r[k] for k in r.keys()}
-            d["locations_list"] = self._parse_locations(d.get("locations"))
+            d["locations_list"] = self._parse_locations(
+                d.get("locations"), d.get("fix_diff"), d.get("file_path")
+            )
             d["locations_extra"] = len(d["locations_list"])
             result.append(d)
         return result
