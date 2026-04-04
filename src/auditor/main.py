@@ -32,26 +32,6 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     async def startup():
         ws_manager.set_loop(asyncio.get_event_loop())
 
-        # Notify the user if new commits arrived since the last scan
-        if not config.repo_path:
-            return  # No project configured yet
-        try:
-            from auditor.scanner.incremental import get_current_commit
-            current_commit = get_current_commit(config.repo_path)
-            last_commit = db.get_config("last_scan_commit", "")
-            if current_commit != last_commit:
-                logger.info(
-                    "New commits detected since last scan (%s → %s) — notifying user",
-                    last_commit or "none", current_commit[:8],
-                )
-                # Delay slightly so the WS loop is ready for connected clients
-                await asyncio.sleep(1)
-                ws_manager.push_scan_due("incremental", reason="new_commits")
-            else:
-                logger.info("No new commits since last scan (%s) — skipping notification", last_commit[:8] if last_commit else "none")
-        except Exception:
-            logger.exception("Failed to check for new commits on startup")
-
     db = Database(get_db_path(config))
     db.init_schema()
 

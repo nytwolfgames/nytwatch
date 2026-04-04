@@ -888,11 +888,12 @@ async def git_branches_api(request: Request):
     config = get_config(request)
     if not config.repo_path:
         return JSONResponse({"error": "No project configured"}, status_code=400)
-    from auditor.pipeline.git_ops import get_local_branches, get_default_branch
+    from auditor.pipeline.git_ops import get_local_branches
     branches = get_local_branches(config.repo_path)
     if not branches:
         return JSONResponse({"error": "Could not list git branches — is this a git repo?"}, status_code=400)
-    configured = config.git_branch or get_default_branch(config.repo_path)
+    # get_local_branches returns the current branch first, use that as fallback
+    configured = config.git_branch or (branches[0] if branches else "")
     return JSONResponse({"branches": branches, "configured": configured})
 
 
@@ -1408,11 +1409,8 @@ async def settings_page(request: Request):
 
     config_path = getattr(request.app.state, "config_path", "") or ""
 
-    # Resolve the currently active branch for display
-    configured_branch = ""
-    if config.repo_path:
-        from auditor.pipeline.git_ops import get_default_branch
-        configured_branch = config.git_branch or get_default_branch(config.repo_path)
+    # Show whatever branch is stored in config — no subprocess on page load.
+    configured_branch = config.git_branch or ""
 
     return templates.TemplateResponse(request, "settings.html", {
         "active_dirs": active_dirs,

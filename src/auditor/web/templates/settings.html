@@ -51,7 +51,7 @@
     </p>
     <div class="flex items-center gap-3 flex-wrap">
         <select id="branch-select" class="input" style="min-width:220px;">
-            <option value="{{ configured_branch }}">{{ configured_branch }}</option>
+            <option value="{{ configured_branch }}">{{ configured_branch or '— click Refresh to load branches —' }}</option>
         </select>
         <button onclick="loadBranches()" class="btn btn-sm scan-safe" id="branch-load-btn">Load branches</button>
         <button onclick="confirmBranchChange()" class="btn btn-sm btn-primary scan-safe" id="branch-save-btn" disabled>Change Branch</button>

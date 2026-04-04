@@ -114,26 +114,21 @@ class Database:
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Open the connection eagerly so write methods can call self.conn
+        # freely inside a self._lock block without re-entering the lock
+        # (non-reentrant threading.Lock would deadlock otherwise).
+        c = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        c.row_factory = sqlite3.Row
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA foreign_keys=ON")
+        # NORMAL sync is safe in WAL mode and avoids an fsync per commit.
+        c.execute("PRAGMA synchronous=NORMAL")
+        self._conn: sqlite3.Connection = c
         # Single write lock serialises all DML across threads.
-        # check_same_thread=False allows the connection to be used from any
-        # thread (safe with WAL + this lock).
         self._lock = threading.Lock()
-        self._conn: Optional[sqlite3.Connection] = None
 
     @property
     def conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            with self._lock:
-                # Double-checked locking: another thread may have initialised
-                # the connection while we were waiting for the lock.
-                if self._conn is None:
-                    c = sqlite3.connect(str(self.db_path), check_same_thread=False)
-                    c.row_factory = sqlite3.Row
-                    c.execute("PRAGMA journal_mode=WAL")
-                    c.execute("PRAGMA foreign_keys=ON")
-                    # NORMAL sync is safe in WAL mode and avoids an fsync per commit.
-                    c.execute("PRAGMA synchronous=NORMAL")
-                    self._conn = c
         return self._conn
 
     def init_schema(self):
@@ -154,9 +149,7 @@ class Database:
 
     def close(self):
         with self._lock:
-            if self._conn:
-                self._conn.close()
-                self._conn = None
+            self._conn.close()
 
     # --- Config ---
 
