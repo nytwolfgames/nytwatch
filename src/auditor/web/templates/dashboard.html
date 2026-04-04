@@ -61,13 +61,23 @@
 <style>
   #systems-table .sys-row:hover { background: rgba(0,74,198,0.03) !important; }
   #systems-table .sys-row:hover .sys-edit-btn { opacity: 1 !important; }
-  #systems-table .sys-group-row { background: var(--surface-container-low) !important; }
+  #systems-table .sys-group-row {
+    background: rgba(0,74,198,0.05) !important;
+    cursor: pointer;
+    user-select: none;
+  }
+  #systems-table .sys-group-row td {
+    box-shadow: inset 3px 0 0 rgba(0,74,198,0.35);
+  }
+  #systems-table .sys-group-row:hover { background: rgba(0,74,198,0.09) !important; }
   #systems-table .sys-group-row.sys-group-ignored {
     background: rgba(180,83,9,0.06) !important;
   }
   #systems-table .sys-group-row.sys-group-ignored td {
     box-shadow: inset 3px 0 0 rgba(180,83,9,0.45);
   }
+  #systems-table .sys-group-row.sys-group-ignored:hover { background: rgba(180,83,9,0.11) !important; }
+  #systems-table .sys-group-row.sys-group-ignored .group-arrow { color: var(--severity-medium, #b45309) !important; }
   #systems-table .sys-row td:first-child { padding-left: 28px; }
   #systems-table .sys-row-ignored td { opacity: 0.65; }
   .badge-source-ignored {
@@ -97,12 +107,17 @@
         <tbody>
             {% set ns = namespace(idx=0) %}
             {% for group in grouped_systems %}
+            {% set group_key = loop.index0 %}
 
             {% if has_grouping %}
-            <tr class="sys-group-row{% if group.ignored %} sys-group-ignored{% endif %}">
+            <tr class="sys-group-row{% if group.ignored %} sys-group-ignored{% endif %}"
+                data-group-header="{{ group_key }}"
+                data-source-dir="{{ group.source_dir | e }}"
+                onclick="toggleGroup('{{ group_key }}', this.dataset.sourceDir)">
                 <td colspan="3" style="padding: 10px var(--sp-5) 7px; border-top: 1px solid var(--outline-variant);">
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
-                        <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em;">
+                        <span class="group-arrow" style="font-size:0.9rem; color:var(--primary); transition:transform 0.15s; flex-shrink:0; opacity:0.7;">▾</span>
+                        <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em; margin-left:5px;">
                             {{ group.source_dir if group.source_dir else 'Ungrouped' }}
                         </span>
                         {% if group.ignored %}
@@ -114,7 +129,7 @@
             {% endif %}
 
             {% for system in group.systems %}
-            <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.name }}">
+            <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.name }}" data-group="{{ group_key }}">
                 <td>
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
                         <a href="/findings?system={{ system.name }}"
@@ -577,9 +592,14 @@ function renderPickerData(data) {
     const entryNames = (data.entries || []).map(e => e.name.toLowerCase());
     const isModuleRoot = entryNames.includes('public') && entryNames.includes('private');
 
-    // Detect if we're navigated *inside* a Public or Private folder
+    // Detect where we are inside the Public/Private hierarchy
     const curLower = _pickerCurrent.toLowerCase();
-    const isInsidePubPriv = curLower.endsWith('/public') || curLower.endsWith('/private');
+    const isAtPubPrivLevel    = curLower.endsWith('/public') || curLower.endsWith('/private');
+    const isDeepInsidePubPriv = !isAtPubPrivLevel && /\/(?:public|private)\//i.test(_pickerCurrent);
+    const isInsidePubPriv     = isAtPubPrivLevel || isDeepInsidePubPriv;
+    // Which side of the mirror we're on (only meaningful when deep inside)
+    const _mirrorSide  = isDeepInsidePubPriv ? (/\/Public\//i.test(_pickerCurrent) ? 'Private' : 'Public') : null;
+    const _moduleRoot  = isInsidePubPriv ? _pickerCurrent.replace(/\/(?:Public|Private)(\/.*)?$/i, '') : null;
 
     // Breadcrumb — root is the source_dir (or repo root when no source_dir set)
     const rootParts  = _pickerRoot ? _pickerRoot.split('/').filter(Boolean) : [];
@@ -606,13 +626,21 @@ function renderPickerData(data) {
 
     // Banner: warn or inform about UE module structure
     let bannerHtml = '';
-    if (isInsidePubPriv) {
-        const parentPath = _pickerCurrent.replace(/\/[^/]+$/, '');
+    if (isAtPubPrivLevel) {
+        // Directly inside Public/ or Private/ — selecting current goes to module root (Option A)
         bannerHtml = `<div style="padding:7px 14px;background:rgba(180,83,9,0.1);border-bottom:1px solid rgba(180,83,9,0.2);
                                   font-size:0.78rem;color:var(--severity-medium,#b45309);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span>⚠ Selecting here only covers this subfolder.</span>
-            <span onclick="navigatePicker('${parentPath}')"
+            <span onclick="navigatePicker('${_moduleRoot}')"
                   style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Go to module root</span>
+        </div>`;
+    } else if (isDeepInsidePubPriv) {
+        // Deeper inside Public/… or Private/… — selections will auto-add the mirror path
+        bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
+                                  font-size:0.78rem;color:var(--primary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="flex:1;">📂 Mirrored — selecting also adds the <strong>${_mirrorSide}</strong> counterpart automatically.</span>
+            <span onclick="navigatePicker('${_moduleRoot}')"
+                  style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Module root</span>
         </div>`;
     } else if (isModuleRoot) {
         bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
@@ -646,12 +674,16 @@ function renderPickerData(data) {
         }).join('');
     }
 
-    // Select-current button label — adapted for module root
+    // Select-current button label — adapted for module root / mirrored subtree
     let selectLabel;
     if (isModuleRoot) {
         selectLabel = relParts.length
             ? `Select module "${relParts.join('/')}/" (Public + Private)`
             : `Select "${rootLabel}/" as module root`;
+    } else if (isDeepInsidePubPriv) {
+        selectLabel = relParts.length
+            ? `Select "${relParts.join('/')}/" (+ ${_mirrorSide} mirror)`
+            : `Select "${rootLabel}/" (+ ${_mirrorSide} mirror)`;
     } else {
         selectLabel = relParts.length
             ? `Select "${relParts.join('/')}/"`
@@ -660,15 +692,45 @@ function renderPickerData(data) {
     document.getElementById('picker-select-btn').textContent = selectLabel;
 }
 
+// Return the Public↔Private mirror of a path that is INSIDE a Public/Private subtree,
+// or null if the path is not deep enough inside one (i.e. ends AT /Public or /Private).
+function _pubPrivMirror(path) {
+    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    // Require at least one path segment after /Public/ or /Private/
+    const m = norm.match(/^(.+\/)(Public|Private)(\/(.+))$/i);
+    if (!m) return null;
+    const opposite = m[2].toLowerCase() === 'public' ? 'Private' : 'Public';
+    return m[1] + opposite + m[3];
+}
+
 function selectPickerPath(path) {
     if (_pickerForPath < 0 || _editIdx < 0) return;
     let p = path.replace(/\\/g, '/').replace(/\/?$/, '/');
-    // Option A: if user selects a Public/ or Private/ leaf, auto-promote to the parent module root
+
+    // Option A: selecting /Public or /Private directly → auto-promote to parent module root
     const pTrimmed = p.replace(/\/$/, '').toLowerCase();
     if (pTrimmed.endsWith('/public') || pTrimmed.endsWith('/private')) {
-        const parent = p.replace(/[^/]+\/$/, '');
-        if (parent && parent !== p) p = parent;
+        p = p.replace(/[^/]+\/$/, '');
+        _sys[_editIdx].paths[_pickerForPath] = p;
+        closePicker();
+        renderPaths();
+        return;
     }
+
+    // Option A extended: selecting inside Public/… or Private/… → also add the mirror path
+    const mirror = _pubPrivMirror(p);
+    if (mirror && mirror !== p) {
+        _sys[_editIdx].paths[_pickerForPath] = p;
+        const normMirror = mirror.replace(/\\/g, '/').replace(/\/?$/, '/');
+        const alreadyHas = _sys[_editIdx].paths.some(
+            ep => ep.replace(/\\/g, '/').replace(/\/?$/, '/') === normMirror
+        );
+        if (!alreadyHas) _sys[_editIdx].paths.push(mirror);
+        closePicker();
+        renderPaths();
+        return;
+    }
+
     _sys[_editIdx].paths[_pickerForPath] = p;
     closePicker();
     renderPaths();
@@ -835,6 +897,41 @@ async function triggerScan(systemName, scanType) {
         alert('Failed to trigger scan: ' + e.message);
     }
 }
+
+// ── Group collapse ────────────────────────────────────────────────────────────
+function toggleGroup(groupKey, sourceDir) {
+    const headerRow = document.querySelector(`#systems-table tr[data-group-header="${groupKey}"]`);
+    const rows      = document.querySelectorAll(`#systems-table tr[data-group="${groupKey}"]`);
+    const arrow     = headerRow?.querySelector('.group-arrow');
+    const willCollapse = headerRow?.dataset.collapsed !== '1';
+
+    rows.forEach(r => { r.style.display = willCollapse ? 'none' : ''; });
+    if (headerRow) headerRow.dataset.collapsed = willCollapse ? '1' : '0';
+    if (arrow) arrow.style.transform = willCollapse ? 'rotate(-90deg)' : '';
+
+    try {
+        const stored = JSON.parse(localStorage.getItem('sys-group-collapsed') || '{}');
+        if (willCollapse) stored[sourceDir] = 1;
+        else delete stored[sourceDir];
+        localStorage.setItem('sys-group-collapsed', JSON.stringify(stored));
+    } catch {}
+}
+
+(function restoreGroupCollapsed() {
+    try {
+        const stored = JSON.parse(localStorage.getItem('sys-group-collapsed') || '{}');
+        document.querySelectorAll('#systems-table tr[data-group-header]').forEach(headerRow => {
+            const sourceDir = headerRow.dataset.sourceDir || '';
+            if (!stored[sourceDir]) return;
+            const groupKey = headerRow.dataset.groupHeader;
+            const rows = document.querySelectorAll(`#systems-table tr[data-group="${groupKey}"]`);
+            const arrow = headerRow.querySelector('.group-arrow');
+            rows.forEach(r => { r.style.display = 'none'; });
+            headerRow.dataset.collapsed = '1';
+            if (arrow) arrow.style.transform = 'rotate(-90deg)';
+        });
+    } catch {}
+})();
 
 async function applyBatch() {
     const btn = document.getElementById('apply-btn');

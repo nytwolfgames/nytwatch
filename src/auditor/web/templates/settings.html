@@ -37,6 +37,9 @@
         <button onclick="loadHealth()" class="btn btn-sm scan-safe">Refresh</button>
         <button onclick="repairConfig()" id="repair-btn" class="btn btn-sm scan-safe"
                 style="display:none;">Repair Config</button>
+        {% if config.repo_path %}
+        <button onclick="openCfgEdit()" class="btn btn-sm btn-primary scan-safe">Update Config</button>
+        {% endif %}
     </div>
     <div id="health-content">
         <div class="body-sm text-variant">Checking…</div>
@@ -105,6 +108,121 @@
         {% else %}
         <p class="body-sm text-variant">No ignored directories.</p>
         {% endif %}
+    </div>
+</div>
+
+<!-- ── Update Config Modal ──────────────────────────────────────────────────── -->
+<div id="cfg-edit-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:580px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto;">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Update Config</span>
+            <button onclick="closeCfgEdit()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <div style="padding:24px;display:flex;flex-direction:column;gap:28px;
+                    max-height:calc(90vh - 130px);overflow-y:auto;">
+
+            <!-- Build Settings -->
+            <div>
+                <div class="section-label mb-4">Build Settings</div>
+                <div style="display:grid;gap:16px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">UE Installation Directory</label>
+                        <div style="display:flex;gap:8px;">
+                            <input id="ce-ue-dir" type="text" class="input" style="flex:1;"
+                                   placeholder="E:\Epic Games\UE_5.4">
+                            <button onclick="spOpen({inputId:'ce-ue-dir',abs:true},this)"
+                                    class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
+                        </div>
+                        <div class="body-sm text-variant mt-1">Folder containing <span class="mono">Engine/</span> — optional if not applying fixes.</div>
+                    </div>
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">.uproject File</label>
+                        <div style="display:flex;gap:8px;">
+                            <input id="ce-proj-file" type="text" class="input" style="flex:1;"
+                                   placeholder="E:\Projects\MyGame\MyGame.uproject">
+                            <button onclick="spOpen({inputId:'ce-proj-file',abs:true,fileFilter:'.uproject'},this)"
+                                    class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
+                        </div>
+                        <div class="body-sm text-variant mt-1">Required for automated fix application and test runs.</div>
+                    </div>
+                    <details>
+                        <summary class="body-sm text-variant" style="cursor:pointer;user-select:none;">Timeout settings</summary>
+                        <div class="flex gap-4 mt-3">
+                            <div style="flex:1;">
+                                <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Build timeout (s)</label>
+                                <input id="ce-build-timeout" type="number" class="input" style="width:100%;">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Test timeout (s)</label>
+                                <input id="ce-test-timeout" type="number" class="input" style="width:100%;">
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <!-- Scan Schedule -->
+            <div>
+                <div class="section-label mb-4">Scan Schedule</div>
+                <div style="display:grid;gap:16px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                            Incremental scan interval: <strong id="ce-inc-label"></strong>
+                        </label>
+                        <input id="ce-inc-slider" type="range" min="1" max="24" style="width:100%;"
+                               oninput="document.getElementById('ce-inc-label').textContent=this.value+'h'">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="ce-rotation"
+                               onchange="document.getElementById('ce-rot-opts').style.display=this.checked?'':'none'">
+                        <label for="ce-rotation" class="body-sm">Enable rotation (periodic full scan)</label>
+                    </div>
+                    <div id="ce-rot-opts">
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                            Rotation interval: <strong id="ce-rot-label"></strong>
+                        </label>
+                        <input id="ce-rot-slider" type="range" min="12" max="168" step="12" style="width:100%;"
+                               oninput="document.getElementById('ce-rot-label').textContent=this.value+'h'">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Quality -->
+            <div>
+                <div class="section-label mb-4">Analysis Quality</div>
+                <div style="display:grid;gap:16px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Min Confidence</label>
+                        <select id="ce-confidence" class="input" style="width:200px;">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                        <div class="body-sm text-variant mt-1">Findings below this threshold are suppressed.</div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="ce-fast-mode">
+                        <label for="ce-fast-mode" class="body-sm">Claude fast mode <span class="text-variant">(faster analysis, slightly less thorough)</span></label>
+                    </div>
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">File Extensions</label>
+                        <input id="ce-extensions" type="text" class="input" style="width:100%;"
+                               placeholder=".h, .cpp">
+                        <div class="body-sm text-variant mt-1">Comma-separated. Only these file types are scanned.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;">
+            <span id="ce-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="closeCfgEdit()" class="btn btn-sm scan-safe">Cancel</button>
+            <button onclick="saveCfgEdit()" id="ce-save-btn" class="btn btn-sm btn-primary scan-safe">Save Changes</button>
+        </div>
     </div>
 </div>
 
@@ -363,6 +481,100 @@ async function switchProject(path) {
     } catch (e) {
         alert('Failed: ' + e.message);
         sel.disabled = false;
+    }
+}
+
+// ── Update Config Modal ───────────────────────────────────────────────────────
+const _cfgCurrent = {
+    build: {
+        ue_installation_dir: {{ config.build.ue_installation_dir | tojson }},
+        project_file:        {{ config.build.project_file | tojson }},
+        build_timeout_seconds: {{ config.build.build_timeout_seconds }},
+        test_timeout_seconds:  {{ config.build.test_timeout_seconds }},
+    },
+    scan_schedule: {
+        incremental_interval_hours: {{ config.scan_schedule.incremental_interval_hours }},
+        rotation_enabled:           {{ 'true' if config.scan_schedule.rotation_enabled else 'false' }},
+        rotation_interval_hours:    {{ config.scan_schedule.rotation_interval_hours }},
+    },
+    claude_fast_mode: {{ 'true' if config.claude_fast_mode else 'false' }},
+    min_confidence:   {{ config.min_confidence | tojson }},
+    file_extensions:  {{ config.file_extensions | tojson }},
+};
+
+function openCfgEdit() {
+    const c = _cfgCurrent;
+    document.getElementById('ce-ue-dir').value        = c.build.ue_installation_dir;
+    document.getElementById('ce-proj-file').value     = c.build.project_file;
+    document.getElementById('ce-build-timeout').value = c.build.build_timeout_seconds;
+    document.getElementById('ce-test-timeout').value  = c.build.test_timeout_seconds;
+
+    const incSlider = document.getElementById('ce-inc-slider');
+    incSlider.value = c.scan_schedule.incremental_interval_hours;
+    document.getElementById('ce-inc-label').textContent = c.scan_schedule.incremental_interval_hours + 'h';
+
+    const rotCb = document.getElementById('ce-rotation');
+    rotCb.checked = c.scan_schedule.rotation_enabled;
+    document.getElementById('ce-rot-opts').style.display = c.scan_schedule.rotation_enabled ? '' : 'none';
+
+    const rotSlider = document.getElementById('ce-rot-slider');
+    rotSlider.value = c.scan_schedule.rotation_interval_hours;
+    document.getElementById('ce-rot-label').textContent = c.scan_schedule.rotation_interval_hours + 'h';
+
+    document.getElementById('ce-confidence').value = c.min_confidence;
+    document.getElementById('ce-fast-mode').checked = c.claude_fast_mode;
+    document.getElementById('ce-extensions').value = (c.file_extensions || []).join(', ');
+
+    document.getElementById('ce-err').textContent = '';
+    document.getElementById('cfg-edit-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeCfgEdit() {
+    document.getElementById('cfg-edit-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    spClose();
+}
+
+async function saveCfgEdit() {
+    const btn    = document.getElementById('ce-save-btn');
+    const errEl  = document.getElementById('ce-err');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    errEl.textContent = '';
+
+    const extsRaw  = document.getElementById('ce-extensions').value.trim();
+    const exts     = extsRaw ? extsRaw.split(',').map(e => e.trim()).filter(Boolean) : [];
+
+    try {
+        const r = await fetch('/api/config/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                build: {
+                    ue_installation_dir:   document.getElementById('ce-ue-dir').value.trim(),
+                    project_file:          document.getElementById('ce-proj-file').value.trim(),
+                    build_timeout_seconds: parseInt(document.getElementById('ce-build-timeout').value) || 1800,
+                    test_timeout_seconds:  parseInt(document.getElementById('ce-test-timeout').value) || 600,
+                },
+                scan_schedule: {
+                    incremental_interval_hours: parseInt(document.getElementById('ce-inc-slider').value) || 4,
+                    rotation_enabled:           document.getElementById('ce-rotation').checked,
+                    rotation_interval_hours:    parseInt(document.getElementById('ce-rot-slider').value) || 24,
+                },
+                claude_fast_mode: document.getElementById('ce-fast-mode').checked,
+                min_confidence:   document.getElementById('ce-confidence').value,
+                file_extensions:  exts,
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) { closeCfgEdit(); location.reload(); }
+        else errEl.textContent = d.error || 'Failed to save';
+    } catch (e) {
+        errEl.textContent = 'Failed: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
     }
 }
 
@@ -1114,6 +1326,11 @@ async function spOpen(ctx, anchorEl) {
         // Start from whatever is already typed in the target input
         startPath = (document.getElementById(ctx.inputId)?.value.trim() || '')
             .replace(/\\/g, '/');
+        // If the value points to a file (has an extension in the last segment),
+        // navigate to the parent directory instead — can't browse a file as a directory
+        if (startPath && /\/[^/]*\.[^/]+$/.test(startPath)) {
+            startPath = startPath.replace(/\/[^/]+$/, '');
+        }
     } else if (ctx?.si != null) {
         startPath = (_wz.systems[ctx.si]?.paths[ctx.pi] || ctx?.srcDir || '').replace(/\/?$/, '');
     }

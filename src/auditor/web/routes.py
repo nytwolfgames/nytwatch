@@ -113,7 +113,7 @@ async def dashboard(request: Request):
         logger.info("Repaired source_dir for %d system(s)",
                     sum(1 for s in repaired if s.get("source_dir")))
 
-    # ── Build grouped structure (order matches list_systems: source_dir, sort_order, name) ──
+    # ── Build grouped structure ───────────────────────────────────────────────
     sys_by_dir: dict[str, list] = {}
     for s in db_systems:
         sd = s.get("source_dir") or ""
@@ -123,20 +123,22 @@ async def dashboard(request: Request):
             "count": db.count_findings_for_path_prefixes(s["paths"]),
         })
 
-    # Preserve list_systems ordering: iterate source_dirs in the order they first appear
-    seen: dict[str, None] = {}
-    for s in db_systems:
-        sd = s.get("source_dir") or ""
-        seen[sd] = None  # ordered dict as ordered set
+    # Sort groups: active before ignored, then alphabetically by source_dir name
+    all_source_dirs = list(sys_by_dir.keys())
+    all_source_dirs.sort(key=lambda sd: (
+        1 if source_dir_map.get(sd) == "ignored" else 0,  # active first
+        sd.lower(),
+    ))
 
-    grouped_systems = [
-        {
+    grouped_systems = []
+    for sd in all_source_dirs:
+        systems_in_group = sorted(sys_by_dir[sd], key=lambda s: s["name"].lower())
+        grouped_systems.append({
             "source_dir": sd,
             "ignored": source_dir_map.get(sd) == "ignored",
-            "systems": sys_by_dir[sd],
-        }
-        for sd in seen
-    ]
+            "systems": systems_in_group,
+        })
+
     has_grouping = any(g["source_dir"] for g in grouped_systems)
 
     # Flat list in the same order — used as JS index baseline
@@ -1054,6 +1056,55 @@ async def repair_config(request: Request):
     try:
         save_full_config(config, config_path)
         logger.info("Config repaired at: %s", config_path)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/api/config/update")
+async def update_config_api(request: Request):
+    """Update build, schedule and quality settings in the active config file."""
+    from auditor.config import save_full_config, ScanSchedule, AuditorConfig
+
+    body = await request.json()
+    config = get_config(request)
+    config_path_str = getattr(request.app.state, "config_path", None)
+    if not config_path_str:
+        return JSONResponse(
+            {"error": "No config file loaded — create a project first"},
+            status_code=400,
+        )
+
+    build_data = body.get("build", {})
+    sched_data = body.get("scan_schedule", {})
+
+    new_config = AuditorConfig(
+        repo_path=config.repo_path,
+        data_dir=config.data_dir,
+        notifications=config.notifications,
+        build=_make_build_config({
+            "ue_installation_dir": build_data.get("ue_installation_dir", config.build.ue_installation_dir),
+            "project_file":        build_data.get("project_file",        config.build.project_file),
+            "build_timeout_seconds": build_data.get("build_timeout_seconds", config.build.build_timeout_seconds),
+            "test_timeout_seconds":  build_data.get("test_timeout_seconds",  config.build.test_timeout_seconds),
+        }),
+        scan_schedule=ScanSchedule(
+            incremental_interval_hours=int(sched_data.get(
+                "incremental_interval_hours", config.scan_schedule.incremental_interval_hours)),
+            rotation_enabled=bool(sched_data.get(
+                "rotation_enabled", config.scan_schedule.rotation_enabled)),
+            rotation_interval_hours=int(sched_data.get(
+                "rotation_interval_hours", config.scan_schedule.rotation_interval_hours)),
+        ),
+        claude_fast_mode=bool(body.get("claude_fast_mode", config.claude_fast_mode)),
+        min_confidence=body.get("min_confidence", config.min_confidence),
+        file_extensions=body.get("file_extensions", list(config.file_extensions)),
+    )
+
+    try:
+        save_full_config(new_config, Path(config_path_str))
+        request.app.state.config = new_config
+        logger.info("Config updated at: %s", config_path_str)
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
