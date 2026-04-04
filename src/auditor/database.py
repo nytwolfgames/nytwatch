@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS findings (
     reasoning       TEXT NOT NULL,
     test_code       TEXT,
     test_description TEXT,
+    include_test    INTEGER NOT NULL DEFAULT 1,
     source          TEXT NOT NULL DEFAULT 'project',
     status          TEXT NOT NULL DEFAULT 'pending',
     batch_id        TEXT,
@@ -139,12 +140,16 @@ class Database:
 
     def _migrate(self):
         """Apply incremental schema migrations for existing databases."""
-        existing_cols = {
-            row[1] for row in self.conn.execute("PRAGMA table_info(systems)").fetchall()
-        }
-        if "source_dir" not in existing_cols:
+        sys_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(systems)").fetchall()}
+        if "source_dir" not in sys_cols:
             self.conn.execute(
                 "ALTER TABLE systems ADD COLUMN source_dir TEXT NOT NULL DEFAULT ''"
+            )
+
+        finding_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(findings)").fetchall()}
+        if "include_test" not in finding_cols:
+            self.conn.execute(
+                "ALTER TABLE findings ADD COLUMN include_test INTEGER NOT NULL DEFAULT 1"
             )
 
     def close(self):
@@ -294,7 +299,9 @@ class Database:
             where.append("source = ?")
             params.append(source)
         if path_prefixes:
-            clauses = " OR ".join("file_path LIKE ?" for _ in path_prefixes)
+            # Normalise backslashes in the stored file_path so the filter works
+            # on both Windows and Unix regardless of how paths were recorded.
+            clauses = " OR ".join("REPLACE(file_path, '\\', '/') LIKE ?" for _ in path_prefixes)
             where.append(f"({clauses})")
             for p in path_prefixes:
                 params.append(p.replace("\\", "/").rstrip("/") + "/%")
@@ -323,6 +330,14 @@ class Database:
         vals = list(updates.values()) + [finding_id]
         with self._lock:
             self.conn.execute(f"UPDATE findings SET {sets} WHERE id = ?", vals)
+            self.conn.commit()
+
+    def set_finding_include_test(self, finding_id: str, include_test: bool):
+        with self._lock:
+            self.conn.execute(
+                "UPDATE findings SET include_test = ? WHERE id = ?",
+                (1 if include_test else 0, finding_id),
+            )
             self.conn.commit()
 
     def set_finding_batch(self, finding_id: str, batch_id: str):

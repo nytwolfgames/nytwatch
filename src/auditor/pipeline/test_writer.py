@@ -23,6 +23,8 @@ def write_test_files(repo_path: str, findings: list[dict]) -> list[str]:
     test_names: list[str] = []
 
     for finding in findings:
+        if not finding.get("include_test", 1):
+            continue
         test_code = finding.get("test_code")
         if not test_code:
             continue

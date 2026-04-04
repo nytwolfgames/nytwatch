@@ -60,17 +60,27 @@
 </div>
 {% endif %}
 
-{% if finding.test_code %}
 <div class="card mb-4">
-    <div class="section-label">Test Case</div>
+    <div class="flex items-center justify-between mb-3">
+        <div class="section-label" style="margin-bottom:0;">Test Case</div>
+        <label class="flex items-center gap-2 body-sm" style="cursor:pointer;">
+            <input type="checkbox" id="include-test-toggle"
+                   {% if finding.include_test != 0 %}checked{% endif %}
+                   onchange="toggleIncludeTest(this)">
+            Add test case when applying fix
+        </label>
+    </div>
+    {% if finding.test_code %}
     {% if finding.test_description %}
     <p class="body-sm text-variant mb-2">{{ finding.test_description }}</p>
     {% endif %}
     <div class="code-block">
         <pre><code class="language-cpp">{{ finding.test_code }}</code></pre>
     </div>
+    {% else %}
+    <p class="body-sm text-variant">No test case generated for this finding.</p>
+    {% endif %}
 </div>
-{% endif %}
 
 <div class="card mb-4">
     <div class="section-label">Reasoning</div>
@@ -114,4 +124,23 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function toggleIncludeTest(checkbox) {
+    checkbox.disabled = true;
+    try {
+        const res = await fetch('/findings/{{ finding.id }}/toggle-test', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            checkbox.checked = !checkbox.checked;
+        }
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+</script>
 {% endblock %}

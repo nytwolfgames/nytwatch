@@ -391,6 +391,17 @@ async def reject_finding(request: Request, finding_id: str):
     return JSONResponse({"ok": True, "status": "rejected"})
 
 
+@router.post("/findings/{finding_id}/toggle-test")
+async def toggle_finding_test(request: Request, finding_id: str):
+    db = get_db(request)
+    finding = db.get_finding(finding_id)
+    if not finding:
+        return JSONResponse({"error": "Finding not found"}, status_code=404)
+    new_val = not bool(finding.get("include_test", 1))
+    db.set_finding_include_test(finding_id, new_val)
+    return JSONResponse({"ok": True, "include_test": new_val})
+
+
 # --- Scans ---
 
 @router.get("/scans", response_class=HTMLResponse)

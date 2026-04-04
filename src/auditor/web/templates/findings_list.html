@@ -70,11 +70,12 @@
             <tr>
                 <th style="width: 90px;">Severity</th>
                 <th style="width: 80px;">Source</th>
-                <th style="width: 28%;">Title</th>
+                <th style="width: 26%;">Title</th>
                 <th style="width: 18%;">File</th>
                 <th style="width: 85px;">Category</th>
                 <th style="width: 90px;">Confidence</th>
                 <th style="width: 85px;">Status</th>
+                <th style="width: 60px;" title="Include a test case when applying this fix">Test</th>
                 <th style="width: 110px;">Actions</th>
             </tr>
         </thead>
@@ -88,6 +89,13 @@
                 <td><span class="badge badge-category">{{ f.category }}</span></td>
                 <td class="body-sm text-variant">{{ f.confidence }}</td>
                 <td><span class="badge status-{{ f.status }}">{{ f.status }}</span></td>
+                <td style="text-align:center;">
+                    <input type="checkbox" class="test-toggle"
+                           data-id="{{ f.id }}"
+                           {% if f.include_test != 0 %}checked{% endif %}
+                           title="Include test case when applying fix"
+                           onchange="toggleTest(this)">
+                </td>
                 <td>
                     {% if f.status == 'pending' %}
                     <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve">Approve</button>
@@ -112,6 +120,22 @@
 
 {% block scripts %}
 <script>
+async function toggleTest(checkbox) {
+    const id = checkbox.dataset.id;
+    checkbox.disabled = true;
+    try {
+        const res = await fetch(`/findings/${id}/toggle-test`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            checkbox.checked = !checkbox.checked; // revert on error
+        }
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
 async function applyBatch() {
     const btn = document.getElementById('apply-btn');
     btn.disabled = true;
@@ -166,6 +190,7 @@ function _escHtml(s) {
 
 function _buildRow(f) {
     const src = f.source || 'active';
+    const checked = (f.include_test === undefined || f.include_test) ? 'checked' : '';
     const actions = f.status === 'pending'
         ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe">Approve</button>
            <button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" style="margin-left:var(--sp-2)">Reject</button>`
@@ -180,6 +205,7 @@ function _buildRow(f) {
         <td><span class="badge badge-category">${_escHtml(f.category)}</span></td>
         <td class="body-sm text-variant">${_escHtml(f.confidence)}</td>
         <td><span class="badge status-${_escHtml(f.status)}">${_escHtml(f.status)}</span></td>
+        <td style="text-align:center;"><input type="checkbox" class="test-toggle" data-id="${_escHtml(f.id)}" ${checked} title="Include test case when applying fix" onchange="toggleTest(this)"></td>
         <td>${actions}</td>
     </tr>`;
 }
@@ -194,11 +220,12 @@ function _ensureTable() {
             <thead><tr>
               <th style="width:90px">Severity</th>
               <th style="width:80px">Source</th>
-              <th style="width:28%">Title</th>
+              <th style="width:26%">Title</th>
               <th style="width:18%">File</th>
               <th style="width:85px">Category</th>
               <th style="width:90px">Confidence</th>
               <th style="width:85px">Status</th>
+              <th style="width:60px" title="Include a test case when applying this fix">Test</th>
               <th style="width:110px">Actions</th>
             </tr></thead>
             <tbody id="findings-tbody"></tbody>
