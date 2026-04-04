@@ -23,8 +23,8 @@ from auditor.models import (
 from auditor.analysis.engine import analyze_system
 from auditor.scanner.chunker import (
     collect_system_files,
-    collect_specific_files,
-    chunk_system,
+    list_system_files,
+    chunk_paths_by_count,
     build_neighbourhood,
 )
 from auditor.scanner.source_detector import detect_source_dirs
@@ -110,45 +110,44 @@ def _process_system(
     system = next((s for s in config.systems if s.name == system_name), None)
     if system is None:
         log.warning("System '%s' not found in config, skipping", system_name)
-        return 0
+        return 0, 0
 
     if changed_files is not None:
-        # Incremental: collect whole system for include resolution, build
-        # neighbourhood around changed files, then chunk semantically.
+        # Incremental: collect whole system for include-graph resolution, build
+        # neighbourhood around the changed files, extract paths for analysis.
         all_system_files = collect_system_files(
             config.repo_path, system, config.file_extensions
         )
         if not all_system_files:
             log.info("No files found for system '%s'", system_name)
             return 0, 0
-        file_contents = build_neighbourhood(
+        neighbourhood = build_neighbourhood(
             changed_files, all_system_files, config.repo_path
         )
-        if not file_contents:
+        if not neighbourhood:
             log.info("No neighbourhood files resolved for system '%s'", system_name)
             return 0, 0
+        file_paths = list(neighbourhood.keys())
     else:
-        # Full scan: collect all files under this system's paths, then drop any
-        # that are more specifically owned by a sub-system (longest-prefix wins).
-        file_contents = collect_system_files(
-            config.repo_path, system, config.file_extensions
-        )
-        if not file_contents:
+        # Full scan: list paths only (agent reads the files itself), apply
+        # ownership filter so sub-systems own their deeper paths.
+        all_paths = list_system_files(config.repo_path, system, config.file_extensions)
+        if not all_paths:
             log.info("No files found for system '%s'", system_name)
             return 0, 0
-        owned = {p: c for p, c in file_contents.items()
-                 if find_owning_system(p, config.systems) == system_name}
-        excluded = len(file_contents) - len(owned)
+        file_paths = [p for p in all_paths
+                      if find_owning_system(p, config.systems) == system_name]
+        excluded = len(all_paths) - len(file_paths)
         if excluded:
-            log.info("System '%s': excluded %d file(s) owned by a more specific system", system_name, excluded)
-        file_contents = owned
-        if not file_contents:
+            log.info(
+                "System '%s': excluded %d file(s) owned by a more specific system",
+                system_name, excluded,
+            )
+        if not file_paths:
             log.info("No files remain for system '%s' after ownership filter", system_name)
             return 0, 0
 
-    # Always chunk semantically — handles both incremental (neighbourhood may
-    # span multiple chunks) and full scans
-    chunks = chunk_system(file_contents, repo_path=config.repo_path)
+    chunks = chunk_paths_by_count(file_paths, max_files=20)
     from auditor.ws_manager import manager as ws_manager
 
     findings_count = 0
@@ -159,11 +158,12 @@ def _process_system(
             "Analyzing system '%s' chunk %d/%d (%d files)",
             system_name, i + 1, len(chunks), len(chunk),
         )
-        for fname in sorted(chunk.keys()):
+        for fname in sorted(chunk):
             log.info("  %s", fname)
         result = analyze_system(
             system_name=system_name,
-            file_contents=chunk,
+            file_paths=chunk,
+            repo_path=config.repo_path,
             fast=fast,
             max_retries=2,
         )
@@ -221,7 +221,7 @@ def _process_system(
             total_findings=findings_count,
         )
 
-    files_scanned = len(file_contents)
+    files_scanned = len(file_paths)
 
     if chunks_failed == len(chunks):
         log.error("ALL chunks failed for system '%s' — returning -1", system_name)

@@ -67,27 +67,28 @@ UE_REFERENCE_SHEET = """
 """.strip()
 
 
-def _format_file_contents(file_contents: dict[str, str]) -> str:
-    sections = []
-    for path, content in file_contents.items():
-        sections.append(f"### FILE: {path}\n```cpp\n{content}\n```")
-    return "\n\n".join(sections)
-
-
 def _finding_schema_description() -> str:
     schema = FindingOutput.model_json_schema()
     return json.dumps(schema, indent=2)
 
 
-def build_scan_prompt(system_name: str, file_contents: dict[str, str]) -> str:
-    if not file_contents:
+def build_scan_prompt(system_name: str, file_paths: list[str]) -> str:
+    if not file_paths:
         return ""
 
-    files_block = _format_file_contents(file_contents)
+    paths_block = "\n".join(f"- {p}" for p in file_paths)
     schema_json = _finding_schema_description()
 
     return f"""\
-You are a senior Unreal Engine C++ code auditor. Analyze the "{system_name}" game system below and find ALL issues in a single pass.
+You are a senior Unreal Engine C++ code auditor. Analyze the "{system_name}" system and find ALL issues.
+
+Use the Read tool to read each file listed below. You may also use Grep to search for related patterns and Glob to discover related headers. Read whatever additional context you need to make accurate findings.
+
+## Files to Analyze
+
+{paths_block}
+
+---
 
 {UE_REFERENCE_SHEET}
 
@@ -104,25 +105,19 @@ Find every issue across ALL of these categories:
 
 ---
 
-## Code to Analyze
-
-{files_block}
-
----
-
 ## Output Format
 
-Return a JSON object matching this structure exactly:
+After reading and analyzing the files, return a JSON object matching this structure exactly:
 
 ```json
 {{
   "findings": [ <list of FindingOutput objects> ],
-  "files_analyzed": [ <list of file paths analyzed> ],
+  "files_analyzed": [ <list of file paths you read> ],
   "scan_notes": "<any high-level observations about the system>"
 }}
 ```
 
-Each finding in the `findings` array must match this schema:
+Each finding must match this schema:
 ```json
 {schema_json}
 ```
@@ -131,7 +126,7 @@ Field rules:
 - `severity`: one of "critical", "high", "medium", "low", "info"
 - `category`: one of "bug", "performance", "ue-antipattern", "modern-cpp", "memory", "readability"
 - `confidence`: one of "high", "medium", "low"
-- `file_path`: the exact path from the file list above
+- `file_path`: repo-relative path of the file containing the issue
 - `line_start` / `line_end`: approximate line range of the issue
 - `code_snippet`: the problematic code verbatim
 - `suggested_fix`: corrected code or description of the fix
@@ -163,6 +158,14 @@ Use descriptive test names that reference the finding. The test path should foll
 
 Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.\
 """
+
+
+def _format_file_contents(file_contents: dict[str, str]) -> str:
+    """Format a dict of {rel_path: content} into a readable block for prompts."""
+    parts = []
+    for path, content in file_contents.items():
+        parts.append(f"### {path}\n```cpp\n{content}\n```")
+    return "\n\n".join(parts)
 
 
 def build_batch_apply_prompt(

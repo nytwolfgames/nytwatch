@@ -53,6 +53,44 @@ def collect_system_files(
     return collected
 
 
+def list_system_files(
+    repo_path: str,
+    system: SystemDef,
+    extensions: list[str],
+) -> list[str]:
+    """Return repo-relative paths of all files in a system without loading content.
+
+    Used for full scans where we only need paths (agent mode reads the files itself).
+    """
+    repo = Path(repo_path)
+    paths: list[str] = []
+
+    for sys_path in system.paths:
+        full_path = repo / sys_path
+        if not full_path.exists():
+            log.warning("System path does not exist: %s", full_path)
+            continue
+        for root, _dirs, files in os.walk(full_path):
+            for fname in files:
+                if not any(fname.endswith(ext) for ext in extensions):
+                    continue
+                fpath = Path(root) / fname
+                if fpath.stat().st_size > MAX_FILE_SIZE:
+                    continue
+                paths.append(normalize_path(str(fpath.relative_to(repo))))
+
+    log.info("Listed %d files for system '%s'", len(paths), system.name)
+    return paths
+
+
+def chunk_paths_by_count(
+    file_paths: list[str],
+    max_files: int = 20,
+) -> list[list[str]]:
+    """Split a list of file paths into chunks of at most max_files each."""
+    return [file_paths[i:i + max_files] for i in range(0, len(file_paths), max_files)]
+
+
 def collect_specific_files(
     repo_path: str,
     file_paths: list[str],
@@ -170,7 +208,7 @@ def build_neighbourhood(
         until the extra context budget is exhausted
 
     The result may exceed one chunk — callers should pass it through
-    chunk_system() for splitting.
+    chunk_paths_by_count() for splitting.
     """
     known = set(all_files.keys())
     changed_set = set(normalize_path(f) for f in changed_files if normalize_path(f) in known)

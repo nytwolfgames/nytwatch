@@ -20,7 +20,7 @@ from auditor.models import new_id
 log = logging.getLogger(__name__)
 
 
-def call_claude(prompt: str, fast: bool = True, timeout: int = 600) -> str:
+def call_claude(prompt: str, fast: bool = True, timeout: int = 600, repo_path: str = None) -> str:
     if not prompt:
         raise ValueError("Empty prompt")
 
@@ -30,10 +30,14 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600) -> str:
 
     (log_dir / f"{call_id}_prompt.txt").write_text(prompt, encoding="utf-8")
 
-    cmd = ["claude", "-p", "-", "--output-format", "json"]
+    cmd = [
+        "claude", "-p", "-",
+        "--output-format", "json",
+        "--allowedTools", "Read,Glob,Grep",
+    ]
 
     log.debug("Running claude CLI (timeout=%ds, prompt_len=%d)", timeout, len(prompt))
-    log.info("Claude call %s: prompt_len=%d, timeout=%ds", call_id, len(prompt), timeout)
+    log.info("Claude call %s: prompt_len=%d, timeout=%ds, cwd=%s", call_id, len(prompt), timeout, repo_path or ".")
 
     from auditor.scan_state import canceller
 
@@ -53,12 +57,16 @@ def call_claude(prompt: str, fast: bool = True, timeout: int = 600) -> str:
         t0 = time.time()
         try:
             with open(tf.name, "r", encoding="utf-8") as stdin_file:
+                popen_kwargs = {}
+                if repo_path:
+                    popen_kwargs["cwd"] = repo_path
                 proc = subprocess.Popen(
                     cmd,
                     stdin=stdin_file,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    **popen_kwargs,
                 )
 
             canceller.register_process(proc)
@@ -241,15 +249,16 @@ def parse_and_validate(raw: str, schema_class):
 
 def analyze_system(
     system_name: str,
-    file_contents: dict[str, str],
+    file_paths: list[str],
+    repo_path: str,
     fast: bool = True,
     max_retries: int = 2,
 ) -> Optional[ScanResult]:
-    if not file_contents:
+    if not file_paths:
         log.warning("No files provided for system '%s', skipping", system_name)
         return None
 
-    prompt = build_scan_prompt(system_name, file_contents)
+    prompt = build_scan_prompt(system_name, file_paths)
     if not prompt:
         log.error("Failed to build scan prompt for '%s'", system_name)
         return None
@@ -260,11 +269,11 @@ def analyze_system(
             system_name,
             attempt,
             max_retries,
-            len(file_contents),
+            len(file_paths),
         )
 
         try:
-            raw = call_claude(prompt, fast=fast)
+            raw = call_claude(prompt, fast=fast, repo_path=repo_path)
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as exc:
             log.error("Claude call failed on attempt %d: %s", attempt, exc)
             if attempt == max_retries:
