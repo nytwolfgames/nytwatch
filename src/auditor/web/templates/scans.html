@@ -69,6 +69,7 @@
         <div style="display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--outline, #3f3f5a); gap:10px;">
             <span id="log-modal-title" style="font-weight:600; font-size:0.95rem; flex:1;">Scan Log</span>
             <span id="log-live-badge" style="display:none; font-size:0.75rem; background:#1d4ed8; color:#fff; padding:2px 8px; border-radius:4px; font-weight:500;">LIVE</span>
+            <button onclick="downloadLog()" id="log-download-btn" class="btn btn-sm scan-safe" style="font-size:0.78rem;">⬇ Download</button>
             <button onclick="closeLog()" class="scan-safe" style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant,#aaa);font-size:1.2rem;line-height:1;padding:2px 6px;">&times;</button>
         </div>
         <div id="log-content" style="flex:1; overflow-y:auto; padding:14px 18px; font-family:monospace; font-size:0.78rem; line-height:1.6; white-space:pre-wrap; word-break:break-all; background:var(--surface-container, #13131f); max-height:calc(80vh - 60px);">
@@ -111,6 +112,44 @@
 
     function escHtml(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function downloadLog() {
+        if (!_logScanId) return;
+        const btn = document.getElementById('log-download-btn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Fetching…';
+        try {
+            // Page through all log entries (API returns max 2000 at a time)
+            let all = [], offset = 0;
+            while (true) {
+                const res = await fetch(`/api/scans/${_logScanId}/logs?offset=${offset}`);
+                const data = await res.json();
+                if (!data.logs.length) break;
+                all = all.concat(data.logs);
+                offset += data.logs.length;
+                if (!data.running || data.logs.length < 2000) break;
+            }
+            const lines = all.map(r => {
+                const ts  = (r.logged_at || '').replace('T', ' ').slice(0, 19);
+                const lvl = (r.level || '').padEnd(8);
+                const log = r.logger || '';
+                const msg = r.message || '';
+                return `${ts} ${lvl} ${log}: ${msg}`;
+            }).join('\n');
+            const blob = new Blob([lines], {type: 'text/plain'});
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `scan-${_logScanId.slice(0, 8)}.log.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert('Download failed: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '⬇ Download';
+        }
     }
 
     async function showLog(scanId, status) {
