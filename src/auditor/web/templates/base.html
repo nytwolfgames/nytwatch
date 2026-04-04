@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Code Auditor{% endblock %}</title>
+    {% set _pn = active_project_name(request) %}<title>{% block title %}Code Auditor{% endblock %}{% if _pn %} — {{ _pn }}{% endif %}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23004ac6'/><text x='16' y='23' text-anchor='middle' fill='white' font-family='sans-serif' font-size='18' font-weight='700'>CA</text></svg>">
     <link rel="stylesheet" href="/static/app.css?v=2">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
@@ -77,6 +77,28 @@
         </nav>
 
         <div class="sidebar-footer">
+            {% set _proj = active_project_name(request) %}
+            {% if _proj %}
+            <a href="/settings" style="display:block;text-decoration:none;padding:8px 10px;
+                border-radius:8px;background:var(--surface-container-low);
+                border:1px solid var(--outline-variant);margin-bottom:8px;
+                transition:background .15s;"
+               title="{{ active_repo_path(request) }} · {{ active_config_path(request) }}"
+               onmouseenter="this.style.background='var(--surface-container)'"
+               onmouseleave="this.style.background='var(--surface-container-low)'">
+                <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.07em;
+                            color:var(--on-surface-variant);margin-bottom:3px;">Active project</div>
+                <div style="font-size:0.82rem;font-weight:600;color:var(--on-surface);
+                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ _proj }}</div>
+            </a>
+            {% else %}
+            <a href="/settings?setup=1" style="display:block;text-decoration:none;padding:8px 10px;
+                border-radius:8px;background:rgba(239,68,68,.08);
+                border:1px solid rgba(239,68,68,.25);margin-bottom:8px;">
+                <div style="font-size:0.75rem;color:#ef4444;font-weight:500;">No project configured</div>
+                <div style="font-size:0.72rem;color:var(--on-surface-variant);margin-top:2px;">Click to set up →</div>
+            </a>
+            {% endif %}
             <span id="scan-status-text" class="body-sm text-outline"></span>
         </div>
     </aside>

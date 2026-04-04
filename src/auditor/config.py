@@ -24,7 +24,8 @@ class ScanSchedule(BaseModel):
 
 
 class BuildConfig(BaseModel):
-    ue_editor_cmd: str = ""
+    ue_installation_dir: str = ""
+    ue_editor_cmd: str = ""  # derived from ue_installation_dir if blank
     project_file: str = ""
     build_timeout_seconds: int = 1800
     test_timeout_seconds: int = 600
@@ -37,7 +38,7 @@ class NotificationConfig(BaseModel):
 
 
 class AuditorConfig(BaseModel):
-    repo_path: str
+    repo_path: str = ""
     systems: list[SystemDef] = Field(default_factory=list)
     scan_schedule: ScanSchedule = Field(default_factory=ScanSchedule)
     build: BuildConfig = Field(default_factory=BuildConfig)
@@ -49,6 +50,25 @@ class AuditorConfig(BaseModel):
 
 
 DEFAULT_CONFIG_PATH = Path("~/.code-auditor/config.yaml").expanduser()
+ACTIVE_POINTER_PATH = Path("~/.code-auditor/.active").expanduser()
+
+
+def get_active_config_path() -> Optional[Path]:
+    """Return the currently active project config path, or None if none is set."""
+    if ACTIVE_POINTER_PATH.exists():
+        try:
+            p = Path(ACTIVE_POINTER_PATH.read_text().strip())
+            if p.exists():
+                return p
+        except Exception:
+            pass
+    return None
+
+
+def set_active_config_path(path: Path) -> None:
+    """Record the given config path as the active project."""
+    ACTIVE_POINTER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ACTIVE_POINTER_PATH.write_text(str(path))
 
 
 def load_config(path: Optional[Path] = None) -> AuditorConfig:
@@ -65,7 +85,7 @@ def load_config(path: Optional[Path] = None) -> AuditorConfig:
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
-    return AuditorConfig(**raw)
+    return AuditorConfig(**(raw or {}))
 
 
 def _serialize_systems(systems: list[SystemDef]) -> list[dict]:
@@ -105,6 +125,7 @@ def save_full_config(config: AuditorConfig, path: Optional[Path] = None) -> None
             "rotation_interval_hours": config.scan_schedule.rotation_interval_hours,
         },
         "build": {
+            "ue_installation_dir": config.build.ue_installation_dir,
             "ue_editor_cmd": config.build.ue_editor_cmd,
             "project_file": config.build.project_file,
             "build_timeout_seconds": config.build.build_timeout_seconds,
@@ -137,6 +158,9 @@ def list_project_configs() -> list[dict]:
             with open(yaml_path) as f:
                 raw = yaml.safe_load(f) or {}
             repo = raw.get("repo_path", "")
+            # Skip blank/unconfigured yamls (e.g. legacy empty config.yaml)
+            if not repo:
+                continue
             results.append({
                 "path": str(yaml_path),
                 "repo_path": repo,

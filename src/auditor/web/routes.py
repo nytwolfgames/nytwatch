@@ -23,6 +23,28 @@ templates = Jinja2Templates(
     directory=str(Path(__file__).parent / "templates")
 )
 
+# ── Template globals ─────────────────────────────────────────────────────────
+# Callables receive `request` so they always reflect the current active project
+# without requiring every route to explicitly pass these values.
+
+def _active_project_name(request: "Request") -> str:
+    """Return the short project name (repo folder) for the active project."""
+    config = getattr(request.app.state, "config", None)
+    if config and getattr(config, "repo_path", ""):
+        return Path(config.repo_path).name
+    return ""
+
+def _active_config_path(request: "Request") -> str:
+    return getattr(request.app.state, "config_path", "") or ""
+
+def _active_repo_path(request: "Request") -> str:
+    config = getattr(request.app.state, "config", None)
+    return getattr(config, "repo_path", "") if config else ""
+
+templates.env.globals["active_project_name"] = _active_project_name
+templates.env.globals["active_config_path"] = _active_config_path
+templates.env.globals["active_repo_path"] = _active_repo_path
+
 
 def get_db(request: Request) -> Database:
     return request.app.state.db
@@ -39,8 +61,8 @@ async def dashboard(request: Request):
     db = get_db(request)
     config = get_config(request)
 
-    # First-run: no systems configured → redirect to setup wizard
-    if not config.systems:
+    # First-run: no project configured yet → redirect to setup wizard
+    if not config.repo_path or not config.systems:
         return RedirectResponse(url="/settings?setup=1")
 
     stats = db.get_stats()
@@ -306,6 +328,72 @@ async def scans_list(request: Request):
 
 # --- System config API ---
 
+@router.get("/api/browse-abs")
+async def browse_absolute(path: str = ""):
+    """Browse the local filesystem by absolute path.
+
+    When path is empty on Windows, returns the list of available drive letters.
+    On Unix, falls through to root.
+    """
+    import os
+    import string
+
+    _skip = {
+        "$Recycle.Bin", "System Volume Information", "pagefile.sys",
+        "hiberfil.sys", "swapfile.sys", "DumpStack.log.tmp",
+        "Config.Msi", "MSOCache", "Recovery",
+    }
+
+    def _norm(p: Path) -> str:
+        return str(p).replace("\\", "/")
+
+    if not path:
+        if os.name == "nt":
+            drives = [
+                f"{d}:/" for d in string.ascii_uppercase if Path(f"{d}:\\").exists()
+            ]
+            return JSONResponse({
+                "path": "",
+                "entries": [{"name": d.rstrip("/"), "path": d} for d in drives],
+                "parent": None,
+            })
+        path = "/"
+
+    target = Path(path).expanduser().resolve()
+    if not target.exists() or not target.is_dir():
+        return JSONResponse({"error": "Not a directory"}, status_code=404)
+
+    entries = []
+    try:
+        for entry in sorted(target.iterdir(), key=lambda e: e.name.lower()):
+            if not entry.is_dir():
+                continue
+            if entry.name in _skip:
+                continue
+            try:
+                entries.append({"name": entry.name, "path": _norm(entry) + "/"})
+            except (PermissionError, OSError):
+                pass
+    except (PermissionError, OSError):
+        pass
+
+    # Parent logic: at a drive root (C:/) go back to the drives list ("")
+    target_norm = _norm(target)
+    parent_norm = _norm(target.parent)
+    if os.name == "nt" and parent_norm == target_norm:
+        parent = ""          # at drive root → up to drives list
+    elif parent_norm == target_norm:
+        parent = None        # at filesystem root
+    else:
+        parent = parent_norm + "/"
+
+    return JSONResponse({
+        "path": target_norm + "/",
+        "entries": entries,
+        "parent": parent,
+    })
+
+
 @router.get("/api/browse")
 async def browse_directory(request: Request, path: str = "", base: str = ""):
     """Browse a directory tree.
@@ -432,8 +520,33 @@ async def switch_project(request: Request):
     request.app.state.config_path = str(p)
     request.app.state.db = new_db
 
+    from auditor.config import set_active_config_path
+    set_active_config_path(p)
+
     logger.info("Switched to project: %s", new_config.repo_path)
     return JSONResponse({"ok": True, "repo_path": new_config.repo_path})
+
+
+def _make_build_config(build_data: dict):
+    from auditor.config import BuildConfig
+    from pathlib import Path as _Path
+    import platform
+
+    ue_dir = build_data.get("ue_installation_dir", "").strip()
+    ue_cmd = build_data.get("ue_editor_cmd", "").strip()
+
+    # Auto-derive ue_editor_cmd from the installation directory if not provided
+    if ue_dir and not ue_cmd:
+        exe = "UnrealEditor-Cmd.exe" if platform.system() == "Windows" else "UnrealEditor-Cmd"
+        ue_cmd = str(_Path(ue_dir) / "Engine" / "Binaries" / "Win64" / exe)
+
+    return BuildConfig(
+        ue_installation_dir=ue_dir,
+        ue_editor_cmd=ue_cmd,
+        project_file=build_data.get("project_file", "").strip(),
+        build_timeout_seconds=int(build_data.get("build_timeout_seconds", 1800)),
+        test_timeout_seconds=int(build_data.get("test_timeout_seconds", 600)),
+    )
 
 
 @router.post("/api/projects/init")
@@ -442,6 +555,7 @@ async def init_project(request: Request):
         AuditorConfig, SystemDef, ScanSchedule, BuildConfig,
         NotificationConfig, save_full_config, DEFAULT_CONFIG_PATH,
     )
+    import re
     body = await request.json()
     repo_path = body.get("repo_path", "").strip()
     if not repo_path:
@@ -462,12 +576,7 @@ async def init_project(request: Request):
     config = AuditorConfig(
         repo_path=repo_path,
         systems=systems,
-        build=BuildConfig(
-            ue_editor_cmd=build_data.get("ue_editor_cmd", ""),
-            project_file=build_data.get("project_file", ""),
-            build_timeout_seconds=int(build_data.get("build_timeout_seconds", 1800)),
-            test_timeout_seconds=int(build_data.get("test_timeout_seconds", 600)),
-        ),
+        build=_make_build_config(build_data),
         scan_schedule=ScanSchedule(
             incremental_interval_hours=int(schedule_data.get("incremental_interval_hours", 4)),
             rotation_enabled=bool(schedule_data.get("rotation_enabled", False)),
@@ -478,12 +587,32 @@ async def init_project(request: Request):
     )
 
     config_path_str = body.get("config_path", "").strip()
+    if not config_path_str:
+        # Derive from project_name if provided
+        project_name = body.get("project_name", "").strip()
+        if project_name:
+            slug = re.sub(r"[^a-z0-9_-]+", "-", project_name.lower()).strip("-")
+            config_path_str = f"~/.code-auditor/{slug}.yaml"
     config_path = Path(config_path_str).expanduser() if config_path_str else DEFAULT_CONFIG_PATH
 
     try:
         save_full_config(config, config_path)
     except Exception as e:
         return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
+
+    # Upsert source dir classifications into the DB
+    source_dirs = body.get("source_dirs", [])
+    if source_dirs:
+        db = get_db(request)
+        valid_types = {"project", "plugin", "ignored"}
+        for entry in source_dirs:
+            path = (entry.get("path") or "").strip()
+            stype = (entry.get("source_type") or "project").strip()
+            if path and stype in valid_types:
+                db.upsert_source_dir(path, stype)
+
+    from auditor.config import set_active_config_path
+    set_active_config_path(config_path)
 
     logger.info("Project config created at: %s", config_path)
     return JSONResponse({"ok": True, "config_path": str(config_path)})

@@ -4,7 +4,8 @@
 {% block content %}
 <div class="mb-8">
     <h1 class="headline-lg">Dashboard</h1>
-    <p class="body-md text-variant" style="margin-top: var(--sp-1);">Proactive code analysis for your Unreal Engine project</p>
+    {% set _rp = active_repo_path(request) %}
+    <p class="body-md text-variant mono" style="margin-top: var(--sp-1);">{{ _rp if _rp else 'No project configured' }}</p>
 </div>
 
 <div class="grid grid-4 gap-4 mb-8">

@@ -12,8 +12,13 @@
     <div class="section-label mb-3">Active Project</div>
     <div class="flex items-center gap-4 flex-wrap">
         <div style="flex:1;min-width:180px;">
+            {% if config.repo_path %}
             <div class="label-lg mb-1">{{ config.repo_path }}</div>
             <div class="mono body-sm text-variant">{{ config_path }}</div>
+            {% else %}
+            <div class="label-lg mb-1 text-variant" style="font-style:italic;">No project configured</div>
+            <div class="body-sm text-variant">Use <strong>+ Setup New Project</strong> to get started.</div>
+            {% endif %}
         </div>
         <div class="flex items-center gap-2">
             <label class="body-sm text-variant" style="white-space:nowrap;">Switch to:</label>
@@ -361,7 +366,7 @@ async function switchProject(path) {
 
 // ── Wizard state ──────────────────────────────────────────────────────────────
 const WZ_STEPS = [
-    {id: 'repo',     label: 'Repository'},
+    {id: 'setup',    label: 'Setup'},
     {id: 'systems',  label: 'Systems'},
     {id: 'build',    label: 'Build'},
     {id: 'schedule', label: 'Schedule'},
@@ -373,9 +378,10 @@ let _wz = {};
 function _wzReset() {
     _wz = {
         step: 0,
+        project_name: '',
         repo_path: '',
         systems: [],
-        build: {ue_editor_cmd: '', project_file: '', build_timeout_seconds: 1800, test_timeout_seconds: 600},
+        build: {ue_installation_dir: '', project_file: '', build_timeout_seconds: 1800, test_timeout_seconds: 600},
         scan_schedule: {incremental_interval_hours: 4, rotation_enabled: false, rotation_interval_hours: 24},
         claude_fast_mode: true,
         min_confidence: 'medium',
@@ -413,21 +419,60 @@ function wzRenderIndicator() {
 function wzRender() {
     wzRenderIndicator();
     document.getElementById('wz-back-btn').style.display = _wz.step > 0 ? '' : 'none';
-    document.getElementById('wz-next-btn').textContent =
-        _wz.step === WZ_STEPS.length - 1 ? 'Create Project' : 'Next →';
+    const _nxtBtn = document.getElementById('wz-next-btn');
+    _nxtBtn.disabled = false;
+    _nxtBtn.textContent = _wz.step === WZ_STEPS.length - 1 ? 'Create Project' : 'Next →';
     document.getElementById('wz-err').textContent = '';
 
     const el = document.getElementById('wz-content');
     const step = WZ_STEPS[_wz.step].id;
 
-    if (step === 'repo') {
+    if (step === 'setup') {
         el.innerHTML = `
-            <div class="label-lg mb-3">Repository Path</div>
-            <p class="body-sm text-variant mb-4">Absolute path to the root of your Unreal Engine repository.</p>
-            <input id="wz-repo" type="text" class="input" style="width:100%;"
-                value="${escH(_wz.repo_path)}" placeholder="/absolute/path/to/your/repo"
-                oninput="_wz.repo_path = this.value.trim()">
-            <div id="wz-repo-status" class="body-sm mt-2" style="min-height:18px;"></div>
+            <div class="label-lg mb-5">Project Setup</div>
+
+            <div style="display:grid;gap:20px;">
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Project name</label>
+                    <input id="wz-proj-name" type="text" class="input" style="width:100%;"
+                        value="${escH(_wz.project_name)}"
+                        placeholder="MyGame"
+                        oninput="_wz.project_name = this.value.trim()">
+                    <div class="body-sm text-variant mt-1">Used as the config filename: <span class="mono">~/.code-auditor/&lt;name&gt;.yaml</span></div>
+                </div>
+
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Repository path</label>
+                    <div style="display:flex;gap:8px;">
+                        <input id="wz-repo" type="text" class="input" style="flex:1;"
+                            value="${escH(_wz.repo_path)}"
+                            placeholder="E:\\Projects\\MyGame"
+                            oninput="_wz.repo_path = this.value.trim()">
+                        <button onclick="spOpen({inputId:'wz-repo',abs:true},this)" class="btn btn-sm scan-safe"
+                                style="white-space:nowrap;">Browse…</button>
+                    </div>
+                    <div class="body-sm text-variant mt-1">Root folder of your Unreal Engine project repository.</div>
+                </div>
+
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Unreal Engine installation directory</label>
+                    <div style="display:flex;gap:8px;">
+                        <input id="wz-ue-dir" type="text" class="input" style="flex:1;"
+                            value="${escH(_wz.build.ue_installation_dir)}"
+                            placeholder="E:\\Epic Games\\UE_5.4"
+                            oninput="_wz.build.ue_installation_dir = this.value.trim()">
+                        <button onclick="spOpen({inputId:'wz-ue-dir',abs:true},this)" class="btn btn-sm scan-safe"
+                                style="white-space:nowrap;">Browse…</button>
+                    </div>
+                    <div class="body-sm text-variant mt-1">
+                        Folder containing <span class="mono">Engine/</span> —
+                        <span class="mono">UnrealEditor-Cmd</span> is located automatically.
+                        Optional if not applying fixes.
+                    </div>
+                </div>
+            </div>
+
+            <div id="wz-setup-status" class="body-sm mt-4" style="min-height:18px;"></div>
         `;
         document.getElementById('wz-repo').focus();
 
@@ -439,33 +484,33 @@ function wzRender() {
             <div class="label-lg mb-3">Build Settings <span class="body-sm text-variant">(optional — skip if not applying fixes)</span></div>
             <div style="display:grid;gap:14px;">
                 <div>
-                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">UnrealEditor-Cmd path</label>
-                    <input id="wz-ue-cmd" type="text" class="input" style="width:100%;"
-                        value="${escH(_wz.build.ue_editor_cmd)}"
-                        placeholder="/path/to/UnrealEditor-Cmd"
-                        oninput="_wz.build.ue_editor_cmd = this.value">
-                </div>
-                <div>
                     <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">.uproject file</label>
-                    <input id="wz-proj-file" type="text" class="input" style="width:100%;"
-                        value="${escH(_wz.build.project_file)}"
-                        placeholder="/path/to/MyGame.uproject"
-                        oninput="_wz.build.project_file = this.value">
-                </div>
-                <div class="flex gap-4">
-                    <div style="flex:1;">
-                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Build timeout (s)</label>
-                        <input type="number" class="input" style="width:100%;"
-                            value="${_wz.build.build_timeout_seconds}"
-                            oninput="_wz.build.build_timeout_seconds = +this.value || 1800">
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input id="wz-proj-file" type="text" class="input" style="flex:1;"
+                            value="${escH(_wz.build.project_file)}"
+                            placeholder="E:\\Projects\\MyGame\\MyGame.uproject"
+                            oninput="_wz.build.project_file = this.value.trim()">
+                        <button onclick="spOpen({inputId:'wz-proj-file',abs:true},this)" class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
                     </div>
-                    <div style="flex:1;">
-                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Test timeout (s)</label>
-                        <input type="number" class="input" style="width:100%;"
-                            value="${_wz.build.test_timeout_seconds}"
-                            oninput="_wz.build.test_timeout_seconds = +this.value || 600">
-                    </div>
+                    <div class="body-sm text-variant mt-1">Required for automated fix application and test runs.</div>
                 </div>
+                <details style="margin-top:4px;">
+                    <summary class="body-sm text-variant" style="cursor:pointer;user-select:none;">Timeout settings</summary>
+                    <div class="flex gap-4 mt-3">
+                        <div style="flex:1;">
+                            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Build timeout (s)</label>
+                            <input type="number" class="input" style="width:100%;"
+                                value="${_wz.build.build_timeout_seconds}"
+                                oninput="_wz.build.build_timeout_seconds = +this.value || 1800">
+                        </div>
+                        <div style="flex:1;">
+                            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Test timeout (s)</label>
+                            <input type="number" class="input" style="width:100%;"
+                                value="${_wz.build.test_timeout_seconds}"
+                                oninput="_wz.build.test_timeout_seconds = +this.value || 600">
+                        </div>
+                    </div>
+                </details>
             </div>
         `;
 
@@ -547,11 +592,17 @@ function wzRenderSystems(el) {
 
 function wzSysCard(s, i) {
     const paths = s.paths.map((p, pi) => wzPathRow(i, pi, p)).join('');
+    const typeOpts = ['project','plugin','ignored'].map(t =>
+        `<option value="${t}" ${s.source_type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`
+    ).join('');
     return `<div class="wz-sys-card" id="wz-card-${i}">
         <div class="flex items-center gap-2 mb-3">
             <input type="text" class="input input-sm" style="flex:1;" placeholder="System name"
                 value="${escH(s.name)}" oninput="wzSysName(${i},this.value)">
-            ${s.hint ? `<span class="badge" style="font-size:0.65rem;background:var(--surface-container-high);">${escH(s.hint)}</span>` : ''}
+            <select class="input input-sm" style="width:7rem;" onchange="wzSysType(${i},this.value)"
+                title="Source directory type">
+                ${typeOpts}
+            </select>
             <button onclick="wzRemoveSys(${i})" class="scan-safe"
                 style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.2rem;padding:2px 6px;">&times;</button>
         </div>
@@ -589,7 +640,8 @@ function wzRerender() {
 }
 
 function wzSysName(i, v) { _wz.systems[i].name = v; wzCheckOverlaps(); }
-function wzAddSys() { _wz.systems.push({name:'', paths:[], hint:''}); wzRerender(); }
+function wzSysType(i, v) { _wz.systems[i].source_type = v; }
+function wzAddSys() { _wz.systems.push({name:'', paths:[], hint:'', source_type:'project'}); wzRerender(); }
 function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
 
 function wzAddPath(si) {
@@ -651,7 +703,10 @@ async function wzDetect(btn) {
         } else {
             const existing = new Set(_wz.systems.map(s => s.name));
             for (const s of d.systems) {
-                if (!existing.has(s.name)) _wz.systems.push({name: s.name, paths: s.paths, hint: s.hint});
+                if (!existing.has(s.name)) _wz.systems.push({
+                    name: s.name, paths: s.paths, hint: s.hint,
+                    source_type: s.hint === 'plugin' ? 'plugin' : 'project',
+                });
             }
             wzRerender();
             document.getElementById('wz-err').textContent = '';
@@ -676,9 +731,9 @@ function wzRenderReview(el) {
     }
     yaml += `\nscan_schedule:\n  incremental_interval_hours: ${_wz.scan_schedule.incremental_interval_hours}\n  rotation_enabled: ${_wz.scan_schedule.rotation_enabled}\n`;
     if (_wz.scan_schedule.rotation_enabled) yaml += `  rotation_interval_hours: ${_wz.scan_schedule.rotation_interval_hours}\n`;
-    if (_wz.build.ue_editor_cmd || _wz.build.project_file) {
+    if (_wz.build.ue_installation_dir || _wz.build.project_file) {
         yaml += `\nbuild:\n`;
-        if (_wz.build.ue_editor_cmd) yaml += `  ue_editor_cmd: ${_wz.build.ue_editor_cmd}\n`;
+        if (_wz.build.ue_installation_dir) yaml += `  ue_installation_dir: ${_wz.build.ue_installation_dir}\n`;
         if (_wz.build.project_file) yaml += `  project_file: ${_wz.build.project_file}\n`;
     }
 
@@ -693,11 +748,11 @@ function wzRenderReview(el) {
         <div>
             <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Save config to</label>
             <input id="wz-cfgpath" type="text" class="input" style="width:100%;"
-                value="${escH(_wz.config_path || '~/.code-auditor/config.yaml')}"
+                value="${escH(_wz.config_path)}"
                 oninput="_wz.config_path=this.value.trim()"
-                placeholder="~/.code-auditor/config.yaml">
+                placeholder="~/.code-auditor/my-project.yaml">
             <div class="body-sm text-variant mt-1">
-                Default overwrites the current config. Use a different path to set up a second project.
+                Derived from the project name. Each project gets its own <span class="mono">.yaml</span> file in <span class="mono">~/.code-auditor/</span>.
             </div>
         </div>
         <div id="wz-result" style="margin-top:14px;"></div>
@@ -710,25 +765,53 @@ function wzBack() {
 }
 
 async function wzNext() {
+    const btn = document.getElementById('wz-next-btn');
     const err = document.getElementById('wz-err');
     err.textContent = '';
+    btn.disabled = true;
+
+    function _fail(msg) {
+        err.textContent = msg;
+        btn.disabled = false;
+    }
+
     const step = WZ_STEPS[_wz.step].id;
 
-    if (step === 'repo') {
-        const path = document.getElementById('wz-repo')?.value.trim() || '';
-        _wz.repo_path = path;
-        if (!path) { err.textContent = 'Repository path is required'; return; }
+    if (step === 'setup') {
+        const name = document.getElementById('wz-proj-name')?.value.trim() || '';
+        const repo = document.getElementById('wz-repo')?.value.trim() || '';
+        const ueDir = document.getElementById('wz-ue-dir')?.value.trim() || '';
+        _wz.project_name = name;
+        _wz.repo_path = repo;
+        _wz.build.ue_installation_dir = ueDir;
 
-        const statusEl = document.getElementById('wz-repo-status');
+        if (!name) { _fail('Project name is required'); return; }
+        if (!repo) { _fail('Repository path is required'); return; }
+
+        // Derive config path from project name (slugify)
+        const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+        _wz.config_path = `~/.code-auditor/${slug}.yaml`;
+
+        const statusEl = document.getElementById('wz-setup-status');
         statusEl.textContent = 'Validating…';
+        btn.textContent = 'Validating…';
         try {
-            const r = await fetch('/api/detect-systems?repo_path=' + encodeURIComponent(path));
+            const r = await fetch('/api/detect-systems?repo_path=' + encodeURIComponent(repo));
             const d = await r.json();
-            if (d.error) { err.textContent = d.error; statusEl.textContent = ''; return; }
+            if (d.error) { _fail(d.error); statusEl.textContent = ''; return; }
             const n = d.systems.length;
-            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Valid path — ${n} system${n !== 1 ? 's' : ''} detectable</span>`;
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Repository found — ${n} system${n !== 1 ? 's' : ''} detected</span>`;
+            // Pre-populate systems with auto-derived source_type
+            if (n > 0 && _wz.systems.length === 0) {
+                _wz.systems = d.systems.map(s => ({
+                    name: s.name,
+                    paths: s.paths,
+                    hint: s.hint,
+                    source_type: s.hint === 'plugin' ? 'plugin' : 'project',
+                }));
+            }
         } catch (e) {
-            err.textContent = 'Could not validate path: ' + e.message;
+            _fail('Could not validate repository path: ' + e.message);
             statusEl.textContent = '';
             return;
         }
@@ -736,7 +819,7 @@ async function wzNext() {
     } else if (step === 'systems') {
         const valid = _wz.systems.filter(s => s.name.trim() && s.paths.filter(p => p.trim()).length);
         if (!valid.length) {
-            err.textContent = 'Add at least one system with a name and at least one path';
+            _fail('Add at least one system with a name and at least one path');
             return;
         }
         _wz.systems = valid.map(s => ({...s, paths: s.paths.filter(p => p.trim())}));
@@ -747,7 +830,7 @@ async function wzNext() {
     }
 
     _wz.step++;
-    wzRender();
+    wzRender();  // resets btn.disabled = false and restores button text
 }
 
 async function wzCreate() {
@@ -760,13 +843,20 @@ async function wzCreate() {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
+                project_name: _wz.project_name,
                 repo_path: _wz.repo_path,
                 systems: _wz.systems,
                 build: _wz.build,
                 scan_schedule: _wz.scan_schedule,
                 claude_fast_mode: _wz.claude_fast_mode,
                 min_confidence: _wz.min_confidence,
-                config_path: _wz.config_path || '',
+                config_path: _wz.config_path,
+                source_dirs: _wz.systems.flatMap(s =>
+                    s.paths.filter(p => p.trim()).map(p => ({
+                        path: p.trim(),
+                        source_type: s.source_type || 'project',
+                    }))
+                ),
             }),
         });
         const d = await r.json();
@@ -795,22 +885,35 @@ async function wzCreate() {
 }
 
 // ── Shared path browser ───────────────────────────────────────────────────────
-// ctx: {si, pi} for wizard system path  |  null = unused
+// ctx variants:
+//   {si, pi}          → repo-relative browser, result stored in wizard system path
+//   {inputId, abs}    → absolute filesystem browser, result written to an <input>
+
 let _spCtx = null;
 let _spCurrent = '';
 
 async function spOpen(ctx, anchorEl) {
     _spCtx = ctx;
-    const startPath = ctx
-        ? (_wz.systems[ctx.si]?.paths[ctx.pi] || '').replace(/\/?$/, '')
-        : '';
+    let startPath = '';
+    if (ctx?.abs) {
+        // Start from whatever is already typed in the target input
+        startPath = (document.getElementById(ctx.inputId)?.value.trim() || '')
+            .replace(/\\/g, '/');
+    } else if (ctx?.si != null) {
+        startPath = (_wz.systems[ctx.si]?.paths[ctx.pi] || '').replace(/\/?$/, '');
+    }
     await spNavigate(startPath);
 
     const picker = document.getElementById('sp-picker');
     picker.style.display = 'flex';
-    // Center below anchor if possible
-    const ar = anchorEl ? anchorEl.getBoundingClientRect() : {bottom: 200, left: 100};
-    const ph = picker.offsetHeight || 340, pw = picker.offsetWidth || 420;
+    spPosition(picker, anchorEl);
+}
+
+function spPosition(picker, anchorEl) {
+    if (!anchorEl) { picker.style.top = '160px'; picker.style.left = '50%'; picker.style.transform = 'translateX(-50%)'; return; }
+    picker.style.transform = '';
+    const ar = anchorEl.getBoundingClientRect();
+    const ph = 380, pw = 460;
     let top = ar.bottom + 6;
     if (top + ph > window.innerHeight - 10) top = Math.max(10, ar.top - ph - 6);
     let left = ar.left;
@@ -820,63 +923,110 @@ async function spOpen(ctx, anchorEl) {
 }
 
 async function spNavigate(path) {
-    _spCurrent = path.replace(/\\/g, '/').replace(/\/?$/, '');
-    const entries = document.getElementById('sp-entries');
-    entries.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
+    _spCurrent = path.replace(/\\/g, '/');
+    // Trim trailing slash for display, but keep for abs root detection
+    const el = document.getElementById('sp-entries');
+    el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
     try {
-        const base = _wz.repo_path || '';
-        const url = '/api/browse?path=' + encodeURIComponent(_spCurrent)
-            + (base ? '&base=' + encodeURIComponent(base) : '');
+        let url;
+        if (_spCtx?.abs) {
+            url = '/api/browse-abs?path=' + encodeURIComponent(_spCurrent);
+        } else {
+            const base = _wz.repo_path || '';
+            const relPath = _spCurrent.replace(/\/?$/, '');
+            url = '/api/browse?path=' + encodeURIComponent(relPath)
+                + (base ? '&base=' + encodeURIComponent(base) : '');
+        }
         const r = await fetch(url);
-        if (!r.ok) throw new Error();
+        if (!r.ok) throw new Error(await r.text());
         spRender(await r.json());
-    } catch {
-        entries.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:#f87171;">Failed to load</div>';
+    } catch (e) {
+        el.innerHTML = `<div style="padding:10px 14px;font-size:0.82rem;color:#f87171;">Failed to load: ${escH(e.message)}</div>`;
     }
 }
 
 function spRender(data) {
-    const parts = _spCurrent ? _spCurrent.split('/').filter(Boolean) : [];
-    let crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
-    let cum = '';
-    for (const p of parts) {
-        cum += (cum ? '/' : '') + p;
-        const cp = cum;
-        crumb += ` / <span onclick="spNavigate('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+    // ── Breadcrumb ────────────────────────────────────────────────────────────
+    let crumb = '';
+    if (_spCtx?.abs) {
+        const curPath = (data.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+        if (!curPath) {
+            crumb = '<span style="color:var(--on-surface-variant);">My Computer</span>';
+        } else {
+            crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">My Computer</span>`;
+            const parts = curPath.replace(/^\//, '').split('/').filter(Boolean);
+            let cum = '';
+            for (const p of parts) {
+                cum = cum ? cum + '/' + p : (curPath.startsWith('/') ? '/' + p : p);
+                const cp = cum + '/';
+                crumb += ` / <span onclick="spNavigate('${escH(cp)}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+            }
+        }
+    } else {
+        const curPath = (_spCurrent || '').replace(/\/?$/, '');
+        crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
+        const parts = curPath ? curPath.split('/').filter(Boolean) : [];
+        let cum = '';
+        for (const p of parts) {
+            cum += (cum ? '/' : '') + p;
+            const cp = cum;
+            crumb += ` / <span onclick="spNavigate('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+        }
     }
     document.getElementById('sp-crumb').innerHTML = crumb;
 
+    // ── Entries ───────────────────────────────────────────────────────────────
     const el = document.getElementById('sp-entries');
     if (!data.entries?.length) {
         el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
     } else {
-        el.innerHTML = data.entries.map(e =>
-            `<div style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+        el.innerHTML = data.entries.map(e => {
+            const pathEsc = e.path.replace(/\\/g, '/').replace(/'/g, "\\'");
+            return `<div onclick="spNavigate('${pathEsc}')"
+                  style="display:flex;align-items:center;padding:7px 14px;cursor:pointer;
+                         border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
                   onmouseenter="this.style.background='var(--surface-container)'"
                   onmouseleave="this.style.background=''">
-                <span onclick="spNavigate('${e.path}')"
-                      style="flex:1;font-size:0.8rem;cursor:pointer;font-family:monospace;">📁 ${escH(e.name)}</span>
-                <button onclick="event.stopPropagation();spSelect('${e.path}')"
-                    style="background:none;border:1px solid var(--outline);border-radius:4px;padding:2px 8px;
-                           font-size:0.72rem;cursor:pointer;color:var(--on-surface-variant);white-space:nowrap;">Select</button>
-            </div>`
-        ).join('');
+                <span style="flex:1;font-size:0.8rem;font-family:monospace;
+                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📁 ${escH(e.name)}</span>
+            </div>`;
+        }).join('');
     }
-    document.getElementById('sp-select-btn').textContent =
-        _spCurrent ? `Select "${_spCurrent}/"` : 'Select repo root';
+
+    // ── Select-current button ─────────────────────────────────────────────────
+    const selectBtn = document.getElementById('sp-select-btn');
+    const curPath = (data.path || '').replace(/\\/g, '/');
+    if (!curPath) {
+        selectBtn.style.display = 'none';
+    } else {
+        selectBtn.style.display = '';
+        const label = curPath.replace(/\/$/, '').split('/').pop() || curPath;
+        selectBtn.textContent = `Select "${label}"`;
+    }
 }
 
 function spSelectCurrent() {
-    spSelect(_spCurrent ? _spCurrent + '/' : '');
+    const curPath = _spCurrent.replace(/\\/g, '/');
+    spSelect(curPath.endsWith('/') ? curPath : curPath + '/');
 }
 
 function spSelect(path) {
-    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    const norm = path.replace(/\\/g, '/');
+    const ctx = _spCtx;  // capture before spClose() clears it
     spClose();
-    if (_spCtx) {
-        const {si, pi} = _spCtx;
-        if (_wz.systems[si]) {
-            _wz.systems[si].paths[pi] = norm;
+
+    if (ctx?.abs && ctx.inputId) {
+        // Absolute path → write to input, trim trailing slash for display
+        const input = document.getElementById(ctx.inputId);
+        if (input) {
+            input.value = norm.replace(/\/$/, '');
+            input.dispatchEvent(new Event('input'));
+        }
+    } else if (ctx?.si != null) {
+        // Repo-relative → store in wizard system path (keep trailing slash)
+        const relNorm = norm.endsWith('/') ? norm : norm + '/';
+        if (_wz.systems[ctx.si]) {
+            _wz.systems[ctx.si].paths[ctx.pi] = relNorm;
             wzRerender();
         }
     }
