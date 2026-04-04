@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS scan_logs (
     message     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_scan_logs_scan ON scan_logs(scan_id);
+
+CREATE TABLE IF NOT EXISTS systems (
+    name              TEXT PRIMARY KEY,
+    paths             TEXT NOT NULL DEFAULT '[]',
+    min_confidence    TEXT,
+    file_extensions   TEXT,
+    claude_fast_mode  INTEGER,
+    sort_order        INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -430,6 +439,70 @@ class Database:
             "SELECT path FROM source_dirs WHERE source_type = 'ignored'"
         ).fetchall()
         return [row["path"].replace("\\", "/").rstrip("/") + "/" for row in rows]
+
+    # --- Systems ---
+
+    def list_systems(self) -> list[dict]:
+        """Return all systems ordered by sort_order, as plain dicts."""
+        rows = self.conn.execute(
+            "SELECT name, paths, min_confidence, file_extensions, claude_fast_mode "
+            "FROM systems ORDER BY sort_order, name"
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["paths"] = json.loads(d["paths"]) if d["paths"] else []
+            d["file_extensions"] = json.loads(d["file_extensions"]) if d["file_extensions"] else None
+            result.append(d)
+        return result
+
+    def replace_systems(self, systems: list[dict]) -> None:
+        """Replace ALL systems with the given list (atomic)."""
+        self.conn.execute("DELETE FROM systems")
+        for i, s in enumerate(systems):
+            fe = s.get("file_extensions")
+            cfm = s.get("claude_fast_mode")
+            self.conn.execute(
+                """INSERT INTO systems (name, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    s["name"],
+                    json.dumps(s.get("paths", [])),
+                    s.get("min_confidence") or None,
+                    json.dumps(fe) if fe is not None else None,
+                    int(cfm) if cfm is not None else None,
+                    i,
+                ),
+            )
+        self.conn.commit()
+
+    def upsert_system(self, system: dict) -> None:
+        """Insert or replace a single system, preserving sort_order if it already exists."""
+        fe = system.get("file_extensions")
+        cfm = system.get("claude_fast_mode")
+        existing = self.conn.execute(
+            "SELECT sort_order FROM systems WHERE name = ?", (system["name"],)
+        ).fetchone()
+        sort_order = existing["sort_order"] if existing else (
+            (self.conn.execute("SELECT COALESCE(MAX(sort_order)+1,0) FROM systems").fetchone()[0])
+        )
+        self.conn.execute(
+            """INSERT OR REPLACE INTO systems (name, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                system["name"],
+                json.dumps(system.get("paths", [])),
+                system.get("min_confidence") or None,
+                json.dumps(fe) if fe is not None else None,
+                int(cfm) if cfm is not None else None,
+                sort_order,
+            ),
+        )
+        self.conn.commit()
+
+    def delete_system(self, name: str) -> None:
+        self.conn.execute("DELETE FROM systems WHERE name = ?", (name,))
+        self.conn.commit()
 
     # --- Scan Logs ---
 

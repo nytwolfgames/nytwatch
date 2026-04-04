@@ -62,14 +62,15 @@ async def dashboard(request: Request):
     config = get_config(request)
 
     # First-run: no project configured yet → redirect to setup wizard
-    if not config.repo_path or not config.systems:
+    db_systems = db.list_systems()
+    if not config.repo_path or not db_systems:
         return RedirectResponse(url="/settings?setup=1")
 
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
     systems = [
-        {"name": s.name, "count": db.count_findings_for_path_prefixes(s.paths)}
-        for s in config.systems
+        {"name": s["name"], "count": db.count_findings_for_path_prefixes(s["paths"])}
+        for s in db_systems
     ]
     return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
@@ -96,9 +97,9 @@ async def findings_list(
 
     path_prefixes = None
     if system:
-        sys_def = next((s for s in config.systems if s.name == system), None)
+        sys_def = next((s for s in db.list_systems() if s["name"] == system), None)
         if sys_def:
-            path_prefixes = sys_def.paths
+            path_prefixes = sys_def["paths"]
 
     findings = db.list_findings(
         status=status,
@@ -123,7 +124,7 @@ async def findings_list(
         "findings": findings,
         "filters": filters,
         "approved_count": approved_count,
-        "systems": [s.name for s in config.systems],
+        "systems": [s["name"] for s in db.list_systems()],
     })
 
 
@@ -180,9 +181,9 @@ async def findings_export(
     row = 8
     ws_overview.cell(row=row, column=1, value="Systems Configured").font = bold
     row += 1
-    for system in config.systems:
-        ws_overview.cell(row=row, column=2, value=system.name)
-        ws_overview.cell(row=row, column=3, value=", ".join(system.paths))
+    for system in db.list_systems():
+        ws_overview.cell(row=row, column=2, value=system["name"])
+        ws_overview.cell(row=row, column=3, value=", ".join(system["paths"]))
         row += 1
 
     row += 1
@@ -466,23 +467,13 @@ async def open_folder(request: Request):
 
 @router.get("/api/systems")
 async def get_systems_api(request: Request):
-    config = get_config(request)
-    systems = []
-    for s in config.systems:
-        entry: dict = {"name": s.name, "paths": list(s.paths)}
-        if s.min_confidence is not None:
-            entry["min_confidence"] = s.min_confidence
-        if s.file_extensions is not None:
-            entry["file_extensions"] = list(s.file_extensions)
-        if s.claude_fast_mode is not None:
-            entry["claude_fast_mode"] = s.claude_fast_mode
-        systems.append(entry)
-    return JSONResponse({"systems": systems})
+    db = get_db(request)
+    return JSONResponse({"systems": db.list_systems()})
 
 
 @router.post("/api/systems")
 async def save_systems_api(request: Request):
-    from auditor.config import SystemDef, save_config
+    db = get_db(request)
     body = await request.json()
     systems_data = body.get("systems", [])
     for s in systems_data:
@@ -490,20 +481,16 @@ async def save_systems_api(request: Request):
             return JSONResponse({"error": "System name cannot be empty"}, status_code=400)
         if not s.get("paths"):
             return JSONResponse({"error": f"System '{s['name']}' has no paths"}, status_code=400)
-    config = get_config(request)
-    config.systems = [
-        SystemDef(
-            name=s["name"].strip(),
-            paths=s["paths"],
-            min_confidence=s.get("min_confidence") or None,
-            file_extensions=s.get("file_extensions") or None,
-            claude_fast_mode=s.get("claude_fast_mode"),
-        )
+    db.replace_systems([
+        {
+            "name": s["name"].strip(),
+            "paths": s["paths"],
+            "min_confidence": s.get("min_confidence") or None,
+            "file_extensions": s.get("file_extensions") or None,
+            "claude_fast_mode": s.get("claude_fast_mode"),
+        }
         for s in systems_data
-    ]
-    config_path = Path(getattr(request.app.state, "config_path", ""))
-    save_config(config, config_path if config_path.exists() else None)
-    request.app.state.config = config
+    ])
     return JSONResponse({"ok": True})
 
 
@@ -539,6 +526,24 @@ async def switch_project(request: Request):
 
     new_db = Database(get_db_path(new_config))
     new_db.init_schema()
+
+    # Migrate systems from YAML if the new config carries them (legacy) and
+    # the DB has none, or always restore when the YAML has authoritative data.
+    if new_config.systems:
+        new_db.replace_systems([
+            {
+                "name": s.name,
+                "paths": list(s.paths),
+                "min_confidence": s.min_confidence,
+                "file_extensions": list(s.file_extensions) if s.file_extensions else None,
+                "claude_fast_mode": s.claude_fast_mode,
+            }
+            for s in new_config.systems
+        ])
+        logger.info(
+            "Restored %d system(s) from YAML config for project: %s",
+            len(new_config.systems), new_config.repo_path,
+        )
 
     request.app.state.config = new_config
     request.app.state.config_path = str(p)
@@ -576,8 +581,8 @@ def _make_build_config(build_data: dict):
 @router.post("/api/projects/init")
 async def init_project(request: Request):
     from auditor.config import (
-        AuditorConfig, SystemDef, ScanSchedule, BuildConfig,
-        NotificationConfig, save_full_config, DEFAULT_CONFIG_PATH,
+        AuditorConfig, ScanSchedule, BuildConfig,
+        NotificationConfig, save_full_config, DEFAULT_CONFIG_PATH, get_db_path,
     )
     import re
     body = await request.json()
@@ -588,8 +593,14 @@ async def init_project(request: Request):
         return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
 
     systems_data = body.get("systems", [])
-    systems = [
-        SystemDef(name=s["name"].strip(), paths=s["paths"])
+    clean_systems = [
+        {
+            "name": s["name"].strip(),
+            "paths": s["paths"],
+            "min_confidence": s.get("min_confidence") or None,
+            "file_extensions": s.get("file_extensions") or None,
+            "claude_fast_mode": s.get("claude_fast_mode"),
+        }
         for s in systems_data
         if s.get("name", "").strip()
     ]
@@ -599,7 +610,6 @@ async def init_project(request: Request):
 
     config = AuditorConfig(
         repo_path=repo_path,
-        systems=systems,
         build=_make_build_config(build_data),
         scan_schedule=ScanSchedule(
             incremental_interval_hours=int(schedule_data.get("incremental_interval_hours", 4)),
@@ -624,10 +634,14 @@ async def init_project(request: Request):
     except Exception as e:
         return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
 
-    # Upsert source dir classifications into the DB
+    # Save systems and source dir classifications into the DB
+    db = get_db(request)
+
+    if clean_systems:
+        db.replace_systems(clean_systems)
+
     source_dirs = body.get("source_dirs", [])
     if source_dirs:
-        db = get_db(request)
         valid_types = {"active", "ignored"}
         for entry in source_dirs:
             path = (entry.get("path") or "").strip()
@@ -788,16 +802,17 @@ async def config_status(request: Request):
     config = get_config(request)
     db = get_db(request)
 
-    errors = validate_config_errors(config)
+    db_systems = db.list_systems()
+    errors = validate_config_errors(config, systems=db_systems)
     db_path = get_db_path(config)
     db_size = db_path.stat().st_size if db_path.exists() else 0
     last_commit = db.get_config("last_scan_commit", "")
 
     repo = Path(config.repo_path).expanduser()
     system_status = []
-    for s in config.systems:
-        path_checks = [{"path": p, "exists": (repo / p).exists()} for p in s.paths]
-        system_status.append({"name": s.name, "paths": path_checks})
+    for s in db_systems:
+        path_checks = [{"path": p, "exists": (repo / p).exists()} for p in s["paths"]]
+        system_status.append({"name": s["name"], "paths": path_checks})
 
     config_path = getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH))
     return JSONResponse({

@@ -107,9 +107,11 @@ def _process_system(
     changed_files: Optional[list[str]] = None,
 ) -> tuple[int, int]:
     """Return (findings_count, files_scanned). findings_count == -1 means total failure."""
-    system = next((s for s in config.systems if s.name == system_name), None)
+    from auditor.config import SystemDef
+    all_systems = [SystemDef(**s) for s in db.list_systems()]
+    system = next((s for s in all_systems if s.name == system_name), None)
     if system is None:
-        log.warning("System '%s' not found in config, skipping", system_name)
+        log.warning("System '%s' not found in database, skipping", system_name)
         return 0, 0
 
     ignored_prefixes = db.get_ignored_path_prefixes()
@@ -142,7 +144,7 @@ def _process_system(
             log.info("No files found for system '%s'", system_name)
             return 0, 0
         file_paths = [p for p in all_paths
-                      if find_owning_system(p, config.systems) == system_name
+                      if find_owning_system(p, all_systems) == system_name
                       and not _is_ignored(p)]
         excluded = len(all_paths) - len(file_paths)
         if excluded:
@@ -309,9 +311,11 @@ def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optio
             db.set_config("last_scan_commit", current_commit)
             return scan_id
 
-        systems_to_scan = config.systems
+        from auditor.config import SystemDef
+        all_systems = [SystemDef(**s) for s in db.list_systems()]
+        systems_to_scan = all_systems
         if system_name:
-            systems_to_scan = [s for s in config.systems if s.name == system_name]
+            systems_to_scan = [s for s in all_systems if s.name == system_name]
         system_map = map_files_to_systems(changed, systems_to_scan)
         total_findings = 0
         total_files = len(changed)

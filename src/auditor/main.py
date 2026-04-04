@@ -68,6 +68,22 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     db = Database(get_db_path(config))
     db.init_schema()
 
+    # One-time migration: if YAML config has systems and the DB has none, copy them.
+    if config.systems and not db.list_systems():
+        logger.info(
+            "Migrating %d system(s) from YAML config to database", len(config.systems)
+        )
+        db.replace_systems([
+            {
+                "name": s.name,
+                "paths": list(s.paths),
+                "min_confidence": s.min_confidence,
+                "file_extensions": list(s.file_extensions) if s.file_extensions else None,
+                "claude_fast_mode": s.claude_fast_mode,
+            }
+            for s in config.systems
+        ])
+
     app.state.db = db
     app.state.config = config
     app.state.config_path = str(config_path) if config_path else ""

@@ -49,10 +49,13 @@ def run_full_scan(
     from auditor.ws_manager import manager as ws_manager
 
     # Determine which systems to scan
+    from auditor.config import SystemDef
+    all_systems = [SystemDef(**s) for s in db.list_systems()]
+
     if system_name:
-        systems = [s for s in config.systems if s.name == system_name]
+        systems = [s for s in all_systems if s.name == system_name]
         if not systems:
-            log.error("System '%s' not found in config", system_name)
+            log.error("System '%s' not found in database", system_name)
             scan_id = new_id()
             db.insert_scan(Scan(
                 id=scan_id,
@@ -64,7 +67,7 @@ def run_full_scan(
             return scan_id
         label = system_name
     else:
-        systems = config.systems
+        systems = all_systems
         label = None  # UI shows "All"
 
     scan_id = new_id()

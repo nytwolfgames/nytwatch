@@ -558,10 +558,9 @@ function wzRenderSources(el) {
         </div>
         <p class="body-sm text-variant mb-4">
             These are the top-level source folders in your repository.
-            Mark each one as <strong>Project</strong> (your game code),
-            <strong>Plugin</strong> (third-party or reusable), or
-            <strong>Ignored</strong> (no C++ to scan).
-            Only non-ignored directories will be used in the next step.
+            Mark each one as <strong>Active</strong> (C++ code to scan) or
+            <strong>Ignored</strong> (skip completely — no findings generated).
+            Only Active directories will be scanned in the next step.
         </p>
         <div id="wz-src-list">
             <div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Detecting…</div>
@@ -672,7 +671,7 @@ async function wzSuggest(btn) {
     const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
     if (!activeDirs.length) {
         document.getElementById('wz-err').textContent =
-            'No non-ignored source directories — go back and classify your source directories first';
+            'No active source directories — go back and mark at least one directory as Active';
         return;
     }
     const nextBtn = document.getElementById('wz-next-btn');
@@ -908,7 +907,7 @@ async function wzNext() {
             return;
         }
         if (!active.length) {
-            _fail('All directories are marked as Ignored — mark at least one as Project or Plugin');
+            _fail('All directories are marked as Ignored — mark at least one as Active');
             return;
         }
         // Reset systems if sources changed substantially (user re-detected)

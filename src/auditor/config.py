@@ -88,37 +88,16 @@ def load_config(path: Optional[Path] = None) -> AuditorConfig:
     return AuditorConfig(**(raw or {}))
 
 
-def _serialize_systems(systems: list[SystemDef]) -> list[dict]:
-    """Serialize systems list, including per-system overrides when set."""
-    result = []
-    for s in systems:
-        entry: dict = {"name": s.name, "paths": list(s.paths)}
-        if s.min_confidence is not None:
-            entry["min_confidence"] = s.min_confidence
-        if s.file_extensions is not None:
-            entry["file_extensions"] = list(s.file_extensions)
-        if s.claude_fast_mode is not None:
-            entry["claude_fast_mode"] = s.claude_fast_mode
-        result.append(entry)
-    return result
-
-
-def save_config(config: AuditorConfig, path: Optional[Path] = None) -> None:
-    config_path = Path(path or DEFAULT_CONFIG_PATH).expanduser()
-    with open(config_path) as f:
-        raw = yaml.safe_load(f) or {}
-    raw["systems"] = _serialize_systems(config.systems)
-    with open(config_path, "w") as f:
-        yaml.dump(raw, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-
-
 def save_full_config(config: AuditorConfig, path: Optional[Path] = None) -> None:
-    """Save all config fields (used by wizard and repair)."""
+    """Save all config fields (used by wizard and repair).
+
+    Systems are stored in the database, not the YAML, so they are intentionally
+    omitted here.
+    """
     config_path = Path(path or DEFAULT_CONFIG_PATH).expanduser()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     raw: dict = {
         "repo_path": config.repo_path,
-        "systems": _serialize_systems(config.systems),
         "scan_schedule": {
             "incremental_interval_hours": config.scan_schedule.incremental_interval_hours,
             "rotation_enabled": config.scan_schedule.rotation_enabled,
@@ -171,8 +150,12 @@ def list_project_configs() -> list[dict]:
     return results
 
 
-def validate_config_errors(config: AuditorConfig) -> list[str]:
-    """Return a list of human-readable validation problems."""
+def validate_config_errors(config: AuditorConfig, systems: Optional[list] = None) -> list[str]:
+    """Return a list of human-readable validation problems.
+
+    Pass the ``systems`` list (from the database) to include system-level checks.
+    Each entry must have ``name`` and ``paths`` keys.
+    """
     errors = []
     repo = Path(config.repo_path).expanduser()
     if not repo.exists():
@@ -180,25 +163,28 @@ def validate_config_errors(config: AuditorConfig) -> list[str]:
     elif not (repo / ".git").exists():
         errors.append(f"repo_path is not a git repository: {config.repo_path}")
 
-    if not config.systems:
-        errors.append("No systems configured — add at least one system with paths")
+    if systems is not None:
+        if not systems:
+            errors.append("No systems configured — add at least one system with paths")
 
-    seen_paths: dict[str, str] = {}
-    for sys in config.systems:
-        if not sys.name.strip():
-            errors.append("A system has an empty name")
-        if not sys.paths:
-            errors.append(f"System '{sys.name}' has no paths")
-        for p in sys.paths:
-            norm = p.replace("\\", "/").rstrip("/") + "/"
-            if norm in seen_paths:
-                errors.append(
-                    f"Path '{p}' is shared by '{seen_paths[norm]}' and '{sys.name}'"
-                )
-            else:
-                seen_paths[norm] = sys.name
-            if repo.exists() and not (repo / p).exists():
-                errors.append(f"System '{sys.name}': path not found in repo: {p}")
+        seen_paths: dict[str, str] = {}
+        for sys in systems:
+            name = sys.get("name", "").strip() if isinstance(sys, dict) else getattr(sys, "name", "")
+            paths = sys.get("paths", []) if isinstance(sys, dict) else list(getattr(sys, "paths", []))
+            if not name:
+                errors.append("A system has an empty name")
+            if not paths:
+                errors.append(f"System '{name}' has no paths")
+            for p in paths:
+                norm = p.replace("\\", "/").rstrip("/") + "/"
+                if norm in seen_paths:
+                    errors.append(
+                        f"Path '{p}' is shared by '{seen_paths[norm]}' and '{name}'"
+                    )
+                else:
+                    seen_paths[norm] = name
+                if repo.exists() and not (repo / p).exists():
+                    errors.append(f"System '{name}': path not found in repo: {p}")
     return errors
 
 
@@ -274,12 +260,6 @@ def init_config(repo_path: str, config_path: Optional[Path] = None) -> Path:
 
     default = {
         "repo_path": repo_path,
-        "systems": [
-            {
-                "name": "Example",
-                "paths": ["Source/MyGame/Example/"],
-            }
-        ],
         "scan_schedule": {
             "incremental_interval_hours": 4,
             "rotation_enabled": False,
