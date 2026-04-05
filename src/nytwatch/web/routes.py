@@ -1194,14 +1194,13 @@ async def suggest_systems_api(request: Request):
             return JSONResponse({"error": "Claude CLI not found — ensure 'claude' is on PATH"}, status_code=500)
         data = _extract_json(raw)
         systems = data.get("systems", [])
-        # Normalize all source dir paths to have trailing slashes for safe prefix matching
-        active_dir_paths = {d["path"].replace("\\", "/").rstrip("/") + "/" for d in active_dirs}
-        # Sorted longest-first so the most specific dir wins prefix matching
+        active_dir_paths = {d["path"] for d in active_dirs}
+        # Longest-first so the most specific dir wins when inferring from a path
         active_dir_paths_sorted = sorted(active_dir_paths, key=len, reverse=True)
         valid = []
         for s in systems:
             name = (s.get("name") or "").strip()
-            source_dir = (s.get("source_dir") or "").replace("\\", "/").rstrip("/") + "/"
+            source_dir = (s.get("source_dir") or "").strip()
             paths = [p for p in (s.get("paths") or []) if isinstance(p, str) and p.strip()]
             if name and paths:
                 # If Claude returned an unknown source_dir, infer from the first path
