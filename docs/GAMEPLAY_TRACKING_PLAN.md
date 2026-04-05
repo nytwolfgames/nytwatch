@@ -612,8 +612,6 @@ Contents: a single semver line e.g. `1.0.0`. The authoritative version source. T
 
 ```
 nytwatch install-plugin --project /path/to/GameProject [--force]
-# or equivalently:
-nw install-plugin --project /path/to/GameProject [--force]
 ```
 
 ### Step-by-step logic
@@ -655,19 +653,9 @@ nw install-plugin --project /path/to/GameProject [--force]
 ```toml
 [project.scripts]
 nytwatch = "nytwatch.main:main"
-nw       = "nytwatch.main:main"       # short alias, identical entrypoint
 
 [tool.hatch.build.targets.wheel.shared-data]
 "ue5-plugin" = "share/nytwatch/ue5-plugin"
-```
-
-Both `nytwatch` and `nw` resolve to the same entrypoint — no conditional logic needed. All CLI commands work with either prefix:
-
-```
-nytwatch serve          ↔   nw serve
-nytwatch install-plugin ↔   nw install-plugin
-nytwatch scan           ↔   nw scan
-nytwatch migrate        ↔   nw migrate
 ```
 
 ---
@@ -716,9 +704,9 @@ All scripts operate at **user level** — no administrator or sudo privileges re
 
    Version  : 1.0.0
    Config   : ~/.nytwatch/
-   Commands : nytwatch | nw (short alias)
+   Command  : nytwatch
 
-   Run 'nw --help' to get started.
+   Run 'nytwatch --help' to get started.
    Note: Open a new terminal window for PATH changes to take effect. (Windows only)
    ```
 
@@ -1093,8 +1081,8 @@ Everything needed to go from zero to a working, logged session.
 | Game saved directory | `Saved/Nytwatch/` |
 | Lock file | `nytwatch.lock` |
 | Sessions folder | `Saved/Nytwatch/Sessions/` |
-| CLI entrypoint | `nytwatch` (also `nw` short alias) |
-| Install command | `nytwatch install-plugin` or `nw install-plugin` |
+| CLI entrypoint | `nytwatch` |
+| Install command | `nytwatch install-plugin` |
 | DB sessions table | `nytwatch_sessions` |
 | Install manifest | `.nytwatch_install` |
 | Build macro | `NYTWATCH_PLUGIN_VERSION` |
