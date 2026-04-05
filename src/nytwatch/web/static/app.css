@@ -706,6 +706,246 @@ a:hover {
 .text-primary { color: var(--primary); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
+/* ============================
+   PIE Recording Banner
+   ============================ */
+
+@keyframes pie-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.45; transform: scale(0.85); }
+}
+
+@keyframes pie-fade-out {
+  0%   { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+
+#pie-banner {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 997;
+  color: #fff;
+  padding: 10px 20px;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  transition: background 0.3s;
+}
+#pie-banner.pie-visible { display: flex; }
+#pie-banner.pie-recording  { background: #7f1d1d; }
+#pie-banner.pie-warning    { background: #78350f; }
+#pie-banner.pie-saved      { background: #14532d; animation: pie-fade-out 6s forwards; }
+
+.pie-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #fca5a5;
+  flex-shrink: 0;
+  animation: pie-pulse 1.2s ease-in-out infinite;
+}
+
+body.pie-active .main-content { margin-top: 42px; }
+
+/* ============================
+   Sessions Page
+   ============================ */
+
+.sessions-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: var(--sp-6);
+  align-items: start;
+  min-height: calc(100vh - 120px);
+}
+
+.session-list-panel {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  outline: 1px solid rgba(195,198,215,.15);
+  overflow: hidden;
+  position: sticky;
+  top: var(--sp-4);
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+}
+
+.session-list-filters {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.session-list-scroll {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  border-bottom: 1px solid var(--outline-variant);
+  transition: background 0.12s;
+  user-select: none;
+}
+.session-row:last-child { border-bottom: none; }
+.session-row:hover { background: var(--surface-container-low); }
+.session-row.active { background: rgba(0,74,198,.07); border-left: 3px solid var(--primary); padding-left: calc(var(--sp-4) - 3px); }
+.session-row.bookmarked { border-left: 3px solid #d97706; padding-left: calc(var(--sp-4) - 3px); }
+.session-row.bookmarked.active { border-left: 3px solid var(--primary); }
+
+.bookmark-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--outline-variant);
+  padding: 2px; line-height: 1; flex-shrink: 0;
+  transition: color 0.15s;
+}
+.bookmark-btn:hover { color: #d97706; }
+.bookmark-btn.starred { color: #d97706; }
+
+.session-row-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-sub {
+  font-size: 0.72rem;
+  color: var(--on-surface-variant);
+  margin-top: 2px;
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.session-detail-panel {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  outline: 1px solid rgba(195,198,215,.15);
+  overflow: hidden;
+}
+
+.session-detail-header {
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.session-kv-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font-size: 0.8125rem;
+}
+.session-kv-grid dt { color: var(--on-surface-variant); font-weight: 500; white-space: nowrap; }
+.session-kv-grid dd { color: var(--on-surface); font-family: 'SF Mono','Fira Code','Consolas',monospace; font-size: 0.78rem; }
+
+.density-strip {
+  height: 12px;
+  border-radius: 3px;
+  display: flex;
+  gap: 1px;
+  overflow: hidden;
+}
+.density-strip-bucket {
+  flex: 1;
+  border-radius: 1px;
+  transition: opacity 0.15s;
+}
+.density-strip-bucket:hover { opacity: 0.75; }
+
+/* ============================
+   Tracking Settings UI
+   ============================ */
+
+.tracking-system-item {
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.tracking-system-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface-container-lowest);
+  transition: background 0.12s;
+}
+.tracking-system-header:hover { background: var(--surface-container-low); }
+
+.tracking-system-body {
+  display: none;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface);
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.tracking-system-body.open { display: flex; }
+
+.arm-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.arm-toggle input { opacity: 0; width: 0; height: 0; }
+.arm-toggle .arm-slider {
+  position: absolute; inset: 0;
+  background: var(--outline-variant);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.arm-toggle .arm-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.arm-toggle input:checked + .arm-slider { background: var(--primary); }
+.arm-toggle input:checked + .arm-slider::before { transform: translateX(16px); }
+
+.tracking-armed-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(0,74,198,.1);
+  color: var(--primary);
+}
+
 @media (max-width: 768px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .app-layout { flex-direction: column; }

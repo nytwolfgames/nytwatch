@@ -122,6 +122,7 @@ async def dashboard(request: Request):
             "name": s["name"],
             "source_dir": sd,
             "count": db.count_findings_for_path_prefixes(s["paths"]),
+            "tracking_enabled": s.get("tracking_enabled", False),
         })
 
     # Sort groups: active before ignored, then alphabetically by source_dir name
@@ -152,6 +153,8 @@ async def dashboard(request: Request):
     watcher = getattr(request.app.state, "watcher", None)
     if watcher is not None and config_obj.repo_path:
         pie_state = watcher.get_pie_state(config_obj.repo_path)
+    recent_sessions = db.list_sessions(project_dir=config_obj.repo_path or None, limit=3)
+    armed_count = sum(1 for s in db_systems if s.get("tracking_enabled"))
     return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "batches": batches,
@@ -159,6 +162,8 @@ async def dashboard(request: Request):
         "grouped_systems": grouped_systems,
         "has_grouping": has_grouping,
         "pie_state": pie_state,
+        "recent_sessions": recent_sessions,
+        "armed_count": armed_count,
     })
 
 
@@ -2006,6 +2011,33 @@ async def api_set_file_verbosity(request: Request, system_name: str):
 
 # ── Gameplay Tracker — Sessions ───────────────────────────────────────────────
 
+@router.get("/settings/tracking/{system_name}/files", response_class=HTMLResponse)
+async def file_verbosity_page(request: Request, system_name: str):
+    db = get_db(request)
+    config = get_config(request)
+    if db is None or not config.repo_path:
+        return RedirectResponse(url="/settings")
+    system = next((s for s in db.list_systems() if s["name"] == system_name), None)
+    if system is None:
+        return RedirectResponse(url="/settings")
+    overrides = {o["file_path"]: o["verbosity"] for o in db.get_file_verbosity_overrides(system_name)}
+    repo = Path(config.repo_path)
+    files = []
+    for path_entry in system.get("paths", []):
+        abs_path = Path(path_entry) if Path(path_entry).is_absolute() else repo / path_entry
+        if abs_path.is_dir():
+            for h_file in sorted(abs_path.rglob("*.h")):
+                rel = str(h_file.relative_to(repo)).replace("\\", "/")
+                files.append({"file_path": rel, "verbosity_override": overrides.get(rel)})
+        elif abs_path.is_file() and abs_path.suffix == ".h":
+            rel = str(abs_path.relative_to(repo)).replace("\\", "/")
+            files.append({"file_path": rel, "verbosity_override": overrides.get(rel)})
+    return templates.TemplateResponse(request, "file_verbosity.html", {
+        "system": system,
+        "files": files,
+    })
+
+
 @router.get("/sessions", response_class=HTMLResponse)
 async def sessions_page(request: Request):
     db = get_db(request)
@@ -2014,9 +2046,43 @@ async def sessions_page(request: Request):
     config = get_config(request)
     sessions = db.list_sessions(project_dir=config.repo_path or None)
     highlight = request.query_params.get("highlight")
+    tab = request.query_params.get("tab", "sessions")
+    tracking_active = getattr(request.app.state, "tracking_active", False)
+    tracking_tick = db.get_config("tracking_tick_interval", "0.1") if db else "0.1"
+    tracking_cap = db.get_config("tracking_scan_cap", "2000") if db else "2000"
+
+    # Build grouped structure for the tracking systems table
+    all_systems = db.list_systems() if db else []
+    all_source_dirs = db.list_source_dirs() if db else []
+    source_dir_map = {d["path"]: d["source_type"] for d in all_source_dirs}
+    sys_by_dir: dict[str, list] = {}
+    for s in all_systems:
+        sd = s.get("source_dir") or ""
+        sys_by_dir.setdefault(sd, []).append(s)
+    sorted_dirs = sorted(
+        sys_by_dir.keys(),
+        key=lambda sd: (1 if source_dir_map.get(sd) == "ignored" else 0, sd.lower()),
+    )
+    grouped_tracking = [
+        {
+            "source_dir": sd,
+            "ignored": source_dir_map.get(sd) == "ignored",
+            "systems": sorted(sys_by_dir[sd], key=lambda s: s["name"].lower()),
+        }
+        for sd in sorted_dirs
+    ]
+    has_tracking_grouping = any(g["source_dir"] for g in grouped_tracking)
+
     return templates.TemplateResponse(request, "sessions.html", {
         "sessions": sessions,
         "highlight": highlight,
+        "active_tab": tab,
+        "config": config,
+        "tracking_active": tracking_active,
+        "grouped_tracking": grouped_tracking,
+        "has_tracking_grouping": has_tracking_grouping,
+        "tracking_tick": tracking_tick,
+        "tracking_cap": tracking_cap,
     })
 
 

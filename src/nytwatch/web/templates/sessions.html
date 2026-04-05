@@ -1,15 +1,939 @@
 {% extends "base.html" %}
-
 {% block title %}Sessions — Nytwatch{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Sessions</h1>
+<div class="flex items-center gap-3 mb-5">
+    <h1 class="headline-lg" style="flex:1;">Sessions</h1>
 </div>
 
-<div id="sessions-app"
-     data-highlight="{{ highlight or '' }}"
-     data-sessions="{{ sessions | tojson | e }}">
-  <p class="muted">Loading sessions…</p>
+<!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
+<div style="display:flex;gap:0;border-bottom:2px solid var(--outline-variant);margin-bottom:var(--sp-6);">
+    <a id="tab-sessions" href="/sessions?tab=sessions"
+       style="padding:8px 20px;font-size:0.875rem;font-weight:500;text-decoration:none;
+              border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;
+              {% if active_tab != 'tracking' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
+        Sessions
+    </a>
+    <a id="tab-tracking" href="/sessions?tab=tracking"
+       style="padding:8px 20px;font-size:0.875rem;font-weight:500;text-decoration:none;
+              border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;
+              {% if active_tab == 'tracking' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
+        Tracking
+    </a>
 </div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Sessions                                                           -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div id="pane-sessions" {% if active_tab == 'tracking' %}style="display:none;"{% endif %}>
+
+{% if not sessions %}
+<div class="card" style="text-align:center;padding:var(--sp-10);">
+    <div style="font-size:2rem;margin-bottom:var(--sp-3);">⏱</div>
+    <div class="headline-md mb-2">No sessions yet</div>
+    <p class="body-md text-variant mb-4">
+        Arm systems in the Tracking tab and start a PIE session to record gameplay data.
+    </p>
+    <a href="/sessions?tab=tracking" class="btn btn-primary">Open Tracking</a>
+</div>
+{% else %}
+<div class="sessions-layout">
+
+    <!-- ── Session list panel ──────────────────────────────────────────── -->
+    <div class="session-list-panel">
+        <div class="session-list-filters">
+            <input type="text" id="session-filter" placeholder="Filter by name…"
+                   class="input" style="font-size:0.8125rem;"
+                   oninput="filterSessions(this.value)">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;
+                          color:var(--on-surface-variant);cursor:pointer;user-select:none;">
+                <input type="checkbox" id="bookmarked-only" onchange="filterSessions()">
+                Bookmarked only
+            </label>
+        </div>
+        <div class="session-list-scroll" id="session-list">
+            {% for s in sessions %}
+            <div class="session-row{% if s.bookmarked %} bookmarked{% endif %}"
+                 id="row-{{ s.id }}"
+                 data-id="{{ s.id }}"
+                 data-name="{{ (s.display_name or s.id) | lower }}"
+                 data-bookmarked="{{ '1' if s.bookmarked else '0' }}"
+                 onclick="selectSession('{{ s.id }}')">
+                <button class="bookmark-btn {% if s.bookmarked %}starred{% endif %}"
+                        title="{{ 'Remove bookmark' if s.bookmarked else 'Bookmark' }}"
+                        onclick="event.stopPropagation(); toggleBookmark('{{ s.id }}', this)"
+                        data-id="{{ s.id }}">
+                    {% if s.bookmarked %}★{% else %}☆{% endif %}
+                </button>
+                <div class="session-row-meta">
+                    <div class="session-name" id="name-{{ s.id }}">{{ s.display_name if s.display_name != s.id else (s.ue_project_name ~ ' · ' ~ s.started_at[:10] if s.ue_project_name else s.id[:12] ~ '…') }}</div>
+                    <div class="session-sub">
+                        <span>{{ s.started_at[:16].replace('T',' ') if s.started_at else '—' }}</span>
+                        <span>·</span>
+                        <span>{{ s.event_count }} events</span>
+                        {% if s.duration_secs %}
+                        <span>·</span>
+                        <span>{{ '%d:%02d'|format(s.duration_secs // 60, s.duration_secs % 60) }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if s.systems_tracked %}
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;">
+                    {% for sys in s.systems_tracked[:2] %}
+                    <span class="badge badge-category" style="font-size:0.6rem;">{{ sys }}</span>
+                    {% endfor %}
+                    {% if s.systems_tracked|length > 2 %}
+                    <span class="body-sm text-outline" style="font-size:0.65rem;">+{{ s.systems_tracked|length - 2 }}</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ── Session detail panel ────────────────────────────────────────── -->
+    <div class="session-detail-panel" id="detail-panel">
+        <div style="padding:var(--sp-10);text-align:center;color:var(--on-surface-variant);" id="detail-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" style="opacity:.3;margin-bottom:12px;">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <div class="body-md">Select a session to view details</div>
+        </div>
+
+        <div id="detail-content" style="display:none;">
+            <!-- Header -->
+            <div class="session-detail-header">
+                <div style="display:flex;align-items:flex-start;gap:var(--sp-3);">
+                    <div style="flex:1;min-width:0;">
+                        <div id="detail-name-display"
+                             style="font-size:1rem;font-weight:600;cursor:pointer;display:inline-block;
+                                    border-bottom:1px dashed transparent;transition:border-color .15s;"
+                             title="Click to rename"
+                             onmouseenter="this.style.borderColor='var(--outline)'"
+                             onmouseleave="this.style.borderColor='transparent'"
+                             onclick="startRename()"></div>
+                        <input id="detail-name-input" type="text"
+                               style="display:none;font-size:1rem;font-weight:600;border:1px solid var(--primary);
+                                      border-radius:4px;padding:2px 6px;width:100%;background:var(--surface);"
+                               onblur="commitRename()"
+                               onkeydown="if(event.key==='Enter')commitRename();if(event.key==='Escape')cancelRename();">
+                    </div>
+                    <div style="display:flex;gap:var(--sp-2);flex-shrink:0;">
+                        <button id="detail-bookmark-btn" class="btn btn-sm scan-safe"
+                                onclick="toggleBookmarkDetail()" title="Toggle bookmark">☆</button>
+                        <button class="btn btn-sm btn-danger scan-safe"
+                                onclick="deleteSession()" id="detail-delete-btn">Delete</button>
+                    </div>
+                </div>
+
+                <dl class="session-kv-grid" id="detail-meta"></dl>
+
+                <!-- Per-system event count bar chart -->
+                <div id="detail-chart" style="display:none;">
+                    <div class="body-sm text-outline" style="margin-bottom:6px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:.65rem;">Events by System</div>
+                    <div id="detail-bars" style="display:flex;flex-direction:column;gap:4px;"></div>
+                </div>
+
+                <!-- Timeline density strip -->
+                <div id="detail-timeline" style="display:none;">
+                    <div class="body-sm text-outline" style="margin-bottom:6px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:.65rem;">Event density</div>
+                    <div class="density-strip" id="detail-strip"></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span class="body-sm text-outline" style="font-size:.65rem;" id="strip-t-start">0:00</span>
+                        <span class="body-sm text-outline" style="font-size:.65rem;" id="strip-t-end"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log actions + inline preview -->
+            <div style="padding:var(--sp-4) var(--sp-5);border-bottom:1px solid var(--outline-variant);
+                        display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;">
+                <button class="btn btn-sm scan-safe" onclick="copyPath()" id="copy-path-btn">Copy Path</button>
+                <button class="btn btn-sm scan-safe" onclick="togglePreview()" id="preview-toggle-btn">Preview</button>
+                <span id="detail-file-path" class="body-sm text-variant mono truncate" style="flex:1;"></span>
+            </div>
+            <div id="preview-container" style="display:none;">
+                <pre id="preview-content"
+                     style="margin:0;padding:var(--sp-4) var(--sp-5);font-size:0.75rem;
+                            font-family:'SF Mono','Fira Code','Consolas',monospace;
+                            overflow-x:auto;max-height:480px;overflow-y:auto;
+                            background:var(--surface);white-space:pre-wrap;word-break:break-word;
+                            border-bottom:1px solid var(--outline-variant);"></pre>
+            </div>
+        </div>
+    </div>
+
+</div><!-- .sessions-layout -->
+{% endif %}
+
+</div><!-- #pane-sessions -->
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Tracking                                                           -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div id="pane-tracking" {% if active_tab != 'tracking' %}style="display:none;"{% endif %}>
+
+{% if not config.repo_path %}
+<div class="card" style="text-align:center;padding:var(--sp-10);">
+    <div class="headline-md mb-2">No project configured</div>
+    <p class="body-md text-variant mb-4">Set up a project first before configuring tracking.</p>
+    <a href="/settings?setup=1" class="btn btn-primary">Open Settings</a>
+</div>
+{% else %}
+<div class="card mb-6" id="tracking-section">
+    <div class="flex items-center gap-3 mb-1">
+        <div class="section-label" style="flex:1;">Nytwatch Tracking</div>
+        <button id="tracking-toggle-btn" class="btn btn-sm scan-safe"
+                onclick="toggleTracking()"
+                style="min-width:110px;">
+            {{ 'Stop Tracking' if tracking_active else 'Start Tracking' }}
+        </button>
+    </div>
+    <p class="body-sm text-variant mb-4">
+        Arm systems below, then click <strong>Start Tracking</strong>.
+        The NytwatchAgent plugin reads the config on the next PIE start.
+    </p>
+
+    <div style="display:flex;gap:var(--sp-6);flex-wrap:wrap;margin-bottom:var(--sp-5);">
+        <div>
+            <label class="body-sm text-outline" style="display:block;margin-bottom:4px;">Tick interval (seconds)</label>
+            <input id="tracking-tick" type="number" class="input" step="0.05" min="0.05" max="5"
+                   style="width:120px;" value="{{ tracking_tick }}"
+                   onchange="saveTrackingConfig()">
+        </div>
+        <div>
+            <label class="body-sm text-outline" style="display:block;margin-bottom:4px;">Object scan cap</label>
+            <input id="tracking-cap" type="number" class="input" step="100" min="100" max="10000"
+                   style="width:130px;" value="{{ tracking_cap }}"
+                   onchange="saveTrackingConfig()">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+            <span id="tracking-save-status" class="body-sm text-variant"></span>
+        </div>
+    </div>
+
+    {% if grouped_tracking %}
+    <style>
+      #tracking-systems-table .ts-row:hover { background: rgba(0,74,198,0.03) !important; }
+      #tracking-systems-table .ts-group-row {
+        background: rgba(0,74,198,0.05) !important;
+        cursor: pointer;
+        user-select: none;
+      }
+      #tracking-systems-table .ts-group-row td { box-shadow: inset 3px 0 0 rgba(0,74,198,0.35); }
+      #tracking-systems-table .ts-group-row:hover { background: rgba(0,74,198,0.09) !important; }
+      #tracking-systems-table .ts-row td:first-child { padding-left: 28px; }
+      #tracking-systems-table .ts-row-plugin td { opacity: 0.45; }
+      #tracking-systems-table td { vertical-align: middle; }
+      #tracking-systems-table .arm-toggle { vertical-align: middle; }
+    </style>
+    <div style="border-top:1px solid var(--outline-variant);margin:0 calc(-1*var(--sp-5));margin-bottom:calc(-1*var(--sp-5));">
+        <table id="tracking-systems-table" class="data-table" style="margin:0;">
+            <thead>
+                <tr>
+                    <th>System</th>
+                    <th style="width:70px;">Armed</th>
+                    <th style="width:160px;">Verbosity</th>
+                    <th style="width:150px;text-align:right;">File Verbosity</th>
+                </tr>
+            </thead>
+            <tbody id="tracking-systems-list">
+            {% for group in grouped_tracking %}
+            {% set gk = loop.index0 %}
+            {% if has_tracking_grouping %}
+            <tr class="ts-group-row" data-tgroup="{{ gk }}"
+                onclick="toggleTrackingGroup('{{ gk }}')">
+                <td colspan="4" style="padding:10px var(--sp-5) 7px;border-top:1px solid var(--outline-variant);">
+                    <div style="display:flex;align-items:center;gap:var(--sp-2);">
+                        <span id="tg-arrow-{{ gk }}" style="font-size:0.9rem;color:var(--primary);transition:transform 0.15s;flex-shrink:0;opacity:0.7;">▾</span>
+                        <span class="mono" style="font-size:0.83rem;font-weight:600;color:var(--on-surface);flex:1;
+                                                  letter-spacing:-0.01em;margin-left:5px;overflow:hidden;
+                                                  text-overflow:ellipsis;white-space:nowrap;"
+                              title="{{ group.source_dir or 'Ungrouped' }}">
+                            {{ group.source_dir or 'Ungrouped' }}
+                        </span>
+                    </div>
+                </td>
+            </tr>
+            {% endif %}
+            {% for s in group.systems %}
+            {% set is_plugin = 'Plugins/NytwatchAgent' in (s.paths | join(' ')) %}
+            <tr class="ts-row{% if is_plugin %} ts-row-plugin{% endif %}" data-tgroup-member="{{ gk }}">
+                <td>
+                    <span style="font-weight:500;">{{ s.name }}</span>
+                    {% if is_plugin %}
+                    <span class="body-sm text-variant" style="margin-left:6px;font-size:0.72rem;">excluded</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not is_plugin %}
+                    <label class="arm-toggle" style="display:inline-flex;">
+                        <input type="checkbox" id="arm-{{ s.name | e }}"
+                               {% if s.tracking_enabled %}checked{% endif %}
+                               onchange="onArmChange('{{ s.name | e }}')">
+                        <span class="arm-slider"></span>
+                    </label>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not is_plugin %}
+                    <select id="verb-{{ s.name | e }}" class="input" style="width:140px;font-size:0.8rem;"
+                            onchange="onVerbChange('{{ s.name | e }}')">
+                        {% for v in ['Critical','Standard','Verbose'] %}
+                        <option value="{{ v }}" {% if s.tracking_verbosity == v %}selected{% endif %}>{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
+                </td>
+                <td style="text-align:right;">
+                    {% if not is_plugin %}
+                    <button class="btn btn-sm scan-safe"
+                            onclick="openVerbosityDrawer('{{ s.name | e }}', document.getElementById('verb-{{ s.name | e }}').value)">
+                        Configure →
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="body-sm text-variant">No systems configured. Add systems from the Dashboard first.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+</div><!-- #pane-tracking -->
+
+<!-- ── File verbosity drawer ──────────────────────────────────────────────── -->
+<div id="verbosity-backdrop" onclick="closeVerbosityDrawer()"
+     style="display:none;position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.45);"></div>
+
+<aside id="verbosity-drawer"
+       style="display:none;position:fixed;right:0;top:0;bottom:0;width:50%;z-index:1600;
+              background:var(--surface);border-left:1px solid var(--outline);
+              flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3);">
+    <div style="display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--outline);flex-shrink:0;">
+        <span id="vd-title" style="font-weight:600;font-size:0.95rem;flex:1;"></span>
+        <button onclick="closeVerbosityDrawer()" class="scan-safe"
+                style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.3rem;line-height:1;padding:2px 8px;">&times;</button>
+    </div>
+    <div style="padding:12px 20px;border-bottom:1px solid var(--outline-variant);flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input id="vd-filter" type="text" class="input" placeholder="Filter files…"
+               style="flex:1;min-width:160px;font-size:0.8rem;"
+               oninput="vdFilter(this.value)">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:var(--on-surface-variant);cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" id="vd-overrides-only" onchange="vdFilter(document.getElementById('vd-filter').value)">
+            Overrides only
+        </label>
+    </div>
+    <div id="vd-body" style="flex:1;overflow-y:auto;padding:0;">
+        <div id="vd-loading" style="padding:32px;text-align:center;color:var(--on-surface-variant);font-size:0.85rem;">Loading…</div>
+        <table id="vd-table" style="display:none;width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:1px solid var(--outline-variant);background:var(--surface-raised);position:sticky;top:0;z-index:1;">
+                    <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:600;color:var(--on-surface-variant);">File</th>
+                    <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:var(--on-surface-variant);width:155px;">Verbosity</th>
+                    <th style="width:52px;"></th>
+                </tr>
+            </thead>
+            <tbody id="vd-rows"></tbody>
+        </table>
+        <div id="vd-empty" style="display:none;padding:32px;text-align:center;color:var(--on-surface-variant);font-size:0.85rem;">No header files found for this system.</div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <button onclick="vdClearAll()" class="btn btn-sm scan-safe">Clear All</button>
+        <span id="vd-status" style="flex:1;font-size:0.8rem;color:var(--on-surface-variant);"></span>
+        <button onclick="closeVerbosityDrawer()" class="btn btn-sm scan-safe">Cancel</button>
+        <button onclick="vdSave()" class="btn btn-sm btn-primary scan-safe" id="vd-save-btn">Save</button>
+    </div>
+</aside>
+
+<!-- Confirmation modal -->
+<div id="confirm-overlay"
+     style="display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.5);
+            align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border-radius:12px;padding:var(--sp-6);
+                max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+        <div class="headline-md mb-3">Delete session?</div>
+        <p class="body-md text-variant mb-4" id="confirm-msg"></p>
+        <div style="display:flex;gap:var(--sp-2);justify-content:flex-end;">
+            <button class="btn btn-sm scan-safe" onclick="closeConfirm()">Cancel</button>
+            <button class="btn btn-sm btn-danger scan-safe" id="confirm-ok-btn">Delete</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _sessions  = {{ sessions | tojson }};
+const _highlight = '{{ highlight or '' }}';
+
+let _activeId    = null;
+let _activeData  = null;
+let _previewOpen = false;
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+function filterSessions(q) {
+    q = q !== undefined ? q : document.getElementById('session-filter').value;
+    const bookOnly = document.getElementById('bookmarked-only')?.checked;
+    const ql = (q || '').toLowerCase();
+    document.querySelectorAll('.session-row').forEach(row => {
+        const nameMatch = !ql || (row.dataset.name || '').includes(ql);
+        const bookMatch = !bookOnly || row.dataset.bookmarked === '1';
+        row.style.display = (nameMatch && bookMatch) ? '' : 'none';
+    });
+}
+
+// ── Session selection ─────────────────────────────────────────────────────────
+async function selectSession(id) {
+    document.querySelectorAll('.session-row').forEach(r => r.classList.remove('active'));
+    const row = document.getElementById('row-' + id);
+    if (row) row.classList.add('active');
+
+    _activeId = id;
+    _previewOpen = false;
+    document.getElementById('preview-container').style.display = 'none';
+    document.getElementById('preview-toggle-btn').textContent = 'Preview';
+    document.getElementById('preview-content').textContent = '';
+
+    document.getElementById('detail-empty').style.display = 'none';
+    document.getElementById('detail-content').style.display = '';
+
+    try {
+        const r = await fetch(`/api/sessions/${id}`);
+        const d = await r.json();
+        if (!d.session) return;
+        _activeData = d.session;
+        renderDetail(d.session);
+        history.replaceState(null, '', `/sessions?tab=sessions&highlight=${id}`);
+    } catch (e) {
+        console.error('Failed to load session', e);
+    }
+}
+
+function renderDetail(s) {
+    const displayName = s.display_name !== s.id
+        ? s.display_name
+        : (s.ue_project_name ? `${s.ue_project_name} · ${(s.started_at || '').slice(0,10)}` : s.id);
+    document.getElementById('detail-name-display').textContent = displayName;
+    document.getElementById('detail-name-input').value = s.display_name || s.id;
+
+    const bmBtn = document.getElementById('detail-bookmark-btn');
+    bmBtn.textContent = s.bookmarked ? '★ Bookmarked' : '☆ Bookmark';
+    bmBtn.style.color = s.bookmarked ? '#d97706' : '';
+
+    const delBtn = document.getElementById('detail-delete-btn');
+    delBtn.disabled = !!s.bookmarked;
+    delBtn.title = s.bookmarked ? 'Unbookmark before deleting' : '';
+
+    const meta = document.getElementById('detail-meta');
+    const dur = s.duration_secs
+        ? `${Math.floor(s.duration_secs/60)}:${String(s.duration_secs%60).padStart(2,'0')}`
+        : '—';
+    const rows = [
+        ['Project',   s.ue_project_name || '—'],
+        ['Session ID', s.id],
+        ['Started',   (s.started_at || '—').replace('T',' ').slice(0,19)],
+        ['Ended',     s.ended_at ? s.ended_at.replace('T',' ').slice(0,19) : '—'],
+        ['Duration',  dur],
+        ['Events',    String(s.event_count || 0)],
+        ['Plugin',    s.plugin_version || '—'],
+        ['Systems',   (s.systems_tracked || []).join(', ') || '—'],
+    ];
+    meta.innerHTML = rows.map(([k,v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+    document.getElementById('detail-file-path').textContent = s.file_path || '';
+    fetchContent(s);
+}
+
+async function fetchContent(s) {
+    const chartEl    = document.getElementById('detail-chart');
+    const timelineEl = document.getElementById('detail-timeline');
+    chartEl.style.display    = 'none';
+    timelineEl.style.display = 'none';
+    try {
+        const r = await fetch(`/api/sessions/${s.id}/content`);
+        if (!r.ok) return;
+        const text = await r.text();
+        renderChart(text, s.systems_tracked || []);
+        renderTimeline(text, s.duration_secs || 0);
+    } catch (e) {}
+}
+
+function renderChart(text, systems) {
+    const bars  = document.getElementById('detail-bars');
+    const chart = document.getElementById('detail-chart');
+    if (!systems.length) return;
+    const counts = {};
+    let currentSys = null;
+    text.split('\n').forEach(line => {
+        const sysMatch = line.match(/^## (.+)$/);
+        if (sysMatch) { currentSys = sysMatch[1].trim(); return; }
+        if (currentSys && /^\[\d{2}:\d{2}\.\d{2}\]/.test(line)) {
+            counts[currentSys] = (counts[currentSys] || 0) + 1;
+        }
+    });
+    const entries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+    if (!entries.length) return;
+    const max = entries[0][1];
+    bars.innerHTML = entries.map(([sys, cnt]) => {
+        const pct = Math.round((cnt / max) * 100);
+        return `<div style="display:flex;align-items:center;gap:var(--sp-2);">
+            <span style="width:110px;font-size:.75rem;font-weight:500;color:var(--on-surface-variant);
+                         text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                  title="${sys}">${sys}</span>
+            <div style="flex:1;background:var(--surface-container);border-radius:3px;height:8px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:var(--primary);border-radius:3px;opacity:.75;transition:width .4s;"></div>
+            </div>
+            <span style="width:36px;font-size:.72rem;color:var(--on-surface-variant);text-align:right;">${cnt}</span>
+        </div>`;
+    }).join('');
+    chart.style.display = '';
+}
+
+function renderTimeline(text, durationSecs) {
+    const strip    = document.getElementById('detail-strip');
+    const timeline = document.getElementById('detail-timeline');
+    const BUCKETS  = 30;
+    const timestamps = [];
+    text.split('\n').forEach(line => {
+        const m = line.match(/^\[(\d{2}):(\d{2})\.(\d{2})\]/);
+        if (m) {
+            const secs = parseInt(m[1])*60 + parseInt(m[2]) + parseInt(m[3])/100;
+            timestamps.push(secs);
+        }
+    });
+    if (!timestamps.length) return;
+    const total = durationSecs || (timestamps[timestamps.length-1] + 1);
+    const bucketSize = total / BUCKETS;
+    const buckets = new Array(BUCKETS).fill(0);
+    timestamps.forEach(t => {
+        const i = Math.min(Math.floor(t / bucketSize), BUCKETS - 1);
+        buckets[i]++;
+    });
+    const maxB = Math.max(...buckets, 1);
+    strip.innerHTML = buckets.map(cnt => {
+        const intensity = cnt / maxB;
+        const alpha = 0.07 + intensity * 0.93;
+        return `<div class="density-strip-bucket" title="${cnt} events"
+                     style="background:rgba(0,74,198,${alpha.toFixed(2)});"></div>`;
+    }).join('');
+    document.getElementById('strip-t-end').textContent =
+        `${Math.floor(total/60)}:${String(Math.floor(total%60)).padStart(2,'0')}`;
+    timeline.style.display = '';
+}
+
+// ── Rename ────────────────────────────────────────────────────────────────────
+function startRename() {
+    document.getElementById('detail-name-display').style.display = 'none';
+    const inp = document.getElementById('detail-name-input');
+    inp.style.display = '';
+    inp.focus(); inp.select();
+}
+function cancelRename() {
+    document.getElementById('detail-name-input').style.display = 'none';
+    document.getElementById('detail-name-display').style.display = '';
+}
+async function commitRename() {
+    const inp  = document.getElementById('detail-name-input');
+    const name = inp.value.trim();
+    if (!name || !_activeId) { cancelRename(); return; }
+    try {
+        const r = await fetch(`/api/sessions/${_activeId}/rename`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({display_name: name}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            document.getElementById('detail-name-display').textContent = name;
+            const row = document.getElementById('row-' + _activeId);
+            if (row) row.querySelector('.session-name').textContent = name;
+            if (row) row.dataset.name = name.toLowerCase();
+            if (_activeData) _activeData.display_name = name;
+        }
+    } catch (e) {}
+    cancelRename();
+}
+
+// ── Bookmark ──────────────────────────────────────────────────────────────────
+async function toggleBookmark(id, btn) {
+    const row    = document.getElementById('row-' + id);
+    const starred = btn.classList.contains('starred');
+    const newVal  = !starred;
+    try {
+        const r = await fetch(`/api/sessions/${id}/bookmark`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({bookmarked: newVal}),
+        });
+        const d = await r.json();
+        if (!d.ok) return;
+        btn.classList.toggle('starred', newVal);
+        btn.textContent = newVal ? '★' : '☆';
+        btn.title = newVal ? 'Remove bookmark' : 'Bookmark';
+        if (row) {
+            row.classList.toggle('bookmarked', newVal);
+            row.dataset.bookmarked = newVal ? '1' : '0';
+        }
+        if (id === _activeId && _activeData) {
+            _activeData.bookmarked = newVal;
+            const bmBtn = document.getElementById('detail-bookmark-btn');
+            bmBtn.textContent = newVal ? '★ Bookmarked' : '☆ Bookmark';
+            bmBtn.style.color = newVal ? '#d97706' : '';
+            document.getElementById('detail-delete-btn').disabled = newVal;
+        }
+    } catch (e) {}
+}
+
+function toggleBookmarkDetail() {
+    if (!_activeId) return;
+    const btn = document.querySelector(`#row-${_activeId} .bookmark-btn`);
+    if (btn) toggleBookmark(_activeId, btn);
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+let _pendingDelete = null;
+function deleteSession() {
+    if (!_activeData || _activeData.bookmarked) return;
+    const name = _activeData.display_name || _activeId;
+    document.getElementById('confirm-msg').textContent =
+        `"${name}" and its .md file will be permanently deleted from disk.`;
+    _pendingDelete = _activeId;
+    document.getElementById('confirm-overlay').style.display = 'flex';
+    document.getElementById('confirm-ok-btn').onclick = confirmDelete;
+}
+function closeConfirm() {
+    document.getElementById('confirm-overlay').style.display = 'none';
+    _pendingDelete = null;
+}
+async function confirmDelete() {
+    if (!_pendingDelete) return;
+    closeConfirm();
+    try {
+        const r = await fetch(`/api/sessions/${_pendingDelete}`, { method: 'DELETE' });
+        const d = await r.json();
+        if (d.ok) {
+            document.getElementById('row-' + _pendingDelete)?.remove();
+            document.getElementById('detail-empty').style.display = '';
+            document.getElementById('detail-content').style.display = 'none';
+            _activeId = null; _activeData = null;
+        } else {
+            alert(d.error || 'Delete failed');
+        }
+    } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────────
+async function togglePreview() {
+    const container = document.getElementById('preview-container');
+    const btn       = document.getElementById('preview-toggle-btn');
+    if (_previewOpen) {
+        container.style.display = 'none';
+        btn.textContent = 'Preview';
+        _previewOpen = false;
+        return;
+    }
+    btn.textContent = 'Loading…';
+    try {
+        const r = await fetch(`/api/sessions/${_activeId}/content`);
+        document.getElementById('preview-content').textContent = await r.text();
+        container.style.display = '';
+        btn.textContent = 'Hide Preview';
+        _previewOpen = true;
+    } catch (e) { btn.textContent = 'Preview'; }
+}
+
+function copyPath() {
+    const path = document.getElementById('detail-file-path').textContent;
+    if (path) navigator.clipboard.writeText(path).then(() => {
+        const btn = document.getElementById('copy-path-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy Path', 1500);
+    });
+}
+
+// ── WS: live session updates ──────────────────────────────────────────────────
+onWsMessage('session_imported', data => {
+    const s = data.session;
+    if (!s || document.getElementById('row-' + s.id)) return;
+    const list = document.getElementById('session-list');
+    if (!list) return;
+    const name = s.display_name !== s.id
+        ? s.display_name
+        : (s.ue_project_name ? `${s.ue_project_name} · ${(s.started_at||'').slice(0,10)}` : s.id.slice(0,12) + '…');
+    const row = document.createElement('div');
+    row.className = 'session-row';
+    row.id = 'row-' + s.id;
+    row.dataset.id = s.id;
+    row.dataset.name = name.toLowerCase();
+    row.dataset.bookmarked = '0';
+    row.innerHTML = `
+        <button class="bookmark-btn" title="Bookmark"
+                onclick="event.stopPropagation();toggleBookmark('${s.id}',this)"
+                data-id="${s.id}">☆</button>
+        <div class="session-row-meta">
+            <div class="session-name" id="name-${s.id}">${name}</div>
+            <div class="session-sub">
+                <span>${(s.started_at||'').slice(0,16).replace('T',' ')}</span>
+                <span>·</span><span>${s.event_count||0} events</span>
+            </div>
+        </div>`;
+    row.onclick = () => selectSession(s.id);
+    list.insertBefore(row, list.firstChild);
+});
+
+onWsMessage('session_deleted', data => {
+    document.getElementById('row-' + data.session_id)?.remove();
+    if (_activeId === data.session_id) {
+        document.getElementById('detail-empty').style.display = '';
+        document.getElementById('detail-content').style.display = 'none';
+        _activeId = null; _activeData = null;
+    }
+});
+
+// ── Tracking tab JS ───────────────────────────────────────────────────────────
+let _trackingActive = {{ 'true' if tracking_active else 'false' }};
+
+function onArmChange(_name) {
+    saveTrackingConfig();
+}
+
+function toggleTrackingGroup(gk) {
+    const arrow = document.getElementById('tg-arrow-' + gk);
+    const rows  = document.querySelectorAll(`[data-tgroup-member="${gk}"]`);
+    const open  = arrow.style.transform !== 'rotate(-90deg)';
+    arrow.style.transform = open ? 'rotate(-90deg)' : '';
+    rows.forEach(r => r.style.display = open ? 'none' : '');
+}
+
+function onVerbChange(_name) { saveTrackingConfig(); }
+
+let _saveTimer = null;
+function saveTrackingConfig() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(_doSaveTracking, 600);
+}
+
+async function _doSaveTracking() {
+    const systems = [];
+    document.querySelectorAll('#tracking-systems-list .tracking-system-item').forEach(item => {
+        const cb  = item.querySelector('input[type=checkbox]');
+        const sel = item.querySelector('select');
+        if (!cb) return;
+        const name = cb.id.replace(/^arm-/, '');
+        systems.push({ name, tracking_enabled: cb.checked, tracking_verbosity: sel ? sel.value : 'Standard' });
+    });
+    const tick   = parseFloat(document.getElementById('tracking-tick')?.value   || '0.1');
+    const cap    = parseInt(document.getElementById('tracking-cap')?.value       || '2000', 10);
+    const status = document.getElementById('tracking-save-status');
+    try {
+        const r = await fetch('/api/nytwatch/arm', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ systems, tick_interval_seconds: tick, object_scan_cap: cap }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            if (status) { status.textContent = '✓ Saved'; status.style.color = 'var(--status-verified-fg)'; }
+            setTimeout(() => { if (status) status.textContent = ''; }, 2000);
+        } else {
+            if (status) { status.textContent = d.error || 'Save failed'; status.style.color = '#ef4444'; }
+        }
+    } catch (e) {
+        if (status) { status.textContent = 'Save failed'; status.style.color = '#ef4444'; }
+    }
+}
+
+async function toggleTracking() {
+    const btn = document.getElementById('tracking-toggle-btn');
+    btn.disabled = true;
+    const url = _trackingActive ? '/api/nytwatch/tracking/stop' : '/api/nytwatch/tracking/start';
+    try {
+        const r = await fetch(url, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+            _trackingActive = d.tracking_active;
+            btn.textContent = _trackingActive ? 'Stop Tracking' : 'Start Tracking';
+            btn.style.background = _trackingActive ? 'var(--severity-critical)' : '';
+            btn.style.color      = _trackingActive ? 'white' : '';
+        }
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── File verbosity drawer ─────────────────────────────────────────────────────
+let _vdSystem = null;
+let _vdDefault = 'Standard';
+
+async function openVerbosityDrawer(systemName, defaultVerbosity) {
+    _vdSystem  = systemName;
+    _vdDefault = defaultVerbosity || 'Standard';
+
+    document.getElementById('vd-title').textContent = `File Verbosity — ${systemName}`;
+    document.getElementById('vd-filter').value = '';
+    document.getElementById('vd-overrides-only').checked = false;
+    document.getElementById('vd-loading').style.display = '';
+    document.getElementById('vd-table').style.display = 'none';
+    document.getElementById('vd-empty').style.display = 'none';
+    document.getElementById('vd-status').textContent = '';
+
+    document.getElementById('verbosity-backdrop').style.display = '';
+    const drawer = document.getElementById('verbosity-drawer');
+    drawer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    try {
+        const r = await fetch(`/api/nytwatch/systems/${encodeURIComponent(systemName)}/files`);
+        const d = await r.json();
+        vdRender(d.files || []);
+    } catch (e) {
+        document.getElementById('vd-loading').textContent = 'Failed to load files.';
+    }
+}
+
+function vdRender(files) {
+    const loading = document.getElementById('vd-loading');
+    const table   = document.getElementById('vd-table');
+    const empty   = document.getElementById('vd-empty');
+    const tbody   = document.getElementById('vd-rows');
+
+    loading.style.display = 'none';
+
+    if (!files.length) {
+        empty.style.display = '';
+        return;
+    }
+
+    const LEVELS = ['Critical', 'Standard', 'Verbose', 'Ignore'];
+    tbody.innerHTML = files.map(f => {
+        const ov = f.verbosity_override || '';
+        const hasOv = !!ov;
+        const opts = LEVELS.map(l =>
+            `<option value="${l}"${ov === l ? ' selected' : ''}>${l}</option>`
+        ).join('');
+        return `<tr class="vd-row${hasOv ? ' has-override' : ''}" data-path="${f.file_path}"
+                    style="border-bottom:1px solid var(--outline-variant);">
+            <td style="padding:7px 16px;">
+                <span class="mono" style="font-size:0.75rem;word-break:break-all;"
+                      title="${f.file_path}">${f.file_path}</span>
+            </td>
+            <td style="padding:6px 8px;">
+                <select class="input vd-select" style="width:180px;font-size:0.8rem;"
+                        onchange="vdMarkDirty(this)">
+                    <option value=""${!ov ? ' selected' : ''} style="color:var(--on-surface-variant);">— default (${_vdDefault}) —</option>
+                    ${opts}
+                </select>
+            </td>
+            <td style="padding:6px 8px;text-align:center;">
+                <button class="vd-clear-btn btn btn-sm scan-safe"
+                        style="font-size:11px;padding:2px 7px;${hasOv ? '' : 'visibility:hidden;'}"
+                        onclick="vdClearRow(this)">✕</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    table.style.display = '';
+}
+
+function vdMarkDirty(sel) {
+    const row = sel.closest('tr');
+    const hasOv = sel.value !== '';
+    row.classList.toggle('has-override', hasOv);
+    row.querySelector('.vd-clear-btn').style.visibility = hasOv ? 'visible' : 'hidden';
+}
+
+function vdClearRow(btn) {
+    const row = btn.closest('tr');
+    row.querySelector('.vd-select').value = '';
+    row.classList.remove('has-override');
+    btn.style.visibility = 'hidden';
+}
+
+function vdClearAll() {
+    document.querySelectorAll('.vd-select').forEach(s => { s.value = ''; });
+    document.querySelectorAll('.vd-row').forEach(r => {
+        r.classList.remove('has-override');
+        r.querySelector('.vd-clear-btn').style.visibility = 'hidden';
+    });
+}
+
+function vdFilter(text) {
+    const overridesOnly = document.getElementById('vd-overrides-only').checked;
+    const q = text.toLowerCase();
+    document.querySelectorAll('.vd-row').forEach(row => {
+        const match = (!q || row.dataset.path.toLowerCase().includes(q))
+                   && (!overridesOnly || row.classList.contains('has-override'));
+        row.style.display = match ? '' : 'none';
+    });
+}
+
+async function vdSave() {
+    const btn    = document.getElementById('vd-save-btn');
+    const status = document.getElementById('vd-status');
+    btn.disabled = true;
+    status.textContent = 'Saving…';
+    status.style.color = 'var(--on-surface-variant)';
+
+    const overrides = [];
+    document.querySelectorAll('.vd-row').forEach(row => {
+        const val = row.querySelector('.vd-select').value;
+        if (val) overrides.push({ file_path: row.dataset.path, verbosity: val });
+    });
+
+    try {
+        const r = await fetch(`/api/nytwatch/systems/${encodeURIComponent(_vdSystem)}/files/verbosity`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ overrides }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            status.textContent = `✓ Saved ${overrides.length} override${overrides.length !== 1 ? 's' : ''}`;
+            status.style.color = 'var(--status-verified-fg)';
+            setTimeout(() => { status.textContent = ''; }, 2500);
+        } else {
+            status.textContent = d.error || 'Save failed';
+            status.style.color = '#ef4444';
+        }
+    } catch (e) {
+        status.textContent = 'Save failed';
+        status.style.color = '#ef4444';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function closeVerbosityDrawer() {
+    document.getElementById('verbosity-backdrop').style.display = 'none';
+    document.getElementById('verbosity-drawer').style.display = 'none';
+    document.body.style.overflow = '';
+    _vdSystem = null;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Reflect initial tracking state on button
+(function() {
+    const btn = document.getElementById('tracking-toggle-btn');
+    if (btn && _trackingActive) {
+        btn.style.background = 'var(--severity-critical)';
+        btn.style.color = 'white';
+    }
+})();
+
+// Auto-select highlighted session
+if (_highlight) {
+    const row = document.getElementById('row-' + _highlight);
+    if (row) { row.scrollIntoView({block:'nearest'}); selectSession(_highlight); }
+}
+</script>
 {% endblock %}

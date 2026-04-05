@@ -100,6 +100,7 @@
         <thead>
             <tr>
                 <th>System</th>
+                <th style="width:72px;">Tracked</th>
                 <th style="width:80px;">Findings</th>
                 <th style="width:210px; text-align:right;">Actions</th>
             </tr>
@@ -114,7 +115,7 @@
                 data-group-header="{{ group_key }}"
                 data-source-dir="{{ group.source_dir | e }}"
                 onclick="toggleGroup('{{ group_key }}', this.dataset.sourceDir)">
-                <td colspan="3" style="padding: 10px var(--sp-5) 7px; border-top: 1px solid var(--outline-variant);">
+                <td colspan="4" style="padding: 10px var(--sp-5) 7px; border-top: 1px solid var(--outline-variant);">
                     <div style="display:flex; align-items:center; gap:var(--sp-2);">
                         <span class="group-arrow" style="font-size:0.9rem; color:var(--primary); transition:transform 0.15s; flex-shrink:0; opacity:0.7;">▾</span>
                         <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em; margin-left:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
@@ -148,6 +149,17 @@
                     </div>
                 </td>
                 <td>
+                    {% if system.tracking_enabled %}
+                    <a href="/settings" title="Armed for tracking"
+                       style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:var(--primary);display:inline-block;flex-shrink:0;"></span>
+                        <span class="body-sm" style="color:var(--primary);font-weight:600;">Armed</span>
+                    </a>
+                    {% else %}
+                    <span class="text-outline">—</span>
+                    {% endif %}
+                </td>
+                <td>
                     {% if system.count > 0 %}
                     <a href="/findings?system={{ system.name }}"
                        style="font-weight:600; color:var(--on-surface); text-decoration:none;">{{ system.count }}</a>
@@ -173,6 +185,62 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+{% endif %}
+
+{% if recent_sessions %}
+<div class="card mb-8">
+    <div style="display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-4);">
+        <span class="label-lg" style="flex:1;">Recent Sessions</span>
+        <a href="/sessions" class="btn btn-sm">View all</a>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Session</th>
+                <th style="width:110px;">Started</th>
+                <th style="width:80px;">Duration</th>
+                <th style="width:70px;">Events</th>
+                <th style="width:130px;">Systems</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in recent_sessions %}
+            <tr style="cursor:pointer;" onclick="location.href='/sessions?highlight={{ s.id }}'">
+                <td>
+                    <span style="font-weight:500;">{{ s.display_name if s.display_name != s.id else (s.ue_project_name ~ ' ' ~ s.started_at[:10] if s.ue_project_name else s.id[:8]) }}</span>
+                    {% if s.bookmarked %}
+                    <span style="color:#d97706;margin-left:4px;" title="Bookmarked">★</span>
+                    {% endif %}
+                </td>
+                <td class="body-sm text-variant">{{ s.started_at[:16].replace('T',' ') if s.started_at else '—' }}</td>
+                <td class="body-sm text-variant">
+                    {% if s.duration_secs %}
+                        {% set m = (s.duration_secs // 60) %}
+                        {% set sec = s.duration_secs % 60 %}
+                        {{ '%d:%02d'|format(m, sec) }}
+                    {% else %}—{% endif %}
+                </td>
+                <td class="body-sm">{{ s.event_count }}</td>
+                <td>
+                    {% for sys in s.systems_tracked[:3] %}
+                    <span class="badge badge-category" style="margin-right:2px;">{{ sys }}</span>
+                    {% endfor %}
+                    {% if s.systems_tracked|length > 3 %}
+                    <span class="body-sm text-variant">+{{ s.systems_tracked|length - 3 }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif systems and armed_count == 0 %}
+<div class="card mb-8" style="text-align:center;padding:var(--sp-8);">
+    <div style="font-size:1.5rem;margin-bottom:var(--sp-3);">🎮</div>
+    <div class="headline-md mb-2">Set up Gameplay Tracking</div>
+    <p class="body-md text-variant mb-4">Arm systems in Settings to start recording PIE sessions.</p>
+    <a href="/settings" class="btn btn-primary">Open Settings</a>
 </div>
 {% endif %}
 
