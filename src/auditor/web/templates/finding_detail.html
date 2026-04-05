@@ -10,19 +10,22 @@
     <div>
         <div class="flex items-center gap-2 mb-4 flex-wrap">
             <span class="badge badge-{{ finding.severity }}">{{ finding.severity|upper }}</span>
-            <span class="badge badge-source-{{ finding.source|default('project') }}">{{ (finding.source or 'project')|title }}</span>
+            <span class="badge badge-source-{{ finding.source|default('active') }}">{{ (finding.source or 'active')|title }}</span>
             <span class="badge badge-category">{{ finding.category }}</span>
             <span class="badge badge-info">{{ finding.confidence }}</span>
             <span class="badge status-{{ finding.status }}">{{ finding.status }}</span>
         </div>
         <h1 class="headline-lg">{{ finding.title }}</h1>
     </div>
-    <div class="flex gap-2">
+    <div class="flex gap-2" style="flex-wrap:wrap;">
+        {% if finding.status in ('pending', 'approved', 'rejected') %}
+        <button id="recheck-btn" onclick="recheckFinding()" class="btn btn-secondary"><svg id="recheck-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>Recheck</button>
+        {% endif %}
         {% if finding.status == 'pending' %}
-        <button onclick="postAction('/findings/{{ finding.id }}/approve')" class="btn btn-success">Approve</button>
-        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger">Reject</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/approve')" class="btn btn-success"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex-shrink:0;"><polyline points="2,8 6,12 14,4"/></svg>Approve</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px;flex-shrink:0;"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>Reject</button>
         {% elif finding.status == 'approved' %}
-        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger">Unapprove</button>
+        <button onclick="postAction('/findings/{{ finding.id }}/reject')" class="btn btn-danger"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px;flex-shrink:0;"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>Unapprove</button>
         {% endif %}
     </div>
 </div>
@@ -33,8 +36,15 @@
 </div>
 
 <div class="card mb-4">
-    <div class="section-label">Location</div>
-    <div class="mono text-primary">{{ finding.file_path }}:{{ finding.line_start }}-{{ finding.line_end }}</div>
+    <div class="section-label">Affected Location{% if finding['locations_list'] %}s{% endif %}</div>
+    <div class="mono body-sm" style="padding:var(--sp-2) 0;{% if finding['locations_list'] %}border-bottom:1px solid var(--outline-variant);{% endif %}">
+        {{ finding['file_path'] }}:{{ finding['line_start'] }}–{{ finding['line_end'] }}
+    </div>
+    {% for loc in finding['locations_list'] %}
+    <div class="mono body-sm" style="padding:var(--sp-2) 0;{% if not loop.last %}border-bottom:1px solid var(--outline-variant);{% endif %}color:var(--on-surface-variant);">
+        {{ loc['file_path'] }}{% if loc['line_start'] is not none %}:{{ loc['line_start'] }}–{{ loc['line_end'] }}{% endif %}
+    </div>
+    {% endfor %}
 </div>
 
 <div class="card mb-4">
@@ -44,37 +54,87 @@
     </div>
 </div>
 
-{% if finding.suggested_fix %}
-<div class="card mb-4">
-    <div class="section-label">Suggested Fix</div>
-    <p class="body-md">{{ finding.suggested_fix }}</p>
-</div>
-{% endif %}
-
-{% if finding.fix_diff %}
-<div class="card mb-4">
-    <div class="section-label">Diff Preview</div>
-    <div class="code-block">
-        <pre><code class="language-diff">{{ finding.fix_diff }}</code></pre>
-    </div>
-</div>
-{% endif %}
-
-{% if finding.test_code %}
-<div class="card mb-4">
-    <div class="section-label">Test Case</div>
-    {% if finding.test_description %}
-    <p class="body-sm text-variant mb-2">{{ finding.test_description }}</p>
-    {% endif %}
-    <div class="code-block">
-        <pre><code class="language-cpp">{{ finding.test_code }}</code></pre>
-    </div>
-</div>
-{% endif %}
-
 <div class="card mb-4">
     <div class="section-label">Reasoning</div>
     <p class="body-sm text-variant">{{ finding.reasoning }}</p>
+</div>
+
+{% if finding.suggested_fix %}
+<div class="card mb-4" id="suggested-fix-card">
+    <div class="section-label">Suggested Fix</div>
+    <p class="body-md" id="suggested-fix-text">{{ finding.suggested_fix }}</p>
+</div>
+{% else %}
+<div class="card mb-4" id="suggested-fix-card" style="display:none;">
+    <div class="section-label">Suggested Fix</div>
+    <p class="body-md" id="suggested-fix-text"></p>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="section-label">Chat with Claude</div>
+    <p class="body-sm text-variant mb-3">
+        Ask Claude to explain the finding, explore edge cases, or — to update the fix fields above — explicitly say so, e.g. <em>"Regenerate the diff to also handle the null case."</em>
+    </p>
+
+    <div id="chat-messages"
+         style="max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:var(--sp-3); margin:var(--sp-4);">
+    </div>
+
+    <div id="chat-thinking" style="display:none;" class="body-sm text-variant mb-3">
+        Claude is thinking&hellip;
+    </div>
+
+    <div class="flex gap-2" style="align-items:flex-end;">
+        <textarea id="chat-input" class="input" rows="3"
+                  style="flex:1; resize:vertical;"
+                  placeholder="Ask a question or request a fix update…"
+                  onkeydown="chatKeydown(event)"></textarea>
+        <button id="chat-send" onclick="sendChatMessage()" class="btn btn-primary">Send</button>
+    </div>
+</div>
+
+{% if finding.fix_diff %}
+<div class="card mb-4" id="fix-diff-card">
+    <div class="section-label">Diff Preview</div>
+    <div class="code-block">
+        <pre><code class="language-diff" id="fix-diff-code">{{ finding.fix_diff }}</code></pre>
+    </div>
+</div>
+{% else %}
+<div class="card mb-4" id="fix-diff-card" style="display:none;">
+    <div class="section-label">Diff Preview</div>
+    <div class="code-block">
+        <pre><code class="language-diff" id="fix-diff-code"></code></pre>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="flex items-center justify-between mb-3">
+        <div class="section-label" style="margin-bottom:0;">Test Case</div>
+        <label class="flex items-center gap-2 body-sm" style="cursor:pointer;">
+            <input type="checkbox" id="include-test-toggle"
+                   {% if finding.include_test != 0 %}checked{% endif %}
+                   onchange="toggleIncludeTest(this)">
+            Add test case when applying fix
+        </label>
+    </div>
+    {% if finding.test_code %}
+    {% if finding.test_description %}
+    <p class="body-sm text-variant mb-2" id="test-description-text">{{ finding.test_description }}</p>
+    {% else %}
+    <p class="body-sm text-variant mb-2" id="test-description-text" style="display:none;"></p>
+    {% endif %}
+    <div class="code-block" id="test-code-block">
+        <pre><code class="language-cpp" id="test-code-text">{{ finding.test_code }}</code></pre>
+    </div>
+    {% else %}
+    <p class="body-sm text-variant" id="test-no-code-msg">No test case generated for this finding.</p>
+    <div class="code-block" id="test-code-block" style="display:none;">
+        <pre><code class="language-cpp" id="test-code-text"></code></pre>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -114,4 +174,162 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Recheck ───────────────────────────────────────────────────────────────────
+async function recheckFinding() {
+    const btn = document.getElementById('recheck-btn');
+    const icon = document.getElementById('recheck-icon');
+    const actionBtns = document.querySelectorAll('.flex.gap-2 button');
+    actionBtns.forEach(b => b.disabled = true);
+    if (icon) icon.style.animation = 'spin 1s linear infinite';
+    try {
+        const res = await fetch('/findings/{{ finding.id }}/recheck', { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+            alert('Recheck failed: ' + data.error);
+            return;
+        }
+        if (!data.still_valid) {
+            location.reload();
+        } else {
+            alert('Still valid\n\n' + data.reason);
+        }
+    } catch (e) {
+        alert('Recheck failed: ' + e.message);
+    } finally {
+        actionBtns.forEach(b => b.disabled = false);
+        if (icon) icon.style.animation = '';
+    }
+}
+
+// ── Test toggle ───────────────────────────────────────────────────────────────
+async function toggleIncludeTest(checkbox) {
+    checkbox.disabled = true;
+    try {
+        const res = await fetch('/findings/{{ finding.id }}/toggle-test', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) checkbox.checked = !checkbox.checked;
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+const _findingId = '{{ finding.id }}';
+
+function _escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _appendMessage(role, content) {
+    const container = document.getElementById('chat-messages');
+    const isUser = role === 'user';
+    const div = document.createElement('div');
+    div.style.cssText = isUser
+        ? 'align-self:flex-end; max-width:80%; background:var(--primary,#004ac6); color:#fff; border-radius:12px 12px 2px 12px; padding:var(--sp-3) var(--sp-4);'
+        : 'align-self:flex-start; max-width:85%; background:var(--surface-container,#f3f3f3); border-radius:12px 12px 12px 2px; padding:var(--sp-3) var(--sp-4);';
+    div.innerHTML = `<span class="body-sm" style="white-space:pre-wrap;">${_escHtml(content)}</span>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function _applyUpdatedFields(fields) {
+    if (!fields || !Object.keys(fields).length) return;
+
+    if (fields.suggested_fix) {
+        const el = document.getElementById('suggested-fix-text');
+        const card = document.getElementById('suggested-fix-card');
+        if (el) el.textContent = fields.suggested_fix;
+        if (card) card.style.display = '';
+    }
+    if (fields.fix_diff) {
+        const el = document.getElementById('fix-diff-code');
+        const card = document.getElementById('fix-diff-card');
+        if (el) {
+            el.textContent = fields.fix_diff;
+            el.removeAttribute('data-highlighted');
+            hljs.highlightElement(el);
+        }
+        if (card) card.style.display = '';
+    }
+    if (fields.test_code) {
+        const el = document.getElementById('test-code-text');
+        const block = document.getElementById('test-code-block');
+        const noMsg = document.getElementById('test-no-code-msg');
+        if (el) {
+            el.textContent = fields.test_code;
+            el.removeAttribute('data-highlighted');
+            hljs.highlightElement(el);
+        }
+        if (block) block.style.display = '';
+        if (noMsg) noMsg.style.display = 'none';
+    }
+    if (fields.test_description) {
+        const el = document.getElementById('test-description-text');
+        if (el) { el.textContent = fields.test_description; el.style.display = ''; }
+    }
+}
+
+async function loadChat() {
+    try {
+        const res = await fetch(`/api/findings/${_findingId}/chat`);
+        const data = await res.json();
+        if (data.messages) {
+            data.messages.forEach(m => _appendMessage(m.role, m.content));
+        }
+    } catch (e) {}
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('chat-send');
+    const thinking = document.getElementById('chat-thinking');
+    const message = (input.value || '').trim();
+    if (!message) return;
+
+    input.value = '';
+    input.disabled = true;
+    sendBtn.disabled = true;
+    thinking.style.display = '';
+
+    _appendMessage('user', message);
+
+    try {
+        const res = await fetch(`/api/findings/${_findingId}/chat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message}),
+        });
+        const data = await res.json();
+        if (data.reply) {
+            _appendMessage('assistant', data.reply);
+            _applyUpdatedFields(data.updated_fields);
+        } else {
+            _appendMessage('assistant', data.error || 'Something went wrong.');
+        }
+    } catch (e) {
+        _appendMessage('assistant', 'Request failed: ' + e.message);
+    } finally {
+        input.disabled = false;
+        sendBtn.disabled = false;
+        thinking.style.display = 'none';
+        input.focus();
+    }
+}
+
+function chatKeydown(e) {
+    // Ctrl+Enter or Cmd+Enter sends the message
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        sendChatMessage();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadChat);
+</script>
 {% endblock %}

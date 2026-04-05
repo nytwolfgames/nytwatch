@@ -3,15 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Code Auditor{% endblock %}</title>
+    {% set _pn = active_project_name(request) %}<title>{% block title %}Code Auditor{% endblock %}{% if _pn %} — {{ _pn }}{% endif %}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23004ac6'/><text x='16' y='23' text-anchor='middle' fill='white' font-family='sans-serif' font-size='18' font-weight='700'>CA</text></svg>">
     <link rel="stylesheet" href="/static/app.css?v=2">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/diff.min.js"></script>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #scan-banner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 1000;
+            background: #1d4ed8;
+            color: #fff;
+            padding: 10px 20px;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        }
+        #scan-banner.visible { display: flex; }
+        #scan-banner svg { animation: spin 1s linear infinite; flex-shrink: 0; }
+        #scan-banner-sub { margin-left: auto; opacity: .75; font-weight: 400; }
+
+        body.scan-running .main-content button:not(.scan-safe),
+        body.scan-running .main-content a.btn:not(.scan-safe),
+        body.scan-running .main-content form { pointer-events: none; opacity: .45; }
+
+        body.scan-running .main-content { margin-top: 42px; }
+
+        #scan-due-banner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 999;
+            background: #1e3a5f;
+            color: #fff;
+            padding: 10px 20px;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        }
+        #scan-due-banner.visible { display: flex; }
+        #scan-due-banner .sdb-actions { display: flex; gap: 8px; margin-left: auto; }
+        #scan-due-banner button {
+            border: 1px solid rgba(255,255,255,.4);
+            color: #fff;
+            padding: 4px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        #scan-due-banner #sdb-start-btn  { background: rgba(255,255,255,.2); }
+        #scan-due-banner #sdb-dismiss-btn { background: transparent; opacity: .7; }
+        body.scan-due .main-content { margin-top: 42px; }
+    </style>
 </head>
 <body class="app-layout">
+    <!-- Scheduled scan ready banner -->
+    <div id="scan-due-banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="scan-due-text">Scheduled scan is ready</span>
+        <div class="sdb-actions">
+            <button id="sdb-start-btn"   onclick="scanDueStart()">Start scan</button>
+            <button id="sdb-dismiss-btn" onclick="scanDueDismiss()">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- Scan in progress banner -->
+    <div id="scan-banner">
+        <svg id="scan-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span id="scan-banner-text">Scan in progress…</span>
+        <span id="scan-banner-sub"></span>
+        <button id="cancel-scan-btn" onclick="cancelScan()" style="margin-left:auto;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500;">Cancel</button>
+    </div>
+
     <aside class="sidebar">
         <a href="/" class="sidebar-brand">
             <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="var(--primary)"/><text x="16" y="23" text-anchor="middle" fill="white" font-family="sans-serif" font-size="18" font-weight="700">CA</text></svg>
@@ -42,8 +116,29 @@
         </nav>
 
         <div class="sidebar-footer">
-            <span id="scan-status" class="body-sm text-outline"></span>
-            <button onclick="triggerScan()" class="btn btn-primary" style="width: 100%;">Trigger Scan</button>
+            {% set _proj = active_project_name(request) %}
+            {% if _proj %}
+            <a href="/settings" style="display:block;text-decoration:none;padding:8px 10px;
+                border-radius:8px;background:var(--surface-container-low);
+                border:1px solid var(--outline-variant);margin-bottom:8px;
+                transition:background .15s;"
+               title="{{ active_repo_path(request) }} · {{ active_config_path(request) }}"
+               onmouseenter="this.style.background='var(--surface-container)'"
+               onmouseleave="this.style.background='var(--surface-container-low)'">
+                <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.07em;
+                            color:var(--on-surface-variant);margin-bottom:3px;">Active project</div>
+                <div style="font-size:0.82rem;font-weight:600;color:var(--on-surface);
+                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ _proj }}</div>
+            </a>
+            {% else %}
+            <a href="/settings?setup=1" style="display:block;text-decoration:none;padding:8px 10px;
+                border-radius:8px;background:rgba(239,68,68,.08);
+                border:1px solid rgba(239,68,68,.25);margin-bottom:8px;">
+                <div style="font-size:0.75rem;color:#ef4444;font-weight:500;">No project configured</div>
+                <div style="font-size:0.72rem;color:var(--on-surface-variant);margin-top:2px;">Click to set up →</div>
+            </a>
+            {% endif %}
+            <span id="scan-status-text" class="body-sm text-outline"></span>
         </div>
     </aside>
 
@@ -54,24 +149,194 @@
     <script>
         hljs.highlightAll();
 
-        async function triggerScan() {
-            const btn = event.target;
-            btn.disabled = true;
-            btn.textContent = 'Scanning...';
-            try {
-                const res = await fetch('/scans/trigger', { method: 'POST' });
-                const data = await res.json();
-                if (data.scan_id) {
-                    document.getElementById('scan-status').textContent = 'Scan started: ' + data.scan_id;
-                    setTimeout(() => location.reload(), 2000);
+        // --- Scan state via WebSocket (polling fallback) ---
+
+        let _wasRunning = false;
+        let _ws = null;
+        let _wsReconnectDelay = 1000;
+        let _fallbackPolling = null;
+
+        function setScanRunning(running, scan, cancelling) {
+            const banner = document.getElementById('scan-banner');
+            const bannerText = document.getElementById('scan-banner-text');
+            const bannerSub = document.getElementById('scan-banner-sub');
+            const spinner = document.getElementById('scan-spinner');
+            const cancelBtn = document.getElementById('cancel-scan-btn');
+            const statusText = document.getElementById('scan-status-text');
+
+            if (running) {
+                banner.classList.add('visible');
+                document.body.classList.add('scan-running');
+
+                if (cancelling) {
+                    bannerText.textContent = 'Cancelling scan…';
+                    bannerSub.textContent = '';
+                    spinner.style.opacity = '0.5';
+                    cancelBtn.disabled = true;
+                    cancelBtn.textContent = 'Cancelling…';
                 } else {
-                    alert(data.error || 'Scan failed');
+                    const system = scan && scan.system_name ? scan.system_name : '';
+                    const type = scan && scan.scan_type ? scan.scan_type : 'incremental';
+                    bannerText.textContent = system
+                        ? `Scanning ${system} (${type})…`
+                        : `Scan in progress (${type})…`;
+                    bannerSub.textContent = scan && scan.started_at
+                        ? 'Started ' + new Date(scan.started_at).toLocaleTimeString()
+                        : '';
+                    spinner.style.opacity = '';
+                    cancelBtn.disabled = false;
+                    cancelBtn.textContent = 'Cancel';
                 }
+                statusText.textContent = cancelling ? 'Cancelling…' : 'Scan running…';
+            } else {
+                banner.classList.remove('visible');
+                document.body.classList.remove('scan-running');
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Cancel';
+                statusText.textContent = '';
+            }
+        }
+
+        let _totalFindings = 0;
+
+        function handleFindingsUpdate(data) {
+            _totalFindings = data.total_findings;
+
+            // Update banner sub-text with live chunk + findings progress
+            const bannerSub = document.getElementById('scan-banner-sub');
+            if (bannerSub) {
+                const chunkInfo = data.total_chunks > 1
+                    ? ` — chunk ${data.chunk}/${data.total_chunks}`
+                    : '';
+                bannerSub.textContent =
+                    `${data.system}${chunkInfo} · ${data.total_findings} finding${data.total_findings !== 1 ? 's' : ''} so far`;
+            }
+        }
+
+        function handleScanStatusMessage(data) {
+            const wasRunning = _wasRunning;
+            setScanRunning(data.running, data.scan, data.cancelling);
+            _wasRunning = data.running;
+            if (!data.running && wasRunning) {
+                // Scan just finished — reload to refresh tables/findings
+                _totalFindings = 0;
+                setTimeout(() => location.reload(), 300);
+            }
+        }
+
+        // ── Scheduled scan notification ───────────────────────────────────────
+        let _scanDueType = 'incremental';
+
+        function showScanDueBanner(scanType, reason) {
+            _scanDueType = scanType || 'incremental';
+            const banner = document.getElementById('scan-due-banner');
+            const text   = document.getElementById('scan-due-text');
+            const reasonLabel = reason === 'new_commits' ? 'New commits detected' : 'Scheduled scan ready';
+            const typeLabel   = _scanDueType === 'rotation' ? 'full rotation' : 'incremental';
+            text.textContent  = `${reasonLabel} — run ${typeLabel} scan?`;
+            banner.classList.add('visible');
+            document.body.classList.add('scan-due');
+        }
+
+        function hideScanDueBanner() {
+            document.getElementById('scan-due-banner').classList.remove('visible');
+            document.body.classList.remove('scan-due');
+        }
+
+        async function scanDueStart() {
+            document.getElementById('sdb-start-btn').disabled = true;
+            hideScanDueBanner();
+            try {
+                const r = await fetch('/scans/trigger', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({scan_type: _scanDueType}),
+                });
+                const d = await r.json();
+                if (!r.ok || !d.ok) alert(d.error || 'Failed to start scan');
             } catch (e) {
-                alert('Failed to trigger scan: ' + e.message);
+                alert('Failed to start scan: ' + e.message);
             } finally {
+                document.getElementById('sdb-start-btn').disabled = false;
+            }
+        }
+
+        function scanDueDismiss() {
+            hideScanDueBanner();
+        }
+
+        // Dispatch incoming WS messages to whichever handler is registered
+        // (base.html handles scan_status; scans.html registers a log handler)
+        const _wsHandlers = {};
+        function onWsMessage(type, fn) { _wsHandlers[type] = fn; }
+
+        function connectWs() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            _ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+            _ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'scan_status') {
+                        handleScanStatusMessage(data);
+                        // Hide scan-due banner once a scan is actually running
+                        if (data.running) hideScanDueBanner();
+                    }
+                    if (data.type === 'findings_update') {
+                        handleFindingsUpdate(data);
+                    }
+                    if (data.type === 'scan_due') {
+                        showScanDueBanner(data.scan_type, data.reason);
+                    }
+                    if (_wsHandlers[data.type]) {
+                        _wsHandlers[data.type](data);
+                    }
+                } catch (e) {}
+            };
+
+            _ws.onopen = () => {
+                _wsReconnectDelay = 1000;
+                // WS is up — drop fallback polling if it was running
+                if (_fallbackPolling) {
+                    clearInterval(_fallbackPolling);
+                    _fallbackPolling = null;
+                }
+            };
+
+            _ws.onclose = () => {
+                _ws = null;
+                // Fall back to REST polling while WS is down
+                if (!_fallbackPolling) {
+                    _fallbackPolling = setInterval(checkScanStatusFallback, 4000);
+                }
+                // Reconnect with backoff
+                setTimeout(connectWs, _wsReconnectDelay);
+                _wsReconnectDelay = Math.min(_wsReconnectDelay * 2, 30000);
+            };
+
+            _ws.onerror = () => { _ws && _ws.close(); };
+        }
+
+        async function checkScanStatusFallback() {
+            try {
+                const res = await fetch('/api/scan-status');
+                const data = await res.json();
+                handleScanStatusMessage(data);
+            } catch (e) {}
+        }
+
+        // Start WS connection on page load
+        connectWs();
+
+        async function cancelScan() {
+            const btn = document.getElementById('cancel-scan-btn');
+            btn.disabled = true;
+            btn.textContent = 'Cancelling…';
+            try {
+                await fetch('/scans/cancel', { method: 'POST' });
+            } catch (e) {
                 btn.disabled = false;
-                btn.textContent = 'Trigger Scan';
+                btn.textContent = 'Cancel';
             }
         }
 
@@ -89,7 +354,6 @@
         // Column resize for all .data-table instances
         document.querySelectorAll('.data-table').forEach(table => {
             const ths = table.querySelectorAll('thead th');
-            // Only capture natural widths for columns without explicit width in HTML
             const hasExplicitWidths = Array.from(ths).some(th => th.getAttribute('style')?.includes('width'));
             if (!hasExplicitWidths) {
                 const widths = Array.from(ths).map(th => th.offsetWidth);
@@ -97,14 +361,8 @@
             }
             table.style.tableLayout = 'fixed';
 
-            // Add title tooltips to truncated cells
-            table.querySelectorAll('td').forEach(td => {
-                const text = td.textContent.trim();
-                if (text) td.setAttribute('title', text);
-            });
-
             ths.forEach((th, i) => {
-                if (i === ths.length - 1) return; // skip last column (Actions)
+                if (i === ths.length - 1) return;
 
                 const handle = document.createElement('div');
                 handle.className = 'col-resize';

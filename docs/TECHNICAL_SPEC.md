@@ -68,24 +68,48 @@
   git repo
      |
      v
-  [incremental.py]  git diff --name-only <last_commit> HEAD
+  ┌─ INCREMENTAL ──────────────────────────────────────────────────────┐
+  │  [incremental.py]  git diff --name-only <last_commit> HEAD         │
+  │       |                                                             │
+  │       v                                                             │
+  │  [incremental.py]  map_files_to_systems() → {system: [files]}      │
+  │       |             (longest-prefix ownership wins)                 │
+  │       v                                                             │
+  │  [chunker.py]  collect_system_files() → {path: content}            │
+  │       |         (loads file contents for include-graph analysis)    │
+  │       v                                                             │
+  │  [chunker.py]  build_neighbourhood() → {path: content}             │
+  │       |         (adds headers + reverse-dep .cpps up to token cap) │
+  │       v                                                             │
+  │  extract paths → list[str]                                          │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─ FULL ──────────────────────────────────────────────────────────────┐
+  │  [chunker.py]  list_system_files() → list[str]                      │
+  │       |         (path-only, no content loaded)                      │
+  │       v                                                             │
+  │  ownership filter: find_owning_system() removes sub-system paths   │
+  └─────────────────────────────────────────────────────────────────────┘
      |
      v
-  [incremental.py]  map_files_to_systems() -> {system: [files]}
+  [chunker.py]  chunk_paths_by_count(max_files=20) → [chunk1, chunk2, ...]
      |
      v
-  [chunker.py]  collect_system_files() -> {path: content}
-     |
-     v
-  [chunker.py]  chunk_system() -> [chunk1, chunk2, ...]
-     |                                   (each chunk <= 120k tokens)
-     v
-  [engine.py]  analyze_system()
+  [engine.py]  analyze_system(system_name, file_paths, repo_path)
      |            |
-     |            +---> build_scan_prompt() -----> call_claude() ---> parse_and_validate()
+     |            +---> build_scan_prompt(system_name, file_paths)
+     |            |      (prompt contains ONLY file paths, not contents)
+     |            |
+     |            +---> call_claude(prompt, repo_path=repo_path)
+     |            |      claude -p - --output-format json
+     |            |             --dangerouslySkipPermissions
+     |            |      cwd = repo_path
+     |            |      Claude reads files autonomously via Read/Glob/Grep tools
+     |            |
+     |            +---> parse_and_validate() → ScanResult
      |
      v
-  [incremental.py]  _compute_fingerprint() -> deduplicate
+  [incremental.py]  _compute_fingerprint() → deduplicate
      |
      v
   [database.py]  insert_finding() per finding
@@ -134,16 +158,31 @@
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `create_app` | `(config: AuditorConfig) -> FastAPI` | Creates the FastAPI application. Initializes database, mounts static files, includes router, sets up APScheduler for incremental/rotation scans, registers shutdown handler. |
-| `run` | `() -> None` | CLI entry point. Parses `init`, `serve`, `scan` subcommands via argparse. Default command is `serve`. |
+| `create_app` | `(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI` | Creates the FastAPI application. Initializes database, mounts static files, includes router, stores `config_path` in `app.state` (empty string if `None`), sets up APScheduler for incremental/rotation scans, registers shutdown handler. Auto-scan on startup is skipped if `repo_path` is empty. |
+| `run` | `() -> None` | CLI entry point. Parses `init`, `serve`, `scan` subcommands. On `serve` with no `--config` flag, calls `get_active_config_path()` to find the active project; falls back to `DEFAULT_CONFIG_PATH` only if it exists; starts with a blank `AuditorConfig()` if nothing is found — the wizard handles first-run configuration. |
 
 **CLI Commands:**
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `init` | `repo_path`, `--config` | Creates default config YAML at `~/.code-auditor/config.yaml` |
-| `serve` | `--config`, `--host` (default `127.0.0.1`), `--port` (default `8420`) | Starts FastAPI/uvicorn server |
+| `init` | `repo_path`, `--config` | Creates a default config YAML at the specified path (or `~/.code-auditor/config.yaml` if omitted) |
+| `serve` | `--config`, `--host` (default `127.0.0.1`), `--port` (default `8420`) | Starts FastAPI/uvicorn server. Without `--config`, uses the active project pointer (`~/.code-auditor/.active`). |
 | `scan` | `--config`, `--type` (`incremental`/`full`/`rotation`), `--system` | Runs a scan immediately and exits |
+
+**Startup config resolution order (`serve` without `--config`):**
+
+1. Read `~/.code-auditor/.active` — use the pointed-to YAML if the file exists on disk
+2. Fall back to `~/.code-auditor/config.yaml` if it exists (legacy compatibility)
+3. Start with a blank `AuditorConfig()` — user is redirected to the setup wizard
+
+**`app.state` keys:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `config` | `AuditorConfig` | Active project configuration |
+| `config_path` | `str` | Absolute path to the active config YAML, or `""` if none |
+| `db` | `Database` | Active project SQLite database |
+| `scheduler` | `BackgroundScheduler` | APScheduler instance (only present if scheduling is enabled) |
 
 ---
 
@@ -153,23 +192,30 @@
 
 | Model | Fields | Description |
 |-------|--------|-------------|
-| `SystemDef` | `name: str`, `paths: list[str]` | Defines a named game system and its source paths relative to repo root |
+| `SystemDef` | `name: str`, `source_dir: str = ""`, `paths: list[str]`, `min_confidence: Optional[str] = None`, `file_extensions: Optional[list[str]] = None`, `claude_fast_mode: Optional[bool] = None` | Defines a named game system with its source paths relative to repo root. `source_dir` is the path of the parent active source directory (from `source_dirs` table) that this system belongs to. Optional per-system overrides; `None` means inherit from global config. |
 | `ScanSchedule` | `incremental_interval_hours: int = 4`, `rotation_enabled: bool = False`, `rotation_interval_hours: int = 24` | Scan scheduling parameters |
-| `BuildConfig` | `ue_editor_cmd: str = ""`, `project_file: str = ""`, `build_timeout_seconds: int = 1800`, `test_timeout_seconds: int = 600` | UE build/test configuration |
+| `BuildConfig` | `ue_installation_dir: str = ""`, `ue_editor_cmd: str = ""`, `project_file: str = ""`, `build_timeout_seconds: int = 1800`, `test_timeout_seconds: int = 600` | UE build/test configuration. `ue_installation_dir` is the UE root (e.g. `/Users/Shared/Epic Games/UE_5.4`); `ue_editor_cmd` is an explicit override that takes precedence. |
 | `NotificationConfig` | `desktop: bool = True`, `slack_webhook: Optional[str] = None`, `discord_webhook: Optional[str] = None` | Notification channels |
-| `AuditorConfig` | `repo_path: str`, `systems: list[SystemDef]`, `scan_schedule: ScanSchedule`, `build: BuildConfig`, `notifications: NotificationConfig`, `data_dir: str = "~/.code-auditor"`, `claude_fast_mode: bool = True`, `min_confidence: str = "medium"`, `file_extensions: list[str] = [".h", ".cpp"]` | Root configuration model |
+| `AuditorConfig` | `repo_path: str = ""`, `systems: list[SystemDef] = []`, `scan_schedule: ScanSchedule`, `build: BuildConfig`, `notifications: NotificationConfig`, `data_dir: str = "~/.code-auditor"`, `claude_fast_mode: bool = True`, `min_confidence: str = "medium"`, `file_extensions: list[str] = [".h", ".cpp"]` | Root configuration model. `repo_path` defaults to `""` so the app can start without a config (setup wizard mode). |
 
 **Module Constants:**
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `DEFAULT_CONFIG_PATH` | `~/.code-auditor/config.yaml` (expanded) | Default location for config file |
+| `DEFAULT_CONFIG_PATH` | `~/.code-auditor/config.yaml` (expanded) | Legacy default config path. Used only as a fallback when no active pointer exists and the file is present. |
+| `ACTIVE_POINTER_PATH` | `~/.code-auditor/.active` (expanded) | Plain-text file containing the absolute path to the currently active project config. Written by `set_active_config_path`; read by `get_active_config_path` on server startup and after project switch. |
 
 **Functions:**
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `load_config` | `(path: Optional[Path] = None) -> AuditorConfig` | Loads and validates config from YAML. Raises `FileNotFoundError` if missing. |
+| `get_active_config_path` | `() -> Optional[Path]` | Reads `ACTIVE_POINTER_PATH`. Returns the pointed-to `Path` if it exists on disk, otherwise `None`. |
+| `set_active_config_path` | `(path: Path) -> None` | Writes the absolute path string to `ACTIVE_POINTER_PATH`. Called by `init_project` (after wizard create) and `switch_project`. |
+| `load_config` | `(path: Optional[Path] = None) -> AuditorConfig` | Loads and validates config from YAML. Raises `FileNotFoundError` if missing. Falls back to `DEFAULT_CONFIG_PATH` if `path` is None. |
+| `save_full_config` | `(config: AuditorConfig, path: Optional[Path] = None) -> None` | Serializes all config fields to YAML (excluding the `systems` key). Creates parent dirs if needed. Used by the setup wizard and config repair. |
+| `list_project_configs` | `() -> list[dict]` | Scans `~/.code-auditor/*.yaml` for files with a non-empty `repo_path`. Returns `[{path, repo_path, name}]`. Empty/unconfigured YAMLs are excluded. |
+| `validate_config_errors` | `(config: AuditorConfig, systems: Optional[list] = None) -> list[str]` | Returns human-readable validation problems. Pass the `systems` list (from the database) to include system-level checks (missing paths, duplicate prefixes, empty names). |
+| `detect_systems_from_repo` | `(repo_path: str) -> list[dict]` | Auto-detects systems from repo structure using UE heuristics: `.uplugin` files → plugin systems (hint=`"plugin"`), `Source/**/*.Build.cs` → game module systems (hint=`"module"`). Returns `[{name, paths, hint}]`. Skips `Binaries/`, `Intermediate/`, `Saved/`, etc. |
 | `get_data_dir` | `(config: AuditorConfig) -> Path` | Returns expanded data directory, creating it if needed. |
 | `get_db_path` | `(config: AuditorConfig) -> Path` | Returns `{data_dir}/auditor.db`. |
 | `init_config` | `(repo_path: str, config_path: Optional[Path] = None) -> Path` | Writes a default config YAML template. Returns the path written. |
@@ -192,7 +238,7 @@
 | `Severity` | `CRITICAL = "critical"`, `HIGH = "high"`, `MEDIUM = "medium"`, `LOW = "low"`, `INFO = "info"` |
 | `Category` | `BUG = "bug"`, `PERFORMANCE = "performance"`, `UE_ANTIPATTERN = "ue-antipattern"`, `MODERN_CPP = "modern-cpp"`, `MEMORY = "memory"`, `READABILITY = "readability"` |
 | `Confidence` | `HIGH = "high"`, `MEDIUM = "medium"`, `LOW = "low"` |
-| `FindingSource` | `PROJECT = "project"`, `PLUGIN = "plugin"`, `IGNORED = "ignored"` |
+| `FindingSource` | `ACTIVE = "active"`, `IGNORED = "ignored"` |
 | `FindingStatus` | `PENDING = "pending"`, `APPROVED = "approved"`, `REJECTED = "rejected"`, `APPLIED = "applied"`, `VERIFIED = "verified"`, `FAILED = "failed"`, `SUPERSEDED = "superseded"` |
 | `ScanType` | `INCREMENTAL = "incremental"`, `FULL = "full"`, `MANUAL = "manual"` |
 | `ScanStatus` | `RUNNING = "running"`, `COMPLETED = "completed"`, `FAILED = "failed"` |
@@ -221,7 +267,7 @@
 | `reasoning` | `str` | required |
 | `test_code` | `Optional[str]` | `None` |
 | `test_description` | `Optional[str]` | `None` |
-| `source` | `FindingSource` | `FindingSource.PROJECT` |
+| `source` | `FindingSource` | `FindingSource.ACTIVE` |
 | `status` | `FindingStatus` | `FindingStatus.PENDING` |
 | `batch_id` | `Optional[str]` | `None` |
 | `fingerprint` | `str` | `""` |
@@ -270,7 +316,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `conn` | `@property -> sqlite3.Connection` | Lazy connection getter. Sets `row_factory=sqlite3.Row`, enables WAL and foreign keys. |
-| `init_schema` | `() -> None` | Executes all CREATE TABLE/INDEX statements. |
+| `init_schema` | `() -> None` | Executes all CREATE TABLE/INDEX statements. Calls `_migrate()` to add the `source_dir` column to existing databases. |
 | `close` | `() -> None` | Closes connection if open. |
 | **Config** | | |
 | `get_config` | `(key: str, default: str = "") -> str` | Reads a key from the `config` table. |
@@ -300,7 +346,12 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | `upsert_source_dir` | `(path: str, source_type: str) -> None` | Inserts or replaces a source directory classification. |
 | `delete_source_dir` | `(path: str) -> None` | Deletes a source directory entry. |
 | `has_source_dir` | `(path: str) -> bool` | Returns True if path exists in `source_dirs`. |
-| `classify_path` | `(file_path: str) -> str` | Normalizes both input and stored paths (backslash to forward slash) before matching against source dirs (longest prefix first). Returns `"project"` if no match. Cross-platform safe. |
+| `classify_path` | `(file_path: str) -> str` | Normalizes both input and stored paths (backslash to forward slash) before matching against source dirs (longest prefix first). Returns `"active"` if no match. Cross-platform safe. |
+| **Systems** | | |
+| `list_systems` | `() -> list[dict]` | Returns all system records ordered by `source_dir, sort_order, name`. |
+| `list_systems_by_source_dir` | `() -> dict[str, list[dict]]` | Returns systems grouped by `source_dir`: `{source_dir: [system_dicts]}`. |
+| `upsert_system` | `(system: dict) -> None` | Inserts or replaces a system record. Accepts dict with `name`, `source_dir`, `paths`, and optional override fields. |
+| `delete_system` | `(name: str) -> None` | Deletes a system by name. |
 | **Stats** | | |
 | `get_stats` | `() -> dict` | Returns aggregate stats: `status_counts`, `severity_counts`, `total_scans`, `total_batches`, `last_scan`, `pending_count`, `approved_count`. |
 
@@ -328,25 +379,33 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `_format_file_contents` | `(file_contents: dict[str, str]) -> str` | Formats files as `### FILE: {path}\n```cpp\n{content}\n``` ` blocks. |
 | `_finding_schema_description` | `() -> str` | Returns the JSON Schema of `FindingOutput` via `model_json_schema()`. |
-| `build_scan_prompt` | `(system_name: str, file_contents: dict[str, str]) -> str` | Builds the full analysis prompt. Includes: UE reference sheet, issue categories (Bugs, Performance, UE Anti-patterns, Memory, Modern C++), the code to analyze, output format with JSON schema, and UE Automation Test template with path convention `"CodeAuditor.{system_name}.<Category>.<ShortTitle>"`. Returns empty string if `file_contents` is empty. |
-| `build_batch_apply_prompt` | `(findings: list[dict], file_contents: dict[str, str]) -> str` | Builds the batch fix prompt. Includes approved findings as JSON, current source files, merge instructions (higher-severity wins on conflict), and output format for unified diff. Returns empty string if inputs are empty. |
+| `build_scan_prompt` | `(system_name: str, file_paths: list[str]) -> str` | Builds the agent-mode analysis prompt. Lists file paths as bullets and instructs Claude to read them itself via the `Read` tool (and use `Grep`/`Glob` for related context). Includes: UE reference sheet, all five issue categories, output JSON schema, and UE Automation Test template. Returns empty string if `file_paths` is empty. **Note:** does not embed file contents — Claude reads them autonomously. |
+| `_format_file_contents` | `(file_contents: dict[str, str]) -> str` | Formats files as `### {path}\n```cpp\n{content}\n``` ` blocks. Used only by `build_batch_apply_prompt` (batch-fix pipeline still embeds content). |
+| `build_batch_apply_prompt` | `(findings: list[dict], file_contents: dict[str, str]) -> str` | Builds the batch fix prompt. Includes approved findings as JSON, current source files (content-embedded), merge instructions (higher-severity wins on conflict), and output format for unified diff. Returns empty string if inputs are empty. |
 
 ---
 
 ### 2.7 `auditor/analysis/engine.py` -- Claude CLI Integration
 
+**CLI command used:**
+
+```
+claude -p - --output-format json --dangerouslySkipPermissions
+```
+
+Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative to the repository root. `--dangerouslySkipPermissions` bypasses all interactive tool-permission prompts (required for headless/subprocess operation).
+
 **Functions:**
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `call_claude` | `(prompt: str, fast: bool = True, timeout: int = 600) -> str` | Invokes `claude -p - --output-format json` via subprocess. Writes prompt and response to `~/.code-auditor/logs/{call_id}_*.txt`. Raises `ValueError` on empty prompt, `TimeoutExpired`, `CalledProcessError`, or `FileNotFoundError`. |
+| `call_claude` | `(prompt: str, fast: bool = True, timeout: int = 600, repo_path: str = None) -> str` | Invokes the Claude CLI via subprocess. Writes prompt to a temp file (avoids Windows pipe-buffer deadlock). Reads stdout/stderr in background threads; polls every 30 s for cancellation and timeout. Writes prompt and response to `~/.code-auditor/logs/{call_id}_*.txt`. Raises `ValueError` on empty prompt, `InterruptedError` on cancellation, `TimeoutExpired`, `CalledProcessError`, or `FileNotFoundError`. |
 | `_strip_markdown_fences` | `(text: str) -> str` | Removes markdown code fences (handles both closed and unclosed fences). |
 | `_extract_json` | `(raw: str) -> dict` | Unwraps the Claude CLI JSON envelope (`{"type":"result","result":"..."}`) and parses the inner JSON. Handles nested string-encoded JSON with optional markdown fences. |
 | `parse_and_validate` | `(raw: str, schema_class) -> Optional[T]` | Extracts JSON from raw response, validates against a Pydantic model class via `model_validate()`. Returns None on parse or validation failure. |
-| `analyze_system` | `(system_name: str, file_contents: dict[str, str], fast: bool = True, max_retries: int = 2) -> Optional[ScanResult]` | Builds a scan prompt, calls Claude with retries, parses/validates the response. Returns `ScanResult` or None. |
-| `generate_batch_patch` | `(findings: list[dict], file_contents: dict[str, str], max_retries: int = 2) -> Optional[BatchApplyResult]` | Builds a batch apply prompt, calls Claude (with `fast=False`), parses/validates. Returns `BatchApplyResult` or None. |
+| `analyze_system` | `(system_name: str, file_paths: list[str], repo_path: str, fast: bool = True, max_retries: int = 2) -> Optional[ScanResult]` | Builds a scan prompt (paths only), calls Claude as an agent with `cwd=repo_path` so it can read files itself. Retries up to `max_retries` on failure or validation error. Returns `ScanResult` or None. |
+| `generate_batch_patch` | `(findings: list[dict], file_contents: dict[str, str], max_retries: int = 2) -> Optional[BatchApplyResult]` | Builds a batch apply prompt (content-embedded), calls Claude (with `fast=False`), parses/validates. Returns `BatchApplyResult` or None. |
 
 ---
 
@@ -357,6 +416,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MAX_FILE_SIZE` | `500 * 1024` (500 KB) | Files larger than this are skipped during collection. |
+| `MAX_TOKENS` | `35_000` | Token ceiling per chunk (leaves room for prompt + Claude output). |
 
 **Compiled Regex:**
 
@@ -368,10 +428,15 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `collect_system_files` | `(repo_path: str, system: SystemDef, extensions: list[str]) -> dict[str, str]` | Walks all paths defined for a system, collects files matching extensions (skipping files > 500KB). Normalizes relative paths via `normalize_path()` for cross-platform consistency. Returns `{relative_path: content}`. |
-| `estimate_tokens` | `(text: str) -> int` | Estimates token count as `len(text) / 3.5`. |
-| `chunk_system` | `(file_contents: dict[str, str], max_tokens: int = 120_000) -> list[dict[str, str]]` | Splits files into chunks that fit within the token budget. Header files (`.h`) are included in every chunk as shared context. `.cpp` files are distributed across chunks. Returns `[chunk]` where each chunk is `{path: content}`. |
-| `resolve_includes` | `(file_content: str, repo_path: str) -> list[str]` | Extracts local `#include "..."` paths from a file and resolves them against the repo. Returns list of relative paths that exist on disk. |
+| `collect_system_files` | `(repo_path: str, system: SystemDef, extensions: list[str]) -> dict[str, str]` | Walks all paths defined for a system, reads file contents (skipping files > 500KB). Returns `{relative_path: content}`. Used by incremental scans to build the include graph for neighbourhood analysis. |
+| `list_system_files` | `(repo_path: str, system: SystemDef, extensions: list[str]) -> list[str]` | Walks system paths and returns repo-relative paths only — no content loaded. Used by full scans where Claude reads files itself via agent mode. |
+| `collect_specific_files` | `(repo_path: str, file_paths: list[str], extensions: list[str]) -> dict[str, str]` | Reads a specific list of repo-relative paths. Used by the batch-fix pipeline to supply file contents for the patch prompt. |
+| `estimate_tokens` | `(text: str) -> int` | Estimates token count as `len(text) / 3.0`. Uses 3.0 chars/token (conservative for dense C++ with templates and macros) rather than the natural-language default of ~4. |
+| `chunk_paths_by_count` | `(file_paths: list[str], max_files: int = 20) -> list[list[str]]` | Splits a path list into chunks of at most `max_files`. Used by both full and incremental scans in agent mode — each chunk is passed to one `analyze_system()` call. |
+| `build_neighbourhood` | `(changed_files: list[str], all_files: dict[str, str], repo_path: str, context_budget: int = MAX_TOKENS) -> dict[str, str]` | Builds a context neighbourhood around changed files for incremental scans. Always includes all changed files. Adds headers they include and `.cpp` files that depend on them, up to the token budget. Returns `{path: content}`. |
+| `build_include_graph` | `(file_contents: dict[str, str], repo_path: str) -> dict[str, set[str]]` | Builds a directed include dependency graph across all files. Used by `chunk_system` for semantic clustering. |
+| `chunk_system` | `(file_contents: dict[str, str], repo_path: str = "", max_tokens: int = MAX_TOKENS) -> list[dict[str, str]]` | Semantic chunking for content-embedding mode (used by batch-fix pipeline). Builds include graph, finds connected components, groups by cluster. Falls back to token-count splitting for oversized clusters. |
+| `resolve_includes` | `(file_content: str, repo_path: str) -> list[str]` | Legacy helper: extracts and resolves local `#include "..."` paths. Kept for compatibility. |
 
 ---
 
@@ -383,10 +448,11 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 |----------|-----------|-------------|
 | `get_current_commit` | `(repo_path: str) -> str` | Runs `git rev-parse HEAD`. Raises on failure. |
 | `get_changed_files` | `(repo_path: str, since_commit: str, extensions: list[str]) -> list[str]` | Runs `git diff --name-only {since_commit} HEAD`, filters by extensions. |
-| `map_files_to_systems` | `(changed_files: list[str], systems: list[SystemDef]) -> dict[str, list[str]]` | Maps each changed file to its system based on path prefix. Normalizes both file paths and system prefixes via `normalize_path()` before matching. Unmatched files go to `"__uncategorized"`. |
+| `find_owning_system` | `(file_path: str, systems: list[SystemDef]) -> Optional[str]` | Returns the system name whose path prefix most specifically matches `file_path`. Longest prefix wins — if `Campaign/` and `Campaign/AI/` are both configured, files under `Campaign/AI/` resolve to the more specific system. |
+| `map_files_to_systems` | `(changed_files: list[str], systems: list[SystemDef]) -> dict[str, list[str]]` | Maps each changed file to its owning system via `find_owning_system()`. Unmatched files go to `"__uncategorized"`. |
 | `_compute_fingerprint` | `(file_path: str, line_range: str, category: str, title: str) -> str` | MD5 hash of `"{file_path}|{line_range}|{category}|{title}"`. Used for deduplication. |
-| `_process_system` | `(system_name: str, config: AuditorConfig, db: Database, scan_id: str, fast: bool) -> int` | Collects files, chunks, analyzes each chunk via Claude, deduplicates via fingerprint, classifies source type, inserts findings. Returns finding count or `-1` if all chunks failed. |
-| `run_incremental_scan` | `(config: AuditorConfig, db: Database) -> str` | Orchestrates an incremental scan. Detects source dirs, diffs from last scanned commit (falls back to HEAD~20), processes each system, updates scan record and `last_scan_commit` config. Returns scan ID. |
+| `_process_system` | `(system_name: str, config: AuditorConfig, db: Database, scan_id: str, fast: bool, changed_files: Optional[list[str]] = None) -> tuple[int, int]` | Processes one system for either a full scan or incremental scan. **Incremental** (`changed_files` provided): loads all system files, builds neighbourhood around changed files, extracts paths. **Full** (`changed_files=None`): lists paths only, applies ownership filter. In both cases, splits into chunks of ≤20 files and calls `analyze_system(file_paths, repo_path)` — Claude reads the files itself. Deduplicates via fingerprint, classifies source type, inserts findings. Returns `(findings_count, files_scanned)`. Returns `(-1, files_scanned)` if all chunks failed. |
+| `run_incremental_scan` | `(config: AuditorConfig, db: Database, system_name: Optional[str] = None) -> str` | Orchestrates an incremental scan. Inserts scan record immediately (so UI shows it running), detects source dirs, diffs from last scanned commit (falls back to HEAD~20), processes each affected system, updates scan record and `last_scan_commit`. Supports optional single-system filter. Returns scan ID. |
 
 ---
 
@@ -396,9 +462,8 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `run_scan` | `(config: AuditorConfig, db: Database, scan_type: str = "incremental", system_name: Optional[str] = None) -> str` | Dispatcher. Routes to `run_incremental_scan` or `run_full_system_scan`. Raises `ValueError` for unknown scan types. |
-| `run_full_system_scan` | `(config: AuditorConfig, db: Database, system_name: str) -> str` | Runs a full scan of a single system. Detects source dirs, collects all files (not just changed), processes via `_process_system`. Returns scan ID. |
-| `get_next_rotation_system` | `(config: AuditorConfig, db: Database) -> str` | Round-robin system selector. Reads/increments `rotation_index` in the config table. Raises `ValueError` if no systems defined. |
+| `run_scan` | `(config: AuditorConfig, db: Database, scan_type: str = "incremental", system_name: Optional[str] = None) -> str` | Dispatcher. Routes `"incremental"` to `run_incremental_scan`. Routes `"full"` and `"rotation"` (alias) to `run_full_scan`. Raises `ValueError` for other types. |
+| `run_full_scan` | `(config: AuditorConfig, db: Database, system_name: Optional[str] = None) -> str` | Runs a full scan across all configured systems (or a single named system). Inserts scan record immediately so the UI shows progress. Iterates systems sequentially, calling `_process_system` for each. Updates `files_scanned` and `findings_count` on the scan record after each system. Handles `InterruptedError` for cancellation. Returns scan ID. |
 
 ---
 
@@ -409,17 +474,17 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `detect_source_dirs` | `(repo_path: str, db: Database) -> None` | Two-layer classification: (1) deterministic UE heuristics, (2) Claude AI fallback for ambiguous dirs. Never overwrites existing DB classifications (preserves user overrides). |
-| `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: `.uplugin` presence -> plugin; project-name match under `Source/` -> project; `ThirdParty` -> plugin; generated dirs -> ignored. Normalizes all `relative_to()` outputs via `normalize_path()`. Returns `(classified, unclassified)`. |
-| `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Falls back to `"project"` on failure. |
-| `_build_classify_prompt` | `(dir_listings: dict[str, list[str]]) -> str` | Builds the classification prompt. Asks Claude to return `{"classifications": {"path": "project"|"plugin"}}`. |
+| `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: classifies dirs as `"active"` (C++ source to scan) or `"ignored"` (skip). `.uplugin` presence, project-name match under `Source/`, and `ThirdParty` dirs are all classified as `"active"`; generated dirs go to `"ignored"`. Normalizes all `relative_to()` outputs via `normalize_path()`. Returns `(classified, unclassified)`. |
+| `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Returns `"active"` or `"ignored"` per dir. Falls back to `"active"` on failure. |
+| `_build_classify_prompt` | `(dir_listings: dict[str, list[str]]) -> str` | Builds the classification prompt. Asks Claude to return `{"classifications": {"path": "active"|"ignored"}}`. |
 
 **Heuristic Rules (in order):**
 
-1. Everything under `Plugins/` with a `.uplugin` (direct or nested) -> `"plugin"`
-2. `Plugins/` subdirs without `.uplugin` -> `"plugin"` (conservative)
-3. `Source/{ProjectName}` or `Source/{ProjectName}*` -> `"project"`
-4. `Source/ThirdParty` or `Source/ThirdPartyLibs` -> `"plugin"`
-5. Any dir containing `.uplugin` anywhere in the repo -> `"plugin"`
+1. Everything under `Plugins/` with a `.uplugin` (direct or nested) -> `"active"`
+2. `Plugins/` subdirs without `.uplugin` -> `"active"` (conservative)
+3. `Source/{ProjectName}` or `Source/{ProjectName}*` -> `"active"`
+4. `Source/ThirdParty` or `Source/ThirdPartyLibs` -> `"active"`
+5. Any dir containing `.uplugin` anywhere in the repo -> `"active"`
 6. Top-level dirs with no C++ code (no `.h`/`.cpp`) -> `"ignored"`
 7. UE generated dirs (`.git`, `Intermediate`, `Saved`, `Binaries`, `DerivedDataCache`, `.vs`, `.idea`) -> skipped
 
@@ -537,8 +602,20 @@ See [Section 5: API and HTTP Endpoints](#5-api-and-http-endpoints) for the full 
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get_db` | `(request: Request) -> Database` | Extracts the Database instance from `request.app.state.db`. |
-| `get_config` | `(request: Request) -> AuditorConfig` | Extracts config from `request.app.state.config`. |
+| `get_db` | `(request: Request) -> Database` | Extracts the `Database` instance from `request.app.state.db`. Always reflects the active project. |
+| `get_config` | `(request: Request) -> AuditorConfig` | Extracts config from `request.app.state.config`. Always reflects the active project. |
+
+**Jinja2 Template Globals:**
+
+Registered on `templates.env.globals` at module load time. All are callables that accept `request` so they always reflect the live `app.state` without requiring every route to pass these values explicitly.
+
+| Global | Signature | Description |
+|--------|-----------|-------------|
+| `active_project_name` | `(request) -> str` | Short project name — `Path(config.repo_path).name`. Empty string if no project configured. |
+| `active_config_path` | `(request) -> str` | Absolute path to the active config YAML, or `""`. |
+| `active_repo_path` | `(request) -> str` | `config.repo_path` for the active project, or `""`. |
+
+Used in `base.html` to render the sidebar project pill and browser tab title suffix on every page.
 
 ---
 
@@ -632,9 +709,9 @@ CREATE INDEX IF NOT EXISTS idx_findings_source       ON findings(source);
 | `findings.severity` | `TEXT` | `Severity` enum | Values: critical, high, medium, low, info |
 | `findings.category` | `TEXT` | `Category` enum | Values: bug, performance, ue-antipattern, modern-cpp, memory, readability |
 | `findings.confidence` | `TEXT` | `Confidence` enum | Values: high, medium, low |
-| `findings.source` | `TEXT` | `FindingSource` enum | Values: project, plugin, ignored |
+| `findings.source` | `TEXT` | `FindingSource` enum | Values: active, ignored |
 | `findings.status` | `TEXT` | `FindingStatus` enum | Values: pending, approved, rejected, applied, verified, failed, superseded |
-| `scans.scan_type` | `TEXT` | `ScanType` enum | Values: incremental, full, manual |
+| `scans.scan_type` | `TEXT` | `ScanType` enum | Values: incremental, full (rotation is an alias for full) |
 | `scans.status` | `TEXT` | `ScanStatus` enum | Values: running, completed, failed |
 | `batches.status` | `TEXT` | `BatchStatus` enum | Values: pending, applying, building, testing, verified, failed |
 | `batches.finding_ids` | `TEXT` | `list[str]` | JSON-encoded array of finding IDs |
@@ -658,12 +735,12 @@ Complete reference -- see [Section 2.3](#23-auditormodelspy----domain-models) fo
 Severity:       critical > high > medium > low > info
 Category:       bug | performance | ue-antipattern | modern-cpp | memory | readability
 Confidence:     high | medium | low
-FindingSource:  project | plugin | ignored
+FindingSource:  active | ignored
 FindingStatus:  pending -> approved -> applied -> verified
                 pending -> rejected
                 any -> failed
                 any -> superseded
-ScanType:       incremental | full | manual
+ScanType:       incremental | full  ("rotation" is a scheduler alias for full)
 ScanStatus:     running -> completed | failed
 BatchStatus:    pending -> applying -> building -> testing -> verified
                 any -> failed
@@ -698,13 +775,15 @@ Base URL: `http://{host}:{port}` (default `http://127.0.0.1:8420`)
 
 ### HTML Pages (Server-Side Rendered)
 
+All pages are scoped to the active project (`app.state.config`, `app.state.db`). The sidebar on every page shows the active project name via Jinja2 template globals (`active_project_name`, `active_repo_path`, `active_config_path`). If no project is configured, `/` redirects to `/settings?setup=1`.
+
 | Method | Path | Handler | Template | Description |
 |--------|------|---------|----------|-------------|
-| GET | `/` | `dashboard` | `dashboard.html` | Dashboard with aggregate stats and recent batches |
+| GET | `/` | `dashboard` | `dashboard.html` | Dashboard with aggregate stats and recent batches. Redirects to `/settings?setup=1` if `repo_path` or `systems` are empty. |
 | GET | `/findings` | `findings_list` | `findings_list.html` | Filtered findings list with approve/reject actions |
 | GET | `/findings/{finding_id}` | `finding_detail` | `finding_detail.html` | Single finding detail view |
 | GET | `/scans` | `scans_list` | `scans.html` | Scan history list |
-| GET | `/settings` | `settings_page` | `settings.html` | Source directory classification management |
+| GET | `/settings` | `settings_page` | `settings.html` | Active project card, project switcher, config health, source directory classification, setup wizard modal |
 | GET | `/batches` | `batches_list` | `batches.html` | Batch list |
 | GET | `/batches/{batch_id}` | `batch_detail` | `batch_status.html` | Batch detail with associated findings |
 
@@ -718,6 +797,7 @@ Base URL: `http://{host}:{port}` (default `http://127.0.0.1:8420`)
 | `confidence` | `Optional[str]` | Filter by Confidence value |
 | `file_path` | `Optional[str]` | Partial match (LIKE %value%) |
 | `source` | `Optional[str]` | Filter by FindingSource value |
+| `system` | `Optional[str]` | Filter by system name — resolved to path prefixes via config |
 
 ### File Export
 
@@ -731,11 +811,34 @@ Base URL: `http://{host}:{port}` (default `http://127.0.0.1:8420`)
 |--------|------|---------|--------------|----------|-------------|
 | POST | `/findings/{finding_id}/approve` | `approve_finding` | -- | `{"ok": true, "status": "approved"}` | Approve a pending/rejected finding. 400 if status invalid. |
 | POST | `/findings/{finding_id}/reject` | `reject_finding` | -- | `{"ok": true, "status": "rejected"}` | Reject a pending/approved finding. 400 if status invalid. |
-| POST | `/scans/trigger` | `trigger_scan` | -- | `{"ok": true, "scan_id": "started"}` | Triggers an incremental scan in a background thread. |
-| POST | `/settings/source-dirs` | `update_source_dir` | `{"path": str, "source_type": str}` | `{"ok": true, "path": str, "source_type": str}` | Upsert source dir classification. `source_type` must be `project`, `plugin`, or `ignored`. |
+| POST | `/scans/trigger` | `trigger_scan` | `{"scan_type": "incremental"\|"full"\|"rotation", "system_name": str\|null}` | `{"ok": true}` or `{"error": "...", "scan_id": "..."}` (409) | Starts a scan in a background thread. Returns 409 if a scan is already running. Resets the canceller only when the slot is free. |
+| POST | `/scans/cancel` | `cancel_scan` | -- | `{"ok": true}` | Sets the cancel flag, kills any active Claude subprocess, marks the running scan as CANCELLED immediately. |
+| DELETE | `/scans/{scan_id}` | `delete_scan` | -- | `{"ok": true}` | Deletes a scan record. 400 if the scan is still running. |
+| GET | `/api/scan-status` | `api_scan_status` | -- | `{"running": bool, "scan": dict\|null, "cancelling": bool}` | Current scan state (polling fallback for non-WS clients). |
+| GET | `/api/scans/{scan_id}/logs` | `api_scan_logs` | -- | `{"logs": [...], "running": bool, "total": int}` | Paginated scan log lines. `offset` query param for incremental polling. |
+| GET | `/api/findings/stream` | `api_findings_stream` | -- | `{"findings": [...], "total": int}` | Findings for a scan starting from `offset`. Used for live-streaming findings during a scan. |
+| GET | `/api/systems` | `get_systems_api` | -- | `{"systems": [{name, paths, min_confidence?, file_extensions?, claude_fast_mode?}]}` | Returns current system definitions including per-system overrides. |
+| POST | `/api/systems` | `save_systems_api` | `{"systems": [{name, paths, ...}]}` | `{"ok": true}` | Validates and saves system definitions. Hot-reloads `app.state.config`. |
+| GET | `/api/browse` | `browse_directory` | -- | `{"path": str, "entries": [...], "parent": str\|null}` | Browse subdirectories within the repo. `path` query param is repo-relative. Optional `base` param overrides the root directory (used by setup wizard before a project is active). |
+| GET | `/api/browse-abs` | `browse_absolute` | -- | `{"path": str, "entries": [...], "parent": str\|null}` | Browse the local filesystem by absolute path. On Windows with empty `path`, returns available drive letters (`C:/`, `D:/`, …). Skips system/hidden directories. |
+| GET | `/api/projects` | `list_projects` | -- | `{"projects": [{path, repo_path, name}], "current": str}` | Lists all `*.yaml` files in `~/.code-auditor/` that have a non-empty `repo_path`. Excludes blank/unconfigured YAMLs. |
+| POST | `/api/projects/switch` | `switch_project` | `{"path": str}` | `{"ok": true, "repo_path": str}` | Loads a different project config, swaps `app.state.config` and `app.state.db`, writes the new path to `~/.code-auditor/.active`. |
+| POST | `/api/projects/init` | `init_project` | `{"project_name", "repo_path", "systems", "build", "scan_schedule", "claude_fast_mode", "min_confidence", "config_path", "source_dirs"}` | `{"ok": true, "config_path": str}` | Creates a new project config YAML (path derived from `project_name` slug if `config_path` not provided), upserts `source_dirs` into the DB, writes `.active` pointer. |
+| GET | `/api/detect-systems` | `detect_systems_api` | -- | `{"systems": [{name, paths, hint}]}` | Detects systems from `repo_path` query param using `detect_systems_from_repo()`. Falls back to active config's repo_path if query param is empty. |
+| GET | `/api/config/status` | `config_status` | -- | `{"config_path", "repo_path", "repo_exists", "errors", "last_commit", "db_size_bytes", "systems": [{name, paths_exist}]}` | Full config health check for the active project. |
+| POST | `/api/config/repair` | `repair_config` | -- | `{"ok": true}` | Re-saves the active config with all Pydantic defaults filled in. |
+| POST | `/settings/source-dirs` | `update_source_dir` | `{"path": str, "source_type": str}` | `{"ok": true, "path": str, "source_type": str}` | Upsert source directory classification. `source_type` must be `"active"` or `"ignored"`. |
 | DELETE | `/settings/source-dirs` | `delete_source_dir` | `{"path": str}` | `{"ok": true, "path": str}` | Delete a source directory classification. |
+| POST | `/settings/systems` | `update_system` | `{"name": str, "source_dir": str, "paths": list[str]}` | `{"ok": true}` | Upserts a system in the database. |
+| DELETE | `/settings/systems` | `delete_system` | `{"name": str}` | `{"ok": true}` | Deletes a system by name. |
 | POST | `/batch/apply` | `apply_batch` | -- | `{"ok": true, "batch_id": str}` | Creates a batch from all approved findings and runs the pipeline in a background thread. 400 if no approved findings. |
-| GET | `/api/stats` | `api_stats` | -- | `{status_counts, severity_counts, total_scans, total_batches, last_scan, pending_count, approved_count}` | JSON stats endpoint. |
+| GET | `/api/stats` | `api_stats` | -- | `{status_counts, severity_counts, total_scans, total_batches, last_scan, pending_count, approved_count}` | JSON stats for the active project's database. |
+
+### WebSocket
+
+| Path | Description |
+|------|-------------|
+| `/ws` | Real-time push channel. On connect, immediately sends current `scan_status`. Messages types: `scan_status` (running/cancelling/scan), `log` (per-scan log line), `findings_update` (chunk progress per system). |
 
 ### Static Files
 
@@ -761,18 +864,11 @@ Jinja2 templates at `src/auditor/web/templates/`:
 Default location: `~/.code-auditor/config.yaml`
 
 ```yaml
-# Required: absolute path to the game repository
+# Absolute path to the game repository (required for scanning)
 repo_path: /path/to/GameRepo
 
-# Game systems to audit (name + source paths relative to repo root)
-systems:
-  - name: DragonFlight
-    paths:
-      - Source/DragonRacer/DragonFlight/
-  - name: Combat
-    paths:
-      - Source/DragonRacer/Combat/
-      - Source/DragonRacer/Weapons/
+# systems are stored in the database (see source_dirs and systems tables)
+# Use the Setup Wizard or Settings page to manage them.
 
 # Scan scheduling
 scan_schedule:
@@ -782,7 +878,8 @@ scan_schedule:
 
 # Unreal Engine build configuration
 build:
-  ue_editor_cmd: /path/to/UnrealEditor-Cmd
+  ue_installation_dir: ""             # UE root (editor cmd derived from this)
+  ue_editor_cmd: ""                   # Explicit override; takes precedence
   project_file: /path/to/MyGame.uproject
   build_timeout_seconds: 1800         # 30 minutes
   test_timeout_seconds: 600           # 10 minutes
@@ -797,7 +894,7 @@ notifications:
 data_dir: ~/.code-auditor             # Database and logs location
 
 # Analysis settings
-claude_fast_mode: true                # Not currently used in CLI args; reserved
+claude_fast_mode: true                # Passed as fast= to analyze_system()
 min_confidence: medium                # Minimum confidence threshold
 file_extensions:                      # File types to scan
   - .h
@@ -808,14 +905,12 @@ file_extensions:                      # File types to scan
 
 | Field | Type | Default | Required | Description |
 |-------|------|---------|----------|-------------|
-| `repo_path` | `str` | -- | Yes | Absolute path to the game repo root |
-| `systems` | `list[SystemDef]` | `[]` | No | Named game systems with their source paths |
-| `systems[].name` | `str` | -- | Yes (if systems defined) | Human-readable system name |
-| `systems[].paths` | `list[str]` | -- | Yes (if systems defined) | Paths relative to repo root |
+| `repo_path` | `str` | `""` | No* | Absolute path to the game repo root. Blank = wizard mode. |
 | `scan_schedule.incremental_interval_hours` | `int` | `4` | No | Hours between incremental scans. 0 disables scheduling. |
 | `scan_schedule.rotation_enabled` | `bool` | `false` | No | Enable round-robin full scans |
 | `scan_schedule.rotation_interval_hours` | `int` | `24` | No | Hours between rotation scans |
-| `build.ue_editor_cmd` | `str` | `""` | No | Path to UnrealEditor-Cmd binary |
+| `build.ue_installation_dir` | `str` | `""` | No | UE installation root; used to derive editor command path |
+| `build.ue_editor_cmd` | `str` | `""` | No | Explicit path to UnrealEditor-Cmd binary (overrides ue_installation_dir) |
 | `build.project_file` | `str` | `""` | No | Path to .uproject file |
 | `build.build_timeout_seconds` | `int` | `1800` | No | Build timeout |
 | `build.test_timeout_seconds` | `int` | `600` | No | Test run timeout |

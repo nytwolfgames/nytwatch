@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 
-from auditor.analysis.schemas import FindingOutput, ScanResult, BatchApplyResult
-
 
 UE_REFERENCE_SHEET = """
 ## Unreal Engine C++ Reference Sheet
@@ -67,27 +65,45 @@ UE_REFERENCE_SHEET = """
 """.strip()
 
 
-def _format_file_contents(file_contents: dict[str, str]) -> str:
-    sections = []
-    for path, content in file_contents.items():
-        sections.append(f"### FILE: {path}\n```cpp\n{content}\n```")
-    return "\n\n".join(sections)
+# Compact inline schema — ~400 tokens cheaper than dumping the full Pydantic JSON schema
+_FINDING_SCHEMA = """\
+Each finding object has these fields:
+  title            string   — short title of the issue
+  description      string   — detailed explanation
+  severity         string   — "critical" | "high" | "medium" | "low" | "info"
+  category         string   — "bug" | "performance" | "ue-antipattern" | "modern-cpp" | "memory" | "readability"
+  confidence       string   — "high" | "medium" | "low"
+  file_path        string   — repo-relative path of the PRIMARY (most representative) occurrence
+  line_start       int      — first line of the primary occurrence
+  line_end         int      — last line of the primary occurrence
+  code_snippet     string   — verbatim problematic code from the primary occurrence
+  suggested_fix    string?  — corrected code or description of the fix
+  fix_diff         string?  — unified diff of the fix covering ALL affected locations (if auto-fixable)
+  can_auto_fix     bool     — true only if fix_diff can be applied without human judgment
+  reasoning        string   — why this is an issue and why the fix is correct
+  test_code        string?  — UE Automation Test that verifies the fix (see format below)
+  test_description string?  — one-line description of what the test validates
+  locations        array?   — additional affected locations when the same root-cause issue appears in more than one place.
+                              Each entry: {"file_path": "...", "line_start": N, "line_end": N}.
+                              Omit (or null) for single-location issues."""
 
 
-def _finding_schema_description() -> str:
-    schema = FindingOutput.model_json_schema()
-    return json.dumps(schema, indent=2)
-
-
-def build_scan_prompt(system_name: str, file_contents: dict[str, str]) -> str:
-    if not file_contents:
+def build_scan_prompt(system_name: str, file_paths: list[str]) -> str:
+    if not file_paths:
         return ""
 
-    files_block = _format_file_contents(file_contents)
-    schema_json = _finding_schema_description()
+    paths_block = "\n".join(f"- {p}" for p in file_paths)
 
     return f"""\
-You are a senior Unreal Engine C++ code auditor. Analyze the "{system_name}" game system below and find ALL issues in a single pass.
+You are a senior Unreal Engine C++ code auditor. Analyze the "{system_name}" system and find ALL issues.
+
+Use the Read tool to read each file listed below. You may also use Grep to search for related patterns and Glob to discover related headers. Read whatever additional context you need to make accurate findings.
+
+## Files to Analyze
+
+{paths_block}
+
+---
 
 {UE_REFERENCE_SHEET}
 
@@ -104,42 +120,27 @@ Find every issue across ALL of these categories:
 
 ---
 
-## Code to Analyze
+## Grouping Rule
 
-{files_block}
-
----
+If the **exact same root-cause issue** (same category, same fix pattern) appears in multiple locations across the scanned files, emit **ONE finding** that covers all occurrences:
+- Set `file_path` / `line_start` / `line_end` to the most representative occurrence.
+- List every other affected location in the `locations` array (each entry: `{{"file_path": "...", "line_start": N, "line_end": N}}`).
+- The `fix_diff` must cover **all** affected locations.
+- Do **NOT** group issues that merely look similar but have different root causes or require different fixes.
 
 ## Output Format
 
-Return a JSON object matching this structure exactly:
+After reading and analyzing the files, return a JSON object:
 
 ```json
 {{
-  "findings": [ <list of FindingOutput objects> ],
-  "files_analyzed": [ <list of file paths analyzed> ],
-  "scan_notes": "<any high-level observations about the system>"
+  "findings": [ ... ],
+  "files_analyzed": [ "<list of file paths you read>" ],
+  "scan_notes": "<high-level observations about the system>"
 }}
 ```
 
-Each finding in the `findings` array must match this schema:
-```json
-{schema_json}
-```
-
-Field rules:
-- `severity`: one of "critical", "high", "medium", "low", "info"
-- `category`: one of "bug", "performance", "ue-antipattern", "modern-cpp", "memory", "readability"
-- `confidence`: one of "high", "medium", "low"
-- `file_path`: the exact path from the file list above
-- `line_start` / `line_end`: approximate line range of the issue
-- `code_snippet`: the problematic code verbatim
-- `suggested_fix`: corrected code or description of the fix
-- `fix_diff`: unified diff format of the fix (if auto-fixable)
-- `can_auto_fix`: true only if the fix_diff can be applied without human judgment
-- `reasoning`: why this is an issue and why the fix is correct
-- `test_code`: a UE Automation Test that verifies the fix (see format below)
-- `test_description`: one-line description of what the test validates
+{_FINDING_SCHEMA}
 
 ## Test Case Format
 
@@ -157,25 +158,172 @@ bool F<TestName>::RunTest(const FString& Parameters)
 }}
 ```
 
-Use descriptive test names that reference the finding. The test path should follow: "CodeAuditor.{system_name}.<Category>.<ShortTitle>"
-
----
+Test path format: "CodeAuditor.{system_name}.<Category>.<ShortTitle>"
 
 Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.\
 """
 
 
-def build_batch_apply_prompt(
-    findings: list[dict], file_contents: dict[str, str]
+def build_recheck_prompt(finding: dict) -> str:
+    # Build full list of affected locations (primary + extras)
+    primary = {
+        "file_path": finding["file_path"],
+        "line_start": finding.get("line_start", "?"),
+        "line_end": finding.get("line_end", "?"),
+    }
+    extra_locs: list[dict] = []
+    if finding.get("locations"):
+        try:
+            extra_locs = json.loads(finding["locations"]) or []
+        except (json.JSONDecodeError, TypeError):
+            pass
+    all_locs = [primary] + extra_locs
+
+    if len(all_locs) == 1:
+        locations_block = f"File:     {primary['file_path']}  (lines {primary['line_start']}–{primary['line_end']})"
+        task_instruction = "Use the Read tool to read the **current** contents of the file above.\nDetermine whether this specific issue is still present in the current code."
+    else:
+        loc_lines = "\n".join(
+            f"  {i+1}. {loc['file_path']}  (lines {loc['line_start']}–{loc['line_end']})"
+            for i, loc in enumerate(all_locs)
+        )
+        locations_block = f"Affected locations:\n{loc_lines}"
+        task_instruction = (
+            "Use the Read tool to read the **current** contents of each file listed above.\n"
+            "Determine whether this specific issue is still present in ANY of the locations.\n"
+            "Set `still_valid` to true if it persists in at least one location."
+        )
+
+    return f"""\
+You are a code auditor verifying whether a previously-identified issue is still present.
+
+## Finding
+Title:    {finding['title']}
+{locations_block}
+Severity: {finding.get('severity', '')}  |  Category: {finding.get('category', '')}
+
+### Original Description
+{finding.get('description', '')}
+
+### Original Code Snippet
+```cpp
+{finding.get('code_snippet', '')}
+```
+
+## Task
+{task_instruction}
+
+## Output Format
+Return ONLY this JSON object — no markdown fences, no other text:
+{{"still_valid": true, "reason": "brief explanation"}}
+
+Set `still_valid` to false only if the issue has been fixed in ALL locations.\
+"""
+
+
+_CHAT_HISTORY_LIMIT = 10  # max messages sent to Claude per turn
+
+
+def build_finding_chat_prompt(
+    finding: dict,
+    history: list[dict],
+    user_message: str,
 ) -> str:
-    if not findings or not file_contents:
+    """Build a prompt for a single chat turn about a specific finding.
+
+    History is capped to the last ``_CHAT_HISTORY_LIMIT`` messages so the
+    context window stays bounded on long conversations.
+    """
+    # Build location block — primary + any additional locations
+    extra_locs: list[dict] = []
+    if finding.get("locations"):
+        try:
+            extra_locs = json.loads(finding["locations"]) or []
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if extra_locs:
+        loc_lines = [f"  Primary: {finding['file_path']} (lines {finding.get('line_start','?')}–{finding.get('line_end','?')})"]
+        for loc in extra_locs:
+            loc_lines.append(f"  Also:    {loc['file_path']} (lines {loc.get('line_start','?')}–{loc.get('line_end','?')})")
+        location_str = "\n".join(loc_lines)
+    else:
+        location_str = f"{finding['file_path']}  (lines {finding.get('line_start', '?')}–{finding.get('line_end', '?')})"
+
+    lines = [
+        "You are a code review assistant helping a developer refine a code finding and its suggested fix.",
+        "",
+        "## Finding",
+        f"Title:      {finding['title']}",
+        f"File:       {location_str}",
+        f"Severity:   {finding.get('severity', '')}  |  Category: {finding.get('category', '')}  |  Confidence: {finding.get('confidence', '')}",
+        "",
+        "### Description",
+        finding.get("description", ""),
+        "",
+        "### Current Code",
+        "```cpp",
+        finding.get("code_snippet", ""),
+        "```",
+    ]
+
+    if finding.get("suggested_fix"):
+        lines += ["", "### Suggested Fix", finding["suggested_fix"]]
+
+    if finding.get("fix_diff"):
+        lines += ["", "### Current Diff", "```diff", finding["fix_diff"], "```"]
+
+    if finding.get("test_code"):
+        lines += ["", "### Current Test Code", "```cpp", finding["test_code"], "```"]
+
+    lines += [
+        "",
+        "## Instructions",
+        "- Use the Read tool to examine the file at the path above whenever you need more context.",
+        "- Answer the developer's questions conversationally and accurately.",
+        "- **Only** if the developer explicitly asks you to update, regenerate, or change the fix,",
+        "  diff, or test code: append a JSON block at the **very end** of your response:",
+        "  ```json",
+        '  {"suggested_fix": "...", "fix_diff": "...", "test_code": "..."}',
+        "  ```",
+        "  Include only the fields you are actually changing. Omit unchanged fields.",
+        "  fix_diff must be a valid unified diff patch.",
+        "  Do NOT include the JSON block for conversational replies.",
+    ]
+
+    capped = history[-_CHAT_HISTORY_LIMIT:] if len(history) > _CHAT_HISTORY_LIMIT else history
+    if capped:
+        lines += ["", "## Conversation History"]
+        for msg in capped:
+            label = "User" if msg["role"] == "user" else "Assistant"
+            lines.append(f"{label}: {msg['content']}")
+
+    lines += ["", "## Current Message", f"User: {user_message}"]
+    return "\n".join(lines)
+
+
+def build_batch_apply_prompt(
+    findings: list[dict], file_paths: list[str]
+) -> str:
+    """Build the batch-apply prompt.
+
+    Uses agent mode — file contents are NOT embedded in the prompt.  Instead,
+    Claude reads each file itself with the Read tool (same approach as the
+    scan prompt), keeping the prompt small regardless of file sizes.
+    """
+    if not findings or not file_paths:
         return ""
 
-    files_block = _format_file_contents(file_contents)
+    paths_block = "\n".join(f"- {p}" for p in file_paths)
     findings_json = json.dumps(findings, indent=2)
 
     return f"""\
-You are an Unreal Engine C++ code auditor applying approved fixes. Given the findings below and the current source files, produce a single unified diff that applies ALL fixes together.
+You are an Unreal Engine C++ code auditor applying approved fixes.
+
+Use the Read tool to read the current contents of each file listed below, then produce a single unified diff that applies ALL findings together.
+
+## Files to Read
+
+{paths_block}
 
 ## Approved Findings
 
@@ -183,23 +331,20 @@ You are an Unreal Engine C++ code auditor applying approved fixes. Given the fin
 {findings_json}
 ```
 
-## Current Source Files
-
-{files_block}
-
 ---
 
 ## Instructions
 
-1. Apply every finding's `suggested_fix` to the current file contents.
-2. When multiple findings affect the same file, merge them correctly — watch for overlapping line ranges.
-3. Preserve all existing code that is not part of a fix.
-4. Produce one unified diff covering all changes across all files.
-5. Use standard unified diff format (--- a/path, +++ b/path, @@ line ranges @@).
+1. Read every file in the list above before producing any output.
+2. Apply every finding's `suggested_fix` to the current file contents.
+3. When multiple findings affect the same file, merge them correctly — watch for overlapping line ranges.
+4. Preserve all existing code that is not part of a fix.
+5. Produce one unified diff covering all changes across all files.
+6. Use standard unified diff format (--- a/path, +++ b/path, @@ line ranges @@).
 
 ## Output Format
 
-Return a JSON object matching this structure exactly:
+Return a JSON object:
 
 ```json
 {{

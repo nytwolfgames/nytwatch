@@ -10,44 +10,48 @@
             Apply {{ approved_count }} Approved
         </button>
         {% endif %}
+        <button onclick="cleanFindings(this)" class="btn btn-danger btn-sm">Clean</button>
         <a href="/findings/export?{{ request.query_string.decode() }}" class="btn btn-secondary btn-sm">Export</a>
     </div>
 </div>
 
-<form method="GET" action="/findings" class="card mb-6">
+<form method="GET" action="/findings" id="filter-form" class="card mb-6">
     <div class="flex gap-3 flex-wrap items-center">
-        <select name="status" class="input">
+        <select name="status" class="input" onchange="this.form.submit()">
             <option value="">All statuses</option>
             {% for s in ['pending', 'approved', 'rejected', 'applied', 'verified', 'failed'] %}
             <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s|title }}</option>
             {% endfor %}
         </select>
-        <select name="severity" class="input">
+        <select name="severity" class="input" onchange="this.form.submit()">
             <option value="">All severities</option>
             {% for s in ['critical', 'high', 'medium', 'low', 'info'] %}
             <option value="{{ s }}" {% if filters.severity == s %}selected{% endif %}>{{ s|title }}</option>
             {% endfor %}
         </select>
-        <select name="category" class="input">
+        <select name="category" class="input" onchange="this.form.submit()">
             <option value="">All categories</option>
             {% for c in ['bug', 'performance', 'ue-antipattern', 'modern-cpp', 'memory', 'readability'] %}
             <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
         </select>
-        <select name="confidence" class="input">
+        <select name="confidence" class="input" onchange="this.form.submit()">
             <option value="">All confidence</option>
             {% for c in ['high', 'medium', 'low'] %}
             <option value="{{ c }}" {% if filters.confidence == c %}selected{% endif %}>{{ c|title }}</option>
             {% endfor %}
         </select>
-        <select name="source" class="input">
-            <option value="">All sources</option>
-            {% for s in ['project', 'plugin'] %}
-            <option value="{{ s }}" {% if filters.source == s %}selected{% endif %}>{{ s|title }}</option>
+        <select name="system" class="input" onchange="this.form.submit()">
+            <option value="">All systems</option>
+            {% for source_dir, dir_systems in systems | groupby('source_dir') %}
+            <optgroup label="{{ source_dir or 'Unassigned' }}">
+                {% for s in dir_systems %}
+                <option value="{{ s.name }}" {% if filters.system == s.name %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </optgroup>
             {% endfor %}
         </select>
         <input type="text" name="file_path" value="{{ filters.file_path or '' }}" placeholder="Filter by file path..." class="input" style="min-width: 12rem;">
-        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
         <a href="/findings" class="link-subtle body-sm">Clear</a>
     </div>
 </form>
@@ -58,32 +62,43 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th style="width: 90px;">Severity</th>
-                <th style="width: 80px;">Source</th>
-                <th style="width: 28%;">Title</th>
-                <th style="width: 18%;">File</th>
-                <th style="width: 85px;">Category</th>
-                <th style="width: 90px;">Confidence</th>
-                <th style="width: 85px;">Status</th>
-                <th style="width: 110px;">Actions</th>
+                <th style="width: 7%;">Severity</th>
+                <th style="width: 32%;">Title</th>
+                <th style="width: 16%;">File</th>
+                <th style="width: 10%;">System</th>
+                <th style="width: 7%;">Category</th>
+                <th style="width: 8%;">Confidence</th>
+                <th style="width: 7%;">Status</th>
+                <th style="width: 5%;" title="Include a test case when applying this fix">Test</th>
+                <th style="width: 8%;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for f in findings %}
             <tr>
                 <td><span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span></td>
-                <td><span class="badge badge-source-{{ f.source|default('project') }}">{{ (f.source or 'project')|title }}</span></td>
                 <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
-                <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}">{{ f.file_path }}:{{ f.line_start }}</td>
+                <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}{% if f.locations_extra %} (+{{ f.locations_extra }} more){% endif %}">{{ f.file_path }}:{{ f.line_start }}{% if f.locations_extra %} <span class="badge" style="font-size:0.65rem;padding:1px 5px;vertical-align:middle;">+{{ f.locations_extra }}</span>{% endif %}</td>
+                <td class="body-sm cell-truncate" title="{{ f.system_name or '' }}">{{ f.system_name or '—' }}</td>
                 <td><span class="badge badge-category">{{ f.category }}</span></td>
                 <td class="body-sm text-variant">{{ f.confidence }}</td>
                 <td><span class="badge status-{{ f.status }}">{{ f.status }}</span></td>
-                <td>
+                <td style="text-align:center;">
+                    <input type="checkbox" class="test-toggle"
+                           data-id="{{ f.id }}"
+                           {% if f.include_test != 0 %}checked{% endif %}
+                           title="Include test case when applying fix"
+                           onchange="toggleTest(this)">
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if f.status in ('pending', 'approved', 'rejected') %}
+                    <button onclick="recheckFromList(this, '{{ f.id }}')" class="action-recheck" title="Recheck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg></button>
+                    {% endif %}
                     {% if f.status == 'pending' %}
-                    <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve">Approve</button>
-                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" style="margin-left: var(--sp-2);">Reject</button>
+                    <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve" title="Approve"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg></button>
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" title="Reject"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
                     {% elif f.status == 'approved' %}
-                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject">Unapprove</button>
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" title="Unapprove"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
                     {% endif %}
                 </td>
             </tr>
@@ -102,6 +117,63 @@
 
 {% block scripts %}
 <script>
+async function recheckFromList(btn, findingId) {
+    const row = btn.closest('tr');
+    const siblings = row ? row.querySelectorAll('button') : [];
+    siblings.forEach(b => b.disabled = true);
+    btn.style.animation = 'spin 1s linear infinite';
+    try {
+        const res = await fetch(`/findings/${findingId}/recheck`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+            alert('Recheck failed: ' + data.error);
+            return;
+        }
+        if (!data.still_valid) {
+            if (row) row.remove();
+        }
+    } catch (e) {
+        alert('Recheck failed: ' + e.message);
+    } finally {
+        btn.style.animation = '';
+        siblings.forEach(b => b.disabled = false);
+    }
+}
+
+async function toggleTest(checkbox) {
+    const id = checkbox.dataset.id;
+    checkbox.disabled = true;
+    try {
+        const res = await fetch(`/findings/${id}/toggle-test`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            checkbox.checked = !checkbox.checked; // revert on error
+        }
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+async function cleanFindings(btn) {
+    const count = document.querySelectorAll('.data-table tbody tr').length;
+    const filterDesc = window.location.search ? 'matching the current filters' : '(no filters — ALL findings)';
+    if (!confirm(`Delete ${count} finding(s) ${filterDesc}?\n\nThis cannot be undone.`)) return;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Cleaning…';
+    try {
+        const res = await fetch('/findings/clean' + window.location.search, { method: 'POST' });
+        const data = await res.json();
+        window.location.href = '/findings' + window.location.search;
+    } catch (e) {
+        alert('Clean failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = orig;
+    }
+}
+
 async function applyBatch() {
     const btn = document.getElementById('apply-btn');
     btn.disabled = true;
@@ -121,5 +193,128 @@ async function applyBatch() {
         btn.textContent = 'Apply Findings';
     }
 }
+
+// ── Live findings streaming ──────────────────────────────────────────────────
+
+const _activeFilters = {
+    status:     {{ ('"' ~ filters.status ~ '"') | safe if filters.status else 'null' }},
+    severity:   {{ ('"' ~ filters.severity ~ '"') | safe if filters.severity else 'null' }},
+    category:   {{ ('"' ~ filters.category ~ '"') | safe if filters.category else 'null' }},
+    confidence: {{ ('"' ~ filters.confidence ~ '"') | safe if filters.confidence else 'null' }},
+    file_path:  {{ ('"' ~ filters.file_path ~ '"') | safe if filters.file_path else 'null' }},
+};
+
+let _streamScanId = null;
+let _streamOffset = 0;
+
+function _matchesFilters(f) {
+    if (_activeFilters.status     && f.status     !== _activeFilters.status)     return false;
+    if (_activeFilters.severity   && f.severity   !== _activeFilters.severity)   return false;
+    if (_activeFilters.category   && f.category   !== _activeFilters.category)   return false;
+    if (_activeFilters.confidence && f.confidence !== _activeFilters.confidence) return false;
+    if (_activeFilters.file_path  && !(f.file_path || '').includes(_activeFilters.file_path)) return false;
+    return true;
+}
+
+function _severityBadge(sev) {
+    return `<span class="badge badge-${sev}">${sev.toUpperCase()}</span>`;
+}
+
+function _extraLocs(f) {
+    if (!f.locations) return [];
+    if (Array.isArray(f.locations)) return f.locations;
+    try { return JSON.parse(f.locations) || []; } catch { return []; }
+}
+
+function _escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _buildRow(f) {
+    const checked = (f.include_test === undefined || f.include_test) ? 'checked' : '';
+    const _svgTick    = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg>`;
+    const _svgCross   = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
+    const _svgRefresh = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>`;
+    const recheckBtn = ['pending','approved','rejected'].includes(f.status)
+        ? `<button onclick="recheckFromList(this,'${_escHtml(f.id)}')" class="action-recheck scan-safe" title="Recheck">${_svgRefresh}</button>`
+        : '';
+    const approveReject = f.status === 'pending'
+        ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe" title="Approve">${_svgTick}</button><button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" title="Reject">${_svgCross}</button>`
+        : f.status === 'approved'
+        ? `<button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" title="Unapprove">${_svgCross}</button>`
+        : '';
+    const actions = recheckBtn + approveReject;
+    return `<tr data-finding-id="${_escHtml(f.id)}">
+        <td>${_severityBadge(f.severity)}</td>
+        <td><a href="/findings/${_escHtml(f.id)}">${_escHtml(f.title)}</a></td>
+        <td class="mono cell-truncate" style="font-size:.75rem" title="${_escHtml(f.file_path)}:${f.line_start}${_extraLocs(f).length ? ` (+${_extraLocs(f).length} more)` : ''}">${_escHtml(f.file_path)}:${f.line_start}${_extraLocs(f).length ? ` <span class="badge" style="font-size:0.65rem;padding:1px 5px;vertical-align:middle;">+${_extraLocs(f).length}</span>` : ''}</td>
+        <td class="body-sm cell-truncate" title="${_escHtml(f.system_name||'')}">${_escHtml(f.system_name||'—')}</td>
+        <td><span class="badge badge-category">${_escHtml(f.category)}</span></td>
+        <td class="body-sm text-variant">${_escHtml(f.confidence)}</td>
+        <td><span class="badge status-${_escHtml(f.status)}">${_escHtml(f.status)}</span></td>
+        <td style="text-align:center;"><input type="checkbox" class="test-toggle" data-id="${_escHtml(f.id)}" ${checked} title="Include test case when applying fix" onchange="toggleTest(this)"></td>
+        <td>${actions}</td>
+    </tr>`;
+}
+
+function _ensureTable() {
+    // If the page was showing "No findings", swap in the table shell
+    const empty = document.querySelector('.empty-state');
+    if (empty) {
+        empty.outerHTML = `
+        <div class="card" style="padding:0;">
+          <table class="data-table" style="width:100%;">
+            <thead><tr>
+              <th style="width:7%">Severity</th>
+              <th style="width:32%">Title</th>
+              <th style="width:16%">File</th>
+              <th style="width:10%">System</th>
+              <th style="width:7%">Category</th>
+              <th style="width:8%">Confidence</th>
+              <th style="width:7%">Status</th>
+              <th style="width:5%" title="Include a test case when applying this fix">Test</th>
+              <th style="width:8%">Actions</th>
+            </tr></thead>
+            <tbody id="findings-tbody"></tbody>
+          </table>
+        </div>`;
+    }
+    return document.querySelector('.data-table tbody');
+}
+
+async function _fetchAndAppend(scanId) {
+    try {
+        const res = await fetch(`/api/findings/stream?scan_id=${scanId}&offset=${_streamOffset}`);
+        const data = await res.json();
+        if (!data.findings || data.findings.length === 0) return;
+
+        _streamOffset += data.findings.length;
+        const matching = data.findings.filter(_matchesFilters);
+        if (matching.length === 0) return;
+
+        const tbody = _ensureTable();
+        if (!tbody) return;
+        tbody.insertAdjacentHTML('beforeend', matching.map(_buildRow).join(''));
+    } catch (e) {}
+}
+
+// Listen for findings_update messages from the WS (registered via onWsMessage in base.html)
+onWsMessage('findings_update', (data) => {
+    if (!_streamScanId) {
+        _streamScanId = data.scan_id;
+        _streamOffset = 0;
+    }
+    if (data.chunk_findings > 0) {
+        _fetchAndAppend(data.scan_id);
+    }
+});
+
+// Reset when scan finishes
+onWsMessage('scan_status', (data) => {
+    if (!data.running) {
+        _streamScanId = null;
+        _streamOffset = 0;
+    }
+});
 </script>
 {% endblock %}

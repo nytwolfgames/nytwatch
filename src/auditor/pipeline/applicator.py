@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from auditor.analysis.engine import generate_batch_patch
 from auditor.pipeline import git_ops
@@ -12,10 +11,17 @@ log = logging.getLogger(__name__)
 def apply_batch_fixes(
     repo_path: str,
     findings: list[dict],
-    file_contents: dict[str, str],
+    file_paths: list[str],
 ) -> tuple[bool, str, str]:
-    log.info("Generating batch patch for %d findings", len(findings))
-    result = generate_batch_patch(findings, file_contents)
+    """Generate and apply a unified patch for all findings.
+
+    ``file_paths`` is the deduplicated list of repo-relative paths that need
+    editing.  Claude reads their current contents itself (agent mode).
+
+    Returns (success, patch_or_error, notes).
+    """
+    log.info("Generating batch patch for %d findings across %d files", len(findings), len(file_paths))
+    result = generate_batch_patch(findings, file_paths, repo_path)
 
     if result is None:
         return False, "Patch generation returned no result", ""
@@ -29,7 +35,7 @@ def apply_batch_fixes(
     retry_findings = [
         {**f, "_retry_note": f"Previous apply failed: {error}"} for f in findings
     ]
-    retry_result = generate_batch_patch(retry_findings, file_contents, max_retries=2)
+    retry_result = generate_batch_patch(retry_findings, file_paths, repo_path, max_retries=2)
 
     if retry_result is None:
         return False, f"Retry patch generation failed (original error: {error})", ""

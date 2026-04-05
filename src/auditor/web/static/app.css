@@ -158,7 +158,7 @@ body {
 .main-content {
   flex: 1;
   padding: var(--sp-6) var(--sp-8);
-  max-width: 76rem;
+  min-width: 0;
   overflow-x: hidden;
 }
 
@@ -350,14 +350,14 @@ body {
 .badge-low { background: var(--severity-low); color: white; }
 .badge-info { background: var(--severity-info); color: white; }
 
-.badge-source-project {
+.badge-source-active {
   background: #dbeafe;
   color: #1e40af;
   font-weight: 600;
 }
-.badge-source-plugin {
-  background: #fef3c7;
-  color: #92400e;
+.badge-source-ignored {
+  background: #f3f4f6;
+  color: #6b7280;
   font-weight: 600;
 }
 
@@ -384,6 +384,7 @@ body {
 
 .data-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
@@ -604,29 +605,44 @@ a:hover {
    Action Links (approve/reject in tables)
    ============================ */
 
-.action-approve {
-  color: var(--status-verified-fg);
-  font-weight: 600;
-  font-size: 0.75rem;
+.action-approve,
+.action-reject,
+.action-recheck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   cursor: pointer;
   background: none;
-  border: none;
-  font-family: inherit;
+  border: 1px solid transparent;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
 }
 
-.action-approve:hover { text-decoration: underline; }
+.action-approve        { color: var(--status-verified-fg); }
+.action-approve:hover  { background: color-mix(in srgb, var(--status-verified-fg) 10%, transparent); border-color: color-mix(in srgb, var(--status-verified-fg) 30%, transparent); }
 
-.action-reject {
-  color: var(--severity-critical);
-  font-weight: 600;
-  font-size: 0.75rem;
-  cursor: pointer;
-  background: none;
-  border: none;
-  font-family: inherit;
+.action-reject         { color: var(--severity-critical); }
+.action-reject:hover   { background: color-mix(in srgb, var(--severity-critical) 10%, transparent); border-color: color-mix(in srgb, var(--severity-critical) 30%, transparent); }
+
+.action-recheck        { color: var(--on-surface-variant); }
+.action-recheck:hover  { background: color-mix(in srgb, var(--on-surface-variant) 10%, transparent); border-color: color-mix(in srgb, var(--on-surface-variant) 30%, transparent); }
+
+.action-approve:disabled,
+.action-reject:disabled,
+.action-recheck:disabled { opacity: 0.4; cursor: default; }
+
+.action-approve svg,
+.action-reject svg,
+.action-recheck svg { width: 15px; height: 15px; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
-
-.action-reject:hover { text-decoration: underline; }
 
 /* ============================
    CTA Section (Apply findings)

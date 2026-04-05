@@ -114,7 +114,7 @@ claude
 ```bash
 claude --version
 # Expected: a version string
-echo '{"role":"user","content":"Say OK"}' | claude -p - --output-format json
+echo "Say OK" | claude -p - --output-format json --dangerouslySkipPermissions
 # Expected: JSON output containing "OK" in the result field
 ```
 
@@ -251,88 +251,98 @@ python3.12 -m pip install -e .
 
 ## 3. Configuration
 
-### Initialize the config
+### Option A — Setup Wizard (recommended)
+
+Start the server and open the dashboard:
+
+```bash
+code-auditor serve
+# Open http://127.0.0.1:8420
+```
+
+If no project is configured, the browser redirects automatically to `/settings?setup=1`. Otherwise click **"+ Setup New Project"** on the Settings page.
+
+The wizard runs entirely in the browser — no manual YAML editing required.
+
+**Step 1 — Project Setup**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| Project name | Yes | Used as the config filename: `~/.code-auditor/<name>.yaml` |
+| Repository path | Yes | Absolute path to your game repo root. Use the **Browse…** button to navigate the filesystem. |
+| UE installation directory | No | UE root folder (e.g. `C:\Epic Games\UE_5.4`). Use **Browse…**. `UnrealEditor-Cmd` is located automatically inside `Engine/Binaries/`. |
+
+Clicking **Next** validates the repository path and auto-detects source directories.
+
+**Step 2 — Sources**
+
+These are the top-level source folders in your repository, auto-detected from `.uplugin` files and `*.Build.cs` modules.
+Mark each directory as **Active** (contains C++ code to scan) or **Ignored** (skip entirely — no findings generated).
+Only Active directories will proceed to the next step.
+Click **Re-detect** to refresh if you've changed the repo structure.
+
+**Step 3 — Systems**
+
+Systems categorize gameplay modules within each active source directory. Each system groups related sub-paths that Claude analyses together in one pass — this keeps context focused and Claude's output high-quality.
+
+The view is grouped by active source directory. Each directory has its own **+ Add System** button. Click **✨ Suggest with Claude** to auto-generate systems for all active directories at once.
+
+System names should reflect logical gameplay areas (e.g. "Combat", "AI", "Character"). A system must have at least one path. Path overlaps across systems in the same directory are flagged as warnings.
+
+**Step 4 — Build**
+
+| Field | Description |
+|-------|-------------|
+| `.uproject file` | Absolute path to your `.uproject`. Use **Browse…**. Required only for the batch apply pipeline. |
+| Build timeout | Maximum seconds for UE compilation (default 1800). |
+| Test timeout | Maximum seconds for UE Automation Tests (default 600). |
+
+**Step 5 — Schedule**
+
+Configure automatic incremental scans and rotation schedules.
+
+**Step 6 — Review**
+
+Shows a grouped systems summary (organized by source directory) and the config file path (auto-named `~/.code-auditor/<project-name>.yaml`, editable). Click **Create Project** to save.
+
+On success, the new project becomes active, the config YAML is written, and source directory classifications and systems are stored in the database.
+
+---
+
+### Option B — CLI init (advanced / AI agent use)
 
 ```bash
 code-auditor init /absolute/path/to/your/game/repo
-```
-
-**Example:**
-
-```bash
-code-auditor init ~/Projects/DragonRacer
+# Optional custom config path:
+code-auditor init ~/Projects/DragonRacer --config ~/.code-auditor/dragon-racer.yaml
 ```
 
 **Expected output:**
 
 ```
-Config created at: /Users/<you>/.code-auditor/config.yaml
+Config created at: /Users/<you>/.code-auditor/dragon-racer.yaml
 Edit the config to define your game systems and UE paths.
 ```
 
-This creates `~/.code-auditor/config.yaml` with a starter template. You must now edit it.
+Then open `~/.code-auditor/dragon-racer.yaml` in your editor. See the annotated example below.
 
-You can also specify a custom config path:
-
-```bash
-code-auditor init ~/Projects/DragonRacer --config ~/my-custom-config.yaml
-```
-
-### Edit the config
-
-Open `~/.code-auditor/config.yaml` in your editor. Below is a complete annotated example.
-
-### Complete annotated config.yaml
+### Complete annotated config YAML
 
 ```yaml
 # --------------------------------------------------------------------------
-# repo_path (REQUIRED)
+# repo_path (REQUIRED for scanning)
 # Absolute path to the root of your Unreal Engine game repository.
 # This directory must contain a .uproject file and a Source/ directory.
+# Leave blank only if you are using the web setup wizard on first run.
 # --------------------------------------------------------------------------
 repo_path: /Users/hari/Projects/DragonRacer
 
 # --------------------------------------------------------------------------
-# systems (REQUIRED)
-# Define your game's logical subsystems. Each system groups related
-# source directories. The scanner analyzes one system at a time and
-# sends all files in that system to Claude in a single prompt for
-# maximum contextual understanding.
-#
-# Rules:
-# - paths are relative to repo_path
-# - each path should end with / (trailing slash optional but clear)
-# - a file belongs to the FIRST matching system (order matters)
-# - files not matching any system are logged as "__uncategorized"
-#   and skipped during incremental scans
+# systems — stored in the database, not in this YAML
+# Use the Setup Wizard or the Systems section on the Settings page to
+# manage systems. They are organized under their parent Active source
+# directory and stored in ~/.code-auditor/<project>/auditor.db.
 # --------------------------------------------------------------------------
-systems:
-  - name: "DragonFlight"
-    paths:
-      - "Source/DragonRacer/Dragon/"
-      - "Source/DragonRacer/Flight/"
-  - name: "Racing"
-    paths:
-      - "Source/DragonRacer/Racing/"
-      - "Source/DragonRacer/Track/"
-      - "Source/DragonRacer/Checkpoints/"
-  - name: "Combat"
-    paths:
-      - "Source/DragonRacer/Weapons/"
-      - "Source/DragonRacer/Damage/"
-      - "Source/DragonRacer/Projectiles/"
-  - name: "Character"
-    paths:
-      - "Source/DragonRacer/Character/"
-      - "Source/DragonRacer/Animation/"
-  - name: "UI"
-    paths:
-      - "Source/DragonRacer/UI/"
-      - "Source/DragonRacer/HUD/"
-  - name: "Networking"
-    paths:
-      - "Source/DragonRacer/Networking/"
-      - "Source/DragonRacer/Replication/"
 
 # --------------------------------------------------------------------------
 # build (REQUIRED for batch apply pipeline)
@@ -340,11 +350,18 @@ systems:
 # Not needed for scanning/reviewing -- only for applying fixes.
 # --------------------------------------------------------------------------
 build:
-  # Absolute path to UnrealEditor-Cmd binary.
+  # UE installation root directory (used to derive the editor command path).
+  # Set this and leave ue_editor_cmd blank to auto-derive.
+  # macOS:   /Users/Shared/Epic Games/UE_5.4
+  # Linux:   /home/<user>/UnrealEngine
+  # Windows: C:\Program Files\Epic Games\UE_5.4
+  ue_installation_dir: "/Users/Shared/Epic Games/UE_5.4"
+
+  # Explicit path to UnrealEditor-Cmd (optional — overrides ue_installation_dir).
   # macOS:   /Users/Shared/Epic Games/UE_5.4/Engine/Binaries/Mac/UnrealEditor-Cmd
   # Linux:   /home/<user>/UnrealEngine/Engine/Binaries/Linux/UnrealEditor-Cmd
   # Windows: C:\Program Files\Epic Games\UE_5.4\Engine\Binaries\Win64\UnrealEditor-Cmd.exe
-  ue_editor_cmd: "/Users/Shared/Epic Games/UE_5.4/Engine/Binaries/Mac/UnrealEditor-Cmd"
+  ue_editor_cmd: ""
 
   # Absolute path to the .uproject file in your repo.
   project_file: "/Users/hari/Projects/DragonRacer/DragonRacer.uproject"
@@ -397,8 +414,10 @@ data_dir: "~/.code-auditor"
 
 # --------------------------------------------------------------------------
 # claude_fast_mode
-# When true, bulk scan prompts use the default Claude model.
-# When false, uses a more thorough (slower) mode for batch patches.
+# Passed as the fast= parameter to the analysis engine.
+# When true (default), uses the standard/fast Claude model for scans.
+# When false, uses a more thorough model pass (slower, higher quality).
+# Can be overridden per-system via systems[].claude_fast_mode.
 # Default: true
 # --------------------------------------------------------------------------
 claude_fast_mode: true
@@ -423,27 +442,38 @@ file_extensions:
 
 ### How to define game systems
 
-Systems are the core organizational unit. Each system should represent a logical subsystem of your game. Guidelines:
+Systems are the core organizational unit. Each system should represent a logical gameplay area within an active source directory.
 
-**Good system definitions** (cohesive, related files):
+**Where to manage systems**
 
-```yaml
-systems:
-  - name: "Combat"
-    paths:
-      - "Source/MyGame/Weapons/"
-      - "Source/MyGame/Damage/"
-      - "Source/MyGame/Projectiles/"
+Systems are managed in the dashboard (**Settings page > Systems section**) or through the Setup Wizard (Step 3). They are not written to the YAML config — they live in the project database (`~/.code-auditor/<project>/auditor.db`).
+
+**Two-level hierarchy**
+
+Each system belongs to one active source directory. Within that directory, systems group related sub-paths that Claude analyses together in one pass:
+
+```
+Active Source Directory: Source/MyGame/
+  System: Combat       → Source/MyGame/Weapons/, Source/MyGame/Damage/
+  System: Character    → Source/MyGame/Character/, Source/MyGame/Animation/
+  System: AI           → Source/MyGame/AI/
+
+Active Source Directory: Plugins/MyPlugin/
+  System: MyPlugin     → Plugins/MyPlugin/Source/
 ```
 
-**Bad system definitions** (too broad, loses context):
+**Ownership rules**
 
-```yaml
-systems:
-  - name: "Everything"
-    paths:
-      - "Source/"  # Too broad -- Claude gets too much unrelated code
-```
+- Paths are relative to `repo_path`
+- Each path should end with `/` (trailing slash recommended)
+- A file belongs to the system whose path prefix most specifically matches it (longest prefix wins, not first match)
+- Files not matching any system go to `"__uncategorized"` and are skipped
+
+**Hierarchical systems** (sub-systems supported via longest-prefix ownership):
+
+Within the same source directory, you can define a coarse system alongside a fine-grained sub-system. Files in `Source/MyGame/Campaign/AI/` belong exclusively to `Campaign-AI`. `Campaign-Core` gets everything else under `Campaign/`. No duplication needed.
+
+**Avoid overly broad paths** — a single system covering the entire source tree loses context quality. Aim for cohesive, related files per system.
 
 **Common UE project layouts:**
 
@@ -775,28 +805,37 @@ Click a batch ID to see its detail page at `/batches/{id}`, which shows:
 
 ## 7. Settings
 
-### View directory classifications
-
 Navigate to http://127.0.0.1:8420/settings.
 
-The page shows three sections:
-- **Project directories** -- first-party game code
-- **Plugin directories** -- third-party/plugin code
-- **Ignored directories** -- no C++ code or UE-generated
+### Active Project card
 
-### What each classification means
+Shows the currently active project's repository path and config file path. The **Switch to** dropdown lists all discovered project YAMLs in `~/.code-auditor/`. Switching instantly reloads config and database — all dashboard pages reflect the new project immediately.
+
+The sidebar on every page shows the active project name. When no project is configured, a red "No project configured" badge links to the setup wizard.
+
+### Config Health card
+
+Displays:
+- Whether the repo path and system paths exist on disk
+- Any configuration errors (missing paths, empty system names, path overlaps)
+- Database size
+- Last scanned commit hash
+
+Use **Repair Config** to re-save the active config with all Pydantic defaults filled in (useful after manual YAML edits that leave optional fields missing).
+
+### Source Directory Classification
+
+Shows all source directories classified as **Project**, **Plugin**, or **Ignored**. These are auto-populated when the setup wizard creates a project (based on the type selector in step 2). You can override any classification manually.
 
 | Type | Effect |
 |---|---|
-| `project` | Findings from these directories get `source: project`. These are your primary actionable findings. |
-| `plugin` | Findings from these directories get `source: plugin`. Useful for awareness but typically not your code to fix. |
+| `project` | Findings from these directories get `source: project`. Primary actionable findings. |
+| `plugin` | Findings from these directories get `source: plugin`. Awareness only — typically not your code to fix. |
 | `ignored` | Directories are skipped entirely during scanning. No findings generated. |
 
-### Change a directory's classification
+**Change a classification via the dashboard:** Use the dropdown next to each directory entry.
 
-**Via the dashboard:** Use the Settings page controls to reclassify a directory.
-
-**Via API:**
+**Change a classification via API:**
 
 ```bash
 # Reclassify a directory:
@@ -804,15 +843,13 @@ curl -X POST http://127.0.0.1:8420/settings/source-dirs \
   -H "Content-Type: application/json" \
   -d '{"path": "Plugins/MyInternalPlugin", "source_type": "project"}'
 
-# Delete a classification (reverts to default):
+# Delete a classification:
 curl -X DELETE http://127.0.0.1:8420/settings/source-dirs \
   -H "Content-Type: application/json" \
   -d '{"path": "Plugins/MyInternalPlugin"}'
 ```
 
-### Add custom directories
-
-To add a directory that was not auto-detected:
+**Add a custom directory:**
 
 ```bash
 curl -X POST http://127.0.0.1:8420/settings/source-dirs \
@@ -821,6 +858,10 @@ curl -X POST http://127.0.0.1:8420/settings/source-dirs \
 ```
 
 User-set classifications are never overwritten by auto-detection. They persist across scans.
+
+### Setup Wizard
+
+Click **"+ Setup New Project"** to open the wizard and configure an additional project. See [Section 3](#3-configuration) for a full description of each step.
 
 ---
 

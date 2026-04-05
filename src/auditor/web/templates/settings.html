@@ -2,144 +2,2063 @@
 {% block title %}Settings - Code Auditor{% endblock %}
 
 {% block content %}
-<h1 class="headline-lg mb-6">Source Directory Classification</h1>
-<p class="body-md text-variant mb-6">
-    Directories are auto-detected as Project or Plugin using Unreal Engine heuristics and AI classification.
-    You can override any classification below. Changes take effect on the next scan.
-</p>
-
-<div class="grid grid-2 gap-6">
-    <!-- Project Directories -->
-    <div class="card">
-        <div class="section-label mb-4">Project Directories</div>
-        {% if project_dirs %}
-        <div class="dir-list">
-            {% for d in project_dirs %}
-            <div class="dir-item" data-path="{{ d.path }}">
-                <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
-                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
-                    <option value="project" selected>Project</option>
-                    <option value="plugin">Plugin</option>
-                    <option value="ignored">Ignored</option>
-                </select>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="body-sm text-variant">No project directories classified yet.</p>
-        {% endif %}
-    </div>
-
-    <!-- Plugin Directories -->
-    <div class="card">
-        <div class="section-label mb-4">Plugin Directories</div>
-        {% if plugin_dirs %}
-        <div class="dir-list">
-            {% for d in plugin_dirs %}
-            <div class="dir-item" data-path="{{ d.path }}">
-                <span class="mono body-sm" style="flex: 1; word-break: break-all;">{{ d.path }}</span>
-                <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
-                    <option value="project">Project</option>
-                    <option value="plugin" selected>Plugin</option>
-                    <option value="ignored">Ignored</option>
-                </select>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="body-sm text-variant">No plugin directories classified yet.</p>
-        {% endif %}
-    </div>
+<div class="flex items-center justify-between mb-6">
+    <h1 class="headline-lg">Settings</h1>
+    <button onclick="openWizard()" class="btn btn-primary scan-safe">+ Setup New Project</button>
 </div>
 
-<!-- Ignored Directories -->
-<div class="card mt-6">
-    <div class="section-label mb-2">Ignored Directories</div>
-    <p class="body-sm text-variant mb-4">These directories contain no scannable C++ code and are skipped during analysis.</p>
-    {% if ignored_dirs %}
-    <div class="dir-list">
-        {% for d in ignored_dirs %}
-        <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
-            <span class="mono body-sm" style="flex: 1; word-break: break-all; opacity: 0.6;">{{ d.path }}</span>
-            <select onchange="moveDir('{{ d.path }}', this.value)" class="input input-sm" style="width: 7rem;">
-                <option value="project">Project</option>
-                <option value="plugin">Plugin</option>
-                <option value="ignored" selected>Ignored</option>
+<!-- Active Project -->
+<div class="card mb-6">
+    <div class="section-label mb-3">Active Project</div>
+    <div class="flex items-center gap-4 flex-wrap">
+        <div style="flex:1;min-width:180px;">
+            {% if config.repo_path %}
+            <div class="label-lg mb-1">{{ config.repo_path }}</div>
+            <div class="mono body-sm text-variant">{{ config_path }}</div>
+            {% else %}
+            <div class="label-lg mb-1 text-variant" style="font-style:italic;">No project configured</div>
+            <div class="body-sm text-variant">Use <strong>+ Setup New Project</strong> to get started.</div>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-2">
+            <label class="body-sm text-variant" style="white-space:nowrap;">Switch to:</label>
+            <select id="project-switcher" class="input" style="width:280px;max-width:100%;"
+                    onchange="switchProject(this.value)" disabled>
+                <option value="">Loading…</option>
             </select>
         </div>
-        {% endfor %}
     </div>
-    {% else %}
-    <p class="body-sm text-variant">No ignored directories.</p>
+    {% if config.repo_path %}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--outline-variant);">
+        <button onclick="confirmDeleteProject()" class="btn btn-sm btn-danger scan-safe"
+                id="delete-project-btn">Delete Project</button>
+        <span class="body-sm text-variant" style="margin-left:10px;">
+            Removes the config file and all scan data for this project.
+        </span>
+    </div>
     {% endif %}
 </div>
+
+<!-- Git Branch -->
+{% if config.repo_path %}
+<div class="card mb-6">
+    <div class="flex items-center gap-3 mb-3">
+        <div class="section-label" style="flex:1;">Git Branch</div>
+    </div>
+    <p class="body-sm text-variant mb-3">
+        The branch the auditor scans against and creates fix branches from.
+        Changing it wipes all findings — you will need to re-run a full scan.
+    </p>
+    <div class="flex items-center gap-3 flex-wrap">
+        <select id="branch-select" class="input" style="min-width:220px;">
+            <option value="{{ configured_branch }}">{{ configured_branch or '— click Refresh to load branches —' }}</option>
+        </select>
+        <button onclick="loadBranches()" class="btn btn-sm scan-safe" id="branch-load-btn">Load branches</button>
+        <button onclick="confirmBranchChange()" class="btn btn-sm btn-primary scan-safe" id="branch-save-btn" disabled>Change Branch</button>
+        <span id="branch-status" class="body-sm text-variant"></span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Config Health -->
+<div class="card mb-6">
+    <div class="flex items-center gap-3 mb-3">
+        <div class="section-label" style="flex:1;">Config Health</div>
+        <button onclick="loadHealth()" class="btn btn-sm scan-safe">Refresh</button>
+        <button onclick="repairConfig()" id="repair-btn" class="btn btn-sm scan-safe"
+                style="display:none;">Repair Config</button>
+        {% if config.repo_path %}
+        <button onclick="openCfgEdit()" class="btn btn-sm btn-primary scan-safe">Update Config</button>
+        {% endif %}
+    </div>
+    <div id="health-content">
+        <div class="body-sm text-variant">Checking…</div>
+    </div>
+</div>
+
+<!-- Source Directory Classification -->
+<div class="flex items-center gap-3 mb-2 mt-8" style="flex-wrap:wrap;">
+    <h2 class="headline-md" style="flex:1;margin:0;">Source Directory Classification</h2>
+    {% if config.repo_path %}
+    <button onclick="openAutoDetect()" class="btn btn-sm btn-primary scan-safe">Auto Detect</button>
+    {% endif %}
+</div>
+<p class="body-md text-variant mb-6">
+    Directories are auto-detected on each scan. <strong>Ignored</strong> directories are completely skipped — no findings are generated from them.
+    You can override any classification below. Changes take effect on the next scan.
+</p>
 
 <div class="card mt-6">
     <div class="section-label mb-4">Add Directory</div>
     <div class="flex gap-3 items-center">
-        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex: 1;">
-        <select id="new-dir-type" class="input" style="width: 10rem;">
-            <option value="project">Project</option>
-            <option value="plugin">Plugin</option>
-            <option value="ignored">Ignored</option>
-        </select>
+        <input type="text" id="new-dir-path" placeholder="e.g. Plugins/MyPlugin" class="input" style="flex:1;">
+        <div class="type-toggle">
+            <button id="ndt-active" class="tgl-on tgl-active" onclick="setNewDirType('active')">Active</button>
+            <button id="ndt-ignored" onclick="setNewDirType('ignored')">Ignored</button>
+        </div>
         <button onclick="addDir()" class="btn btn-primary btn-sm">Add</button>
+    </div>
+</div>
+
+<div class="grid grid-2 gap-6">
+    <div class="card">
+        <div class="section-label mb-4">Active Directories</div>
+        <p class="body-sm text-variant mb-3">Scanned and included in findings.</p>
+        {% if active_dirs %}
+        <div class="dir-list">
+            {% for d in active_dirs %}
+            <div class="dir-item" data-path="{{ d.path }}">
+                <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
+                <span class="body-sm text-variant" style="white-space:nowrap;margin-right:8px;"
+                      title="{{ d.system_count }} system(s) under this directory">
+                    {{ d.system_count }} system{{ 's' if d.system_count != 1 else '' }}
+                </span>
+                <div class="type-toggle">
+                    <button class="tgl-on tgl-active" disabled>Active</button>
+                    <button onclick="moveDir('{{ d.path }}', 'ignored')">Ignored</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="body-sm text-variant">No active directories classified yet.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="section-label mb-2">Ignored Directories</div>
+        <p class="body-sm text-variant mb-3">Completely skipped during scanning.</p>
+        {% if ignored_dirs %}
+        <div class="dir-list">
+            {% for d in ignored_dirs %}
+            <div class="dir-item dir-item-ignored" data-path="{{ d.path }}">
+                <span class="mono body-sm" style="flex:1;word-break:break-all;opacity:0.6;">{{ d.path }}</span>
+                <div class="type-toggle">
+                    <button onclick="moveDir('{{ d.path }}', 'active')">Active</button>
+                    <button class="tgl-on tgl-ignored" disabled>Ignored</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="body-sm text-variant">No ignored directories.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── Auto Detect Source Dirs Modal ─────────────────────────────────────── -->
+<div id="autodetect-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:600px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto;">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;gap:12px;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Auto Detect Source Directories</span>
+            <button onclick="closeAutoDetect()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 0;">
+            <p class="body-sm text-variant" style="margin:0 0 16px;">
+                Scans your project folder for new or removed source directories.
+                Existing classifications are untouched. Classify any new folders below,
+                and check <strong>Remove</strong> for any that no longer exist.
+            </p>
+            <div id="ad-list" style="min-height:60px;">
+                <div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Detecting…</div>
+            </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;margin-top:16px;">
+            <span id="ad-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="closeAutoDetect()" class="btn btn-sm scan-safe">Cancel</button>
+            <button onclick="applyAutoDetect()" id="ad-apply-btn" class="btn btn-sm btn-primary scan-safe" disabled>Apply Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Update Config Modal ──────────────────────────────────────────────────── -->
+<div id="cfg-edit-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:580px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto;">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Update Config</span>
+            <button onclick="closeCfgEdit()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <div style="padding:24px;display:flex;flex-direction:column;gap:28px;
+                    max-height:calc(90vh - 130px);overflow-y:auto;">
+
+            <!-- Build Settings -->
+            <div>
+                <div class="section-label mb-4">Build Settings</div>
+                <div style="display:grid;gap:16px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">UE Installation Directory</label>
+                        <div style="display:flex;gap:8px;">
+                            <input id="ce-ue-dir" type="text" class="input" style="flex:1;"
+                                   placeholder="E:\Epic Games\UE_5.4">
+                            <button onclick="spOpen({inputId:'ce-ue-dir',abs:true},this)"
+                                    class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
+                        </div>
+                        <div class="body-sm text-variant mt-1">Folder containing <span class="mono">Engine/</span> — optional if not applying fixes.</div>
+                    </div>
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">.uproject File</label>
+                        <div style="display:flex;gap:8px;">
+                            <input id="ce-proj-file" type="text" class="input" style="flex:1;"
+                                   placeholder="E:\Projects\MyGame\MyGame.uproject">
+                            <button onclick="spOpen({inputId:'ce-proj-file',abs:true,fileFilter:'.uproject'},this)"
+                                    class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
+                        </div>
+                        <div class="body-sm text-variant mt-1">Required for automated fix application and test runs.</div>
+                    </div>
+                    <details>
+                        <summary class="body-sm text-variant" style="cursor:pointer;user-select:none;">Timeout settings</summary>
+                        <div class="flex gap-4 mt-3">
+                            <div style="flex:1;">
+                                <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Build timeout (s)</label>
+                                <input id="ce-build-timeout" type="number" class="input" style="width:100%;">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Test timeout (s)</label>
+                                <input id="ce-test-timeout" type="number" class="input" style="width:100%;">
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <!-- Scan Schedule -->
+            <div>
+                <div class="section-label mb-4">Scan Schedule</div>
+                <div style="display:grid;gap:16px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                            Incremental scan interval: <strong id="ce-inc-label"></strong>
+                        </label>
+                        <input id="ce-inc-slider" type="range" min="1" max="24" style="width:100%;"
+                               oninput="document.getElementById('ce-inc-label').textContent=this.value+'h'">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="ce-rotation"
+                               onchange="document.getElementById('ce-rot-opts').style.display=this.checked?'':'none'">
+                        <label for="ce-rotation" class="body-sm">Enable rotation (periodic full scan)</label>
+                    </div>
+                    <div id="ce-rot-opts">
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                            Rotation interval: <strong id="ce-rot-label"></strong>
+                        </label>
+                        <input id="ce-rot-slider" type="range" min="12" max="168" step="12" style="width:100%;"
+                               oninput="document.getElementById('ce-rot-label').textContent=this.value+'h'">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Quality -->
+            <div>
+                <div class="section-label mb-4">Analysis Quality</div>
+                <div style="display:grid;gap:16px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Min Confidence</label>
+                        <select id="ce-confidence" class="input" style="width:200px;">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                        <div class="body-sm text-variant mt-1">Findings below this threshold are suppressed.</div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="ce-fast-mode">
+                        <label for="ce-fast-mode" class="body-sm">Claude fast mode <span class="text-variant">(faster analysis, slightly less thorough)</span></label>
+                    </div>
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">File Extensions</label>
+                        <input id="ce-extensions" type="text" class="input" style="width:100%;"
+                               placeholder=".h, .cpp">
+                        <div class="body-sm text-variant mt-1">Comma-separated. Only these file types are scanned.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;">
+            <span id="ce-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="closeCfgEdit()" class="btn btn-sm scan-safe">Cancel</button>
+            <button onclick="saveCfgEdit()" id="ce-save-btn" class="btn btn-sm btn-primary scan-safe">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Configure Systems Modal (post auto-detect) ────────────────────────── -->
+<div id="cfg-systems-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:700px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto;">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;gap:12px;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Configure Systems</span>
+            <button onclick="closeCfgSystems()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 0;">
+            <p class="body-sm text-variant" style="margin:0 0 16px;">
+                New source directories were added. Set up systems for each one — or skip and add them later.
+            </p>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+                <button onclick="cfgSyssSuggest(this)" id="cfg-sys-suggest-btn"
+                        class="btn btn-sm scan-safe">✨ Suggest with Claude</button>
+            </div>
+            <div id="cfg-sys-list" style="max-height:420px;overflow-y:auto;"></div>
+            <div id="cfg-sys-overlaps" style="margin-top:8px;"></div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;margin-top:16px;">
+            <span id="cfg-sys-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="closeCfgSystems()" class="btn btn-sm scan-safe">Skip</button>
+            <button onclick="saveCfgSystems()" id="cfg-sys-save-btn" class="btn btn-sm btn-primary scan-safe">Save Systems</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Setup Wizard Modal ───────────────────────────────────────────────────── -->
+<div id="wizard-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:700px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;margin:auto;">
+        <!-- Header -->
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;">
+            <span style="font-weight:600;font-size:1rem;flex:1;">Setup New Project</span>
+            <button onclick="closeWizard()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <!-- Step indicator -->
+        <div style="padding:20px 24px 0;" id="wz-indicator"></div>
+        <!-- Step content -->
+        <div style="padding:24px;" id="wz-content"></div>
+        <!-- Footer -->
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;">
+            <button onclick="wzBack()" id="wz-back-btn" class="btn btn-sm" style="display:none;">← Back</button>
+            <span id="wz-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="wzNext()" id="wz-next-btn" class="btn btn-sm btn-primary">Next →</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Shared path browser popup ──────────────────────────────────────────── -->
+<div id="sp-picker"
+     style="display:none;position:fixed;z-index:2100;background:var(--surface);
+            border:1px solid var(--outline);border-radius:8px;
+            box-shadow:0 8px 24px rgba(0,0,0,.4);width:420px;
+            flex-direction:column;overflow:hidden;max-height:360px;">
+    <div id="sp-crumb"
+         style="padding:9px 14px;border-bottom:1px solid var(--outline);
+                font-size:0.78rem;flex-shrink:0;line-height:1.8;"></div>
+    <div id="sp-entries" style="flex:1;overflow-y:auto;"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--outline);flex-shrink:0;">
+        <button id="sp-select-btn" onclick="spSelectCurrent()"
+                class="btn btn-sm btn-primary" style="width:100%;"></button>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <style>
-.dir-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-}
+/* Source dir classification */
+.dir-list { display:flex; flex-direction:column; gap:var(--sp-2); }
 .dir-item {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
-    background: var(--surface-container-low);
-    border-radius: 6px;
+    display:flex; align-items:center; gap:var(--sp-3);
+    padding:var(--sp-2) var(--sp-3);
+    background:var(--surface-container-low); border-radius:6px;
 }
-.dir-item-ignored {
-    opacity: 0.7;
-    border-left: 3px solid var(--outline);
+.dir-item-ignored { opacity:.7; border-left:3px solid var(--outline); }
+
+/* Active / Ignored toggle pill */
+.type-toggle {
+    display: inline-flex;
+    border: 1px solid var(--outline);
+    border-radius: 100px;
+    overflow: hidden;
+    flex-shrink: 0;
 }
+.type-toggle button {
+    padding: 3px 11px;
+    font-size: 0.78rem;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: var(--on-surface-variant);
+    transition: background .12s, color .12s;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+.type-toggle button:hover:not(.tgl-on) { background: var(--surface-container); }
+.type-toggle button.tgl-on { cursor: default; }
+.type-toggle button.tgl-active  { background: var(--primary, #004ac6); color: #fff; }
+.type-toggle button.tgl-ignored { background: var(--surface-container-high); color: var(--on-surface); }
+
+/* Wizard step indicator */
+.wz-steps { display:flex; align-items:center; margin-bottom:4px; }
+.wz-step { display:flex; flex-direction:column; align-items:center; gap:4px; flex-shrink:0; }
+.wz-circle {
+    width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.75rem; font-weight:600;
+    background:var(--surface-container-high); color:var(--on-surface-variant);
+    border:2px solid var(--outline); transition:all .2s;
+}
+.wz-step.active .wz-circle { background:var(--primary,#004ac6); color:#fff; border-color:var(--primary,#004ac6); }
+.wz-step.done .wz-circle { background:#166534; color:#fff; border-color:transparent; }
+.wz-label { font-size:0.7rem; color:var(--on-surface-variant); white-space:nowrap; }
+.wz-step.active .wz-label { color:var(--on-surface); font-weight:500; }
+.wz-line { flex:1; height:2px; background:var(--outline); margin:0 4px; margin-bottom:20px; }
+.wz-step.done ~ .wz-line,
+.wz-step.done + .wz-line { background:var(--primary,#004ac6); }
+
+/* Wizard system cards */
+.wz-sys-card {
+    background:var(--surface-container); border-radius:8px;
+    padding:14px; margin-bottom:10px; border:1px solid var(--outline);
+}
+
+/* Health items */
+.h-item { display:flex; align-items:flex-start; gap:8px; padding:6px 0;
+    border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.06)); }
+.h-item:last-child { border-bottom:none; }
+.h-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+.h-ok { background:#22c55e; }
+.h-warn { background:#f59e0b; }
+.h-err { background:#ef4444; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
+
 <script>
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escH(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Source dir classification (existing) ──────────────────────────────────────
 async function moveDir(path, newType) {
     try {
         const res = await fetch('/settings/source-dirs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: path, source_type: newType}),
+            body: JSON.stringify({path, source_type: newType}),
         });
         const data = await res.json();
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to update');
-    } catch (e) {
-        alert('Failed: ' + e.message);
-    }
+    } catch (e) { alert('Failed: ' + e.message); }
+}
+
+let _newDirType = 'active';
+function setNewDirType(t) {
+    _newDirType = t;
+    document.getElementById('ndt-active').className  = t === 'active'  ? 'tgl-on tgl-active'  : '';
+    document.getElementById('ndt-ignored').className = t === 'ignored' ? 'tgl-on tgl-ignored' : '';
 }
 
 async function addDir() {
     const path = document.getElementById('new-dir-path').value.trim();
-    const sourceType = document.getElementById('new-dir-type').value;
+    const sourceType = _newDirType;
     if (!path) { alert('Please enter a directory path'); return; }
     try {
         const res = await fetch('/settings/source-dirs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: path, source_type: sourceType}),
+            body: JSON.stringify({path, source_type: sourceType}),
         });
         const data = await res.json();
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to add');
+    } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// ── Auto Detect Source Dirs ───────────────────────────────────────────────────
+let _adDirs = [];   // [{path, source_type, status: 'existing'|'new'|'removed', originalType}]
+
+async function openAutoDetect() {
+    _adDirs = [];
+    document.getElementById('ad-err').textContent = '';
+    document.getElementById('ad-apply-btn').disabled = true;
+    document.getElementById('ad-list').innerHTML =
+        `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Detecting…</div>`;
+    document.getElementById('autodetect-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    try {
+        // Fetch detected dirs and current DB state in parallel
+        const [detRes, curRes] = await Promise.all([
+            fetch('/api/detect-source-dirs'),
+            fetch('/api/source-dirs-all'),
+        ]);
+        const [detData, curData] = await Promise.all([detRes.json(), curRes.json()]);
+
+        if (detData.error) throw new Error(detData.error);
+
+        const current = {};
+        for (const d of (curData.source_dirs || [])) current[d.path] = d.source_type;
+
+        const detected = {};
+        for (const d of (detData.dirs || [])) detected[d.path] = {source_type: d.source_type, auto: d.auto};
+
+        // Build merged list
+        const allPaths = new Set([...Object.keys(current), ...Object.keys(detected)]);
+        _adDirs = [];
+
+        for (const path of [...allPaths].sort()) {
+            const inCurrent  = path in current;
+            const inDetected = path in detected;
+
+            if (inCurrent && inDetected) {
+                // Existing — keep user's override
+                _adDirs.push({path, source_type: current[path], status: 'existing', originalType: current[path]});
+            } else if (!inCurrent && inDetected) {
+                // New directory found by detection
+                _adDirs.push({path, source_type: detected[path].source_type, status: 'new', originalType: null});
+            } else {
+                // In DB but not detected anymore — flag for potential removal
+                _adDirs.push({path, source_type: current[path], status: 'removed', originalType: current[path]});
+            }
+        }
+
+        _adRender();
+    } catch (e) {
+        document.getElementById('ad-list').innerHTML =
+            `<div style="color:#ef4444;font-size:0.85rem;padding:12px 0;">Detection failed: ${escH(e.message)}</div>`;
+    }
+}
+
+function closeAutoDetect() {
+    document.getElementById('autodetect-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function _adCountChanges() {
+    return {
+        newCount:     _adDirs.filter(d => d.status === 'new').length,
+        removedCount: _adDirs.filter(d => d.status === 'removed' && d._delete).length,
+    };
+}
+
+function _adUpdateSummary() {
+    const {newCount, removedCount} = _adCountChanges();
+    const hasChanges = newCount > 0 || removedCount > 0;
+    document.getElementById('ad-apply-btn').disabled = !hasChanges;
+
+    const parts = [];
+    if (newCount)     parts.push(`<span style="color:#16a34a;">${newCount} new</span>`);
+    if (removedCount) parts.push(`<span style="color:#dc2626;">${removedCount} to remove</span>`);
+    const summaryEl = document.getElementById('ad-summary');
+    if (summaryEl) summaryEl.innerHTML = parts.length
+        ? parts.join(' · ')
+        : '<span class="text-variant">No changes detected.</span>';
+}
+
+// Full render — called once after data loads; preserves scroll on subsequent updates
+function _adRender() {
+    const el = document.getElementById('ad-list');
+
+    // Only show new and removed dirs
+    const visible = _adDirs.filter(d => d.status === 'new' || d.status === 'removed');
+
+    if (!visible.length) {
+        el.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Everything is up to date — no new or removed directories.</div>`;
+        document.getElementById('ad-apply-btn').disabled = true;
+        return;
+    }
+
+    const rows = visible.map((dir) => {
+        // idx refers to position in _adDirs (needed for _adSetType / checkbox handler)
+        const idx = _adDirs.indexOf(dir);
+        const isActive  = dir.source_type === 'active';
+        const isIgnored = dir.source_type === 'ignored';
+
+        const statusBadge = dir.status === 'new'
+            ? `<span style="font-size:0.68rem;font-weight:600;padding:2px 7px;border-radius:10px;
+                            background:rgba(34,197,94,.15);color:#16a34a;white-space:nowrap;">new</span>`
+            : `<span style="font-size:0.68rem;font-weight:600;padding:2px 7px;border-radius:10px;
+                            background:rgba(239,68,68,.12);color:#dc2626;white-space:nowrap;">not found</span>`;
+
+        const rowStyle = dir.status === 'removed' ? 'opacity:0.6;' : 'background:rgba(34,197,94,.05);border-radius:6px;';
+
+        const deleteChk = dir.status === 'removed'
+            ? `<label style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--on-surface-variant);white-space:nowrap;cursor:pointer;">
+                   <input type="checkbox" ${dir._delete ? 'checked' : ''} onchange="_adDirs[${idx}]._delete=this.checked;_adUpdateSummary()">
+                   Remove
+               </label>`
+            : '';
+
+        const toggleBtns = dir.status === 'new'
+            ? `<div class="type-toggle" id="ad-tgl-${idx}">
+                <button class="${isActive  ? 'tgl-on tgl-active'  : ''}"
+                        onclick="_adSetType(${idx},'active')">Active</button>
+                <button class="${isIgnored ? 'tgl-on tgl-ignored' : ''}"
+                        onclick="_adSetType(${idx},'ignored')">Ignored</button>
+               </div>`
+            : '';
+
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;margin-bottom:4px;${rowStyle}">
+            <span class="mono body-sm" style="flex:1;word-break:break-all;">${escH(dir.path)}</span>
+            ${statusBadge}
+            ${deleteChk}
+            ${toggleBtns}
+        </div>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="body-sm" id="ad-summary" style="margin-bottom:12px;"></div>
+        <div id="ad-scroll" style="max-height:360px;overflow-y:auto;">${rows}</div>`;
+
+    _adUpdateSummary();
+}
+
+// Update toggle button states in-place without touching scroll position
+function _adSetType(idx, type) {
+    _adDirs[idx].source_type = type;
+    const tgl = document.getElementById('ad-tgl-' + idx);
+    if (tgl) {
+        const [btnActive, btnIgnored] = tgl.querySelectorAll('button');
+        btnActive.className  = type === 'active'  ? 'tgl-on tgl-active'  : '';
+        btnIgnored.className = type === 'ignored' ? 'tgl-on tgl-ignored' : '';
+    }
+    _adUpdateSummary();
+}
+
+async function applyAutoDetect() {
+    const btn   = document.getElementById('ad-apply-btn');
+    const errEl = document.getElementById('ad-err');
+    btn.disabled = true;
+    btn.textContent = 'Applying…';
+    errEl.textContent = '';
+
+    const upsert = _adDirs
+        .filter(d => d.status !== 'removed')
+        .map(d => ({path: d.path, source_type: d.source_type}));
+    const toDelete = _adDirs
+        .filter(d => d.status === 'removed' && d._delete)
+        .map(d => d.path);
+
+    // New active dirs that will need systems configured
+    const newActiveDirs = _adDirs
+        .filter(d => d.status === 'new' && d.source_type === 'active')
+        .map(d => ({path: d.path, source_type: 'active', auto: true}));
+
+    try {
+        const r = await fetch('/settings/source-dirs/bulk', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({upsert, delete: toDelete}),
+        });
+        const d = await r.json();
+        if (!d.ok) { errEl.textContent = d.error || 'Failed to apply'; btn.disabled = false; btn.textContent = 'Apply Changes'; return; }
+
+        closeAutoDetect();
+
+        if (newActiveDirs.length) {
+            openCfgSystems(newActiveDirs);
+        } else {
+            location.reload();
+        }
+    } catch (e) {
+        errEl.textContent = 'Failed: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = 'Apply Changes';
+    }
+}
+
+// ── Configure Systems (standalone, post auto-detect) ─────────────────────────
+// Reuses _wz state + wzRenderSysList / wzSuggestAll / wzCheckOverlaps from the
+// wizard, but renders inside #cfg-systems-overlay instead of the wizard UI.
+
+function openCfgSystems(newActiveDirs) {
+    // Seed just enough wizard state for the shared render helpers
+    _wz.repo_path = {{ config.repo_path | tojson }};
+    _wz.source_dirs = newActiveDirs;
+    _wz.systems = [];
+    document.getElementById('cfg-sys-err').textContent = '';
+    document.getElementById('cfg-systems-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    _cfgSysRender();
+}
+
+function closeCfgSystems() {
+    document.getElementById('cfg-systems-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    location.reload();
+}
+
+function _cfgSysRender() {
+    wzRenderSysList(document.getElementById('cfg-sys-list'));
+    // wzCheckOverlaps targets #wz-overlaps which doesn't exist here — replicate inline
+    const el = document.getElementById('cfg-sys-overlaps');
+    if (!el) return;
+    const all = [];
+    for (const s of _wz.systems) {
+        for (const p of s.paths) {
+            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/, '/')});
+        }
+    }
+    const warns = [];
+    for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+            if (all[i].path === all[j].path) {
+                const msg = `Duplicate path: "${all[i].path}" is used by both "${all[i].sys}" and "${all[j].sys}"`;
+                if (!warns.includes(msg)) warns.push(msg);
+            }
+        }
+    }
+    el.innerHTML = warns.map(w =>
+        `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
+                     background:rgba(245,158,11,.1);border-radius:6px;margin-top:6px;">
+            <span style="color:#f59e0b;flex-shrink:0;">⚠</span>
+            <span class="body-sm">${escH(w)}</span>
+        </div>`
+    ).join('');
+}
+
+async function cfgSyssSuggest(btn) {
+    const errEl  = document.getElementById('cfg-sys-err');
+    const listEl = document.getElementById('cfg-sys-list');
+    if (btn) { btn.disabled = true; btn.textContent = 'Asking Claude…'; }
+
+    if (listEl && !_wz.systems.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            <span style="display:inline-block;animation:spin 1s linear infinite;">⟳</span>
+            Claude is analysing your source structure…
+        </div>`;
+    }
+
+    try {
+        const r = await fetch('/api/suggest-systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({repo_path: _wz.repo_path, source_dirs: _wz.source_dirs}),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        if (!d.systems.length) {
+            errEl.textContent = 'Claude returned no suggestions — add systems manually';
+            _cfgSysRender();
+        } else {
+            const existing = new Set(_wz.systems.map(s => s.name));
+            for (const s of d.systems) {
+                if (!existing.has(s.name)) {
+                    _wz.systems.push({name: s.name, paths: s.paths || [], source_dir: s.source_dir || '', hint: ''});
+                }
+            }
+            errEl.textContent = '';
+            _cfgSysRender();
+        }
+    } catch (e) {
+        errEl.textContent = 'Suggestion failed: ' + e.message;
+        _cfgSysRender();
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
+    }
+}
+
+async function saveCfgSystems() {
+    const btn   = document.getElementById('cfg-sys-save-btn');
+    const errEl = document.getElementById('cfg-sys-err');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    errEl.textContent = '';
+
+    const valid = _wz.systems.filter(s => s.name.trim() && s.paths.filter(p => p.trim()).length);
+    if (!valid.length) {
+        errEl.textContent = 'Add at least one system with a name and at least one path';
+        btn.disabled = false;
+        btn.textContent = 'Save Systems';
+        return;
+    }
+
+    try {
+        const r = await fetch('/api/systems/append', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                systems: valid.map(s => ({
+                    name: s.name.trim(),
+                    source_dir: s.source_dir || '',
+                    paths: s.paths.filter(p => p.trim()),
+                })),
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) { closeCfgSystems(); }
+        else { errEl.textContent = d.error || 'Failed to save'; btn.disabled = false; btn.textContent = 'Save Systems'; }
+    } catch (e) {
+        errEl.textContent = 'Failed: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = 'Save Systems';
+    }
+}
+
+// ── Health panel ──────────────────────────────────────────────────────────────
+async function loadHealth() {
+    const el = document.getElementById('health-content');
+    try {
+        const r = await fetch('/api/config/status');
+        const d = await r.json();
+        renderHealth(d);
+    } catch (e) {
+        el.innerHTML = `<div class="body-sm" style="color:#ef4444;">Failed to load: ${escH(e.message)}</div>`;
+    }
+}
+
+function renderHealth(d) {
+    const el = document.getElementById('health-content');
+    const repairBtn = document.getElementById('repair-btn');
+    const hasErrors = d.errors && d.errors.length > 0;
+    repairBtn.style.display = hasErrors ? '' : 'none';
+
+    let html = '';
+
+    html += `<div class="h-item">
+        <div class="h-dot ${d.repo_exists ? 'h-ok' : 'h-err'}"></div>
+        <div>
+            <div class="body-sm">Repo: <span class="mono">${escH(d.repo_path)}</span></div>
+            ${!d.repo_exists ? '<div class="body-sm" style="color:#ef4444;margin-top:2px;">Path not found</div>' : ''}
+        </div>
+    </div>`;
+
+    if (hasErrors) {
+        for (const err of d.errors) {
+            html += `<div class="h-item">
+                <div class="h-dot h-err"></div>
+                <div class="body-sm" style="color:#ef4444;">${escH(err)}</div>
+            </div>`;
+        }
+    }
+
+    const dbKb = Math.round((d.db_size_bytes || 0) / 1024);
+    html += `<div class="flex gap-6 mt-4 flex-wrap">
+        <div class="body-sm text-variant">DB: ${dbKb} KB</div>
+        <div class="body-sm text-variant">Last commit: <span class="mono">${escH(d.last_commit ? d.last_commit.slice(0,8) : 'none')}</span></div>
+        <div class="body-sm text-variant">Config: <span class="mono">${escH(d.config_path)}</span></div>
+    </div>`;
+
+    el.innerHTML = html;
+}
+
+async function repairConfig() {
+    const btn = document.getElementById('repair-btn');
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/config/repair', {method: 'POST'});
+        const d = await r.json();
+        if (d.ok) await loadHealth();
+        else alert(d.error || 'Repair failed');
+    } catch (e) { alert('Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+}
+
+// ── Project switcher ──────────────────────────────────────────────────────────
+async function loadProjects() {
+    try {
+        const r = await fetch('/api/projects');
+        const d = await r.json();
+        const sel = document.getElementById('project-switcher');
+        if (!d.projects.length) {
+            sel.innerHTML = '<option value="">No other configs found</option>';
+        } else {
+            sel.innerHTML = d.projects.map(p =>
+                `<option value="${escH(p.path)}" ${p.path === d.current ? 'selected' : ''}>${escH(p.name)}</option>`
+            ).join('');
+        }
+        sel.disabled = false;
+    } catch (e) {
+        console.warn('Failed to load projects:', e.message);
+    }
+}
+
+async function switchProject(path) {
+    if (!path) return;
+    const sel = document.getElementById('project-switcher');
+    sel.disabled = true;
+    try {
+        const r = await fetch('/api/projects/switch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            location.reload();
+        } else {
+            alert(d.error || 'Failed to switch project');
+            await loadProjects();
+        }
     } catch (e) {
         alert('Failed: ' + e.message);
+        sel.disabled = false;
     }
+}
+
+async function confirmDeleteProject() {
+    const configPath = {{ config_path | tojson }};
+    const repoPath   = {{ config.repo_path | tojson }};
+    if (!confirm(`Delete project "${repoPath}"?\n\nThis will permanently remove the config file and all scan data. This cannot be undone.`)) return;
+
+    const btn = document.getElementById('delete-project-btn');
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    try {
+        const r = await fetch('/api/projects', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: configPath}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            location.reload();
+        } else {
+            alert(d.error || 'Failed to delete project');
+            btn.disabled = false;
+            btn.textContent = 'Delete Project';
+        }
+    } catch (e) {
+        alert('Failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Delete Project';
+    }
+}
+
+// ── Update Config Modal ───────────────────────────────────────────────────────
+const _cfgCurrent = {
+    build: {
+        ue_installation_dir: {{ config.build.ue_installation_dir | tojson }},
+        project_file:        {{ config.build.project_file | tojson }},
+        build_timeout_seconds: {{ config.build.build_timeout_seconds }},
+        test_timeout_seconds:  {{ config.build.test_timeout_seconds }},
+    },
+    scan_schedule: {
+        incremental_interval_hours: {{ config.scan_schedule.incremental_interval_hours }},
+        rotation_enabled:           {{ 'true' if config.scan_schedule.rotation_enabled else 'false' }},
+        rotation_interval_hours:    {{ config.scan_schedule.rotation_interval_hours }},
+    },
+    claude_fast_mode: {{ 'true' if config.claude_fast_mode else 'false' }},
+    min_confidence:   {{ config.min_confidence | tojson }},
+    file_extensions:  {{ config.file_extensions | tojson }},
+};
+
+function openCfgEdit() {
+    const c = _cfgCurrent;
+    document.getElementById('ce-ue-dir').value        = c.build.ue_installation_dir;
+    document.getElementById('ce-proj-file').value     = c.build.project_file;
+    document.getElementById('ce-build-timeout').value = c.build.build_timeout_seconds;
+    document.getElementById('ce-test-timeout').value  = c.build.test_timeout_seconds;
+
+    const incSlider = document.getElementById('ce-inc-slider');
+    incSlider.value = c.scan_schedule.incremental_interval_hours;
+    document.getElementById('ce-inc-label').textContent = c.scan_schedule.incremental_interval_hours + 'h';
+
+    const rotCb = document.getElementById('ce-rotation');
+    rotCb.checked = c.scan_schedule.rotation_enabled;
+    document.getElementById('ce-rot-opts').style.display = c.scan_schedule.rotation_enabled ? '' : 'none';
+
+    const rotSlider = document.getElementById('ce-rot-slider');
+    rotSlider.value = c.scan_schedule.rotation_interval_hours;
+    document.getElementById('ce-rot-label').textContent = c.scan_schedule.rotation_interval_hours + 'h';
+
+    document.getElementById('ce-confidence').value = c.min_confidence;
+    document.getElementById('ce-fast-mode').checked = c.claude_fast_mode;
+    document.getElementById('ce-extensions').value = (c.file_extensions || []).join(', ');
+
+    document.getElementById('ce-err').textContent = '';
+    document.getElementById('cfg-edit-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeCfgEdit() {
+    document.getElementById('cfg-edit-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    spClose();
+}
+
+async function saveCfgEdit() {
+    const btn    = document.getElementById('ce-save-btn');
+    const errEl  = document.getElementById('ce-err');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    errEl.textContent = '';
+
+    const extsRaw  = document.getElementById('ce-extensions').value.trim();
+    const exts     = extsRaw ? extsRaw.split(',').map(e => e.trim()).filter(Boolean) : [];
+
+    try {
+        const r = await fetch('/api/config/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                build: {
+                    ue_installation_dir:   document.getElementById('ce-ue-dir').value.trim(),
+                    project_file:          document.getElementById('ce-proj-file').value.trim(),
+                    build_timeout_seconds: parseInt(document.getElementById('ce-build-timeout').value) || 1800,
+                    test_timeout_seconds:  parseInt(document.getElementById('ce-test-timeout').value) || 600,
+                },
+                scan_schedule: {
+                    incremental_interval_hours: parseInt(document.getElementById('ce-inc-slider').value) || 4,
+                    rotation_enabled:           document.getElementById('ce-rotation').checked,
+                    rotation_interval_hours:    parseInt(document.getElementById('ce-rot-slider').value) || 24,
+                },
+                claude_fast_mode: document.getElementById('ce-fast-mode').checked,
+                min_confidence:   document.getElementById('ce-confidence').value,
+                file_extensions:  exts,
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) { closeCfgEdit(); location.reload(); }
+        else errEl.textContent = d.error || 'Failed to save';
+    } catch (e) {
+        errEl.textContent = 'Failed: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+    }
+}
+
+// ── Wizard state ──────────────────────────────────────────────────────────────
+const WZ_STEPS = [
+    {id: 'setup',    label: 'Setup'},
+    {id: 'sources',  label: 'Sources'},
+    {id: 'systems',  label: 'Systems'},
+    {id: 'build',    label: 'Build'},
+    {id: 'schedule', label: 'Schedule'},
+    {id: 'review',   label: 'Review'},
+];
+
+let _wz = {};
+
+function _wzReset() {
+    _wz = {
+        step: 0,
+        project_name: '',
+        repo_path: '',
+        source_dirs: [],      // [{path, source_type, auto}]
+        _sourceDetectedFor: '', // tracks which repo_path the source_dirs were detected for
+        systems: [],
+        build: {ue_installation_dir: '', project_file: '', build_timeout_seconds: 1800, test_timeout_seconds: 600},
+        scan_schedule: {incremental_interval_hours: 4, rotation_enabled: false, rotation_interval_hours: 24},
+        claude_fast_mode: true,
+        min_confidence: 'medium',
+        config_path: '',
+    };
+}
+
+function openWizard() {
+    _wzReset();
+    document.getElementById('wizard-overlay').style.display = 'flex';
+    wzRender();
+}
+
+function closeWizard() {
+    document.getElementById('wizard-overlay').style.display = 'none';
+    spClose();
+}
+
+// ── Wizard rendering ──────────────────────────────────────────────────────────
+function wzRenderIndicator() {
+    const el = document.getElementById('wz-indicator');
+    el.innerHTML = '<div class="wz-steps">' +
+        WZ_STEPS.map((s, i) => {
+            const cls = i < _wz.step ? 'done' : i === _wz.step ? 'active' : '';
+            const circle = i < _wz.step ? '✓' : (i + 1);
+            const line = i < WZ_STEPS.length - 1 ? '<div class="wz-line"></div>' : '';
+            return `<div class="wz-step ${cls}">
+                <div class="wz-circle">${circle}</div>
+                <div class="wz-label">${s.label}</div>
+            </div>${line}`;
+        }).join('') +
+    '</div>';
+}
+
+function wzRender() {
+    wzRenderIndicator();
+    document.getElementById('wz-back-btn').style.display = _wz.step > 0 ? '' : 'none';
+    const _nxtBtn = document.getElementById('wz-next-btn');
+    _nxtBtn.disabled = false;
+    _nxtBtn.textContent = _wz.step === WZ_STEPS.length - 1 ? 'Create Project' : 'Next →';
+    document.getElementById('wz-err').textContent = '';
+
+    const el = document.getElementById('wz-content');
+    const step = WZ_STEPS[_wz.step].id;
+
+    if (step === 'sources') {
+        wzRenderSources(el);
+    } else if (step === 'setup') {
+        el.innerHTML = `
+            <div class="label-lg mb-5">Project Setup</div>
+
+            <div style="display:grid;gap:20px;">
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Project name</label>
+                    <input id="wz-proj-name" type="text" class="input" style="width:100%;"
+                        value="${escH(_wz.project_name)}"
+                        placeholder="MyGame"
+                        oninput="_wz.project_name = this.value.trim()">
+                    <div class="body-sm text-variant mt-1">Used as the config filename: <span class="mono">~/.code-auditor/&lt;name&gt;.yaml</span></div>
+                </div>
+
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Repository path</label>
+                    <div style="display:flex;gap:8px;">
+                        <input id="wz-repo" type="text" class="input" style="flex:1;"
+                            value="${escH(_wz.repo_path)}"
+                            placeholder="E:\\Projects\\MyGame"
+                            oninput="_wz.repo_path = this.value.trim()">
+                        <button onclick="spOpen({inputId:'wz-repo',abs:true},this)" class="btn btn-sm scan-safe"
+                                style="white-space:nowrap;">Browse…</button>
+                    </div>
+                    <div class="body-sm text-variant mt-1">Root folder of your Unreal Engine project repository.</div>
+                </div>
+
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Unreal Engine installation directory</label>
+                    <div style="display:flex;gap:8px;">
+                        <input id="wz-ue-dir" type="text" class="input" style="flex:1;"
+                            value="${escH(_wz.build.ue_installation_dir)}"
+                            placeholder="E:\\Epic Games\\UE_5.4"
+                            oninput="_wz.build.ue_installation_dir = this.value.trim()">
+                        <button onclick="spOpen({inputId:'wz-ue-dir',abs:true},this)" class="btn btn-sm scan-safe"
+                                style="white-space:nowrap;">Browse…</button>
+                    </div>
+                    <div class="body-sm text-variant mt-1">
+                        Folder containing <span class="mono">Engine/</span> —
+                        <span class="mono">UnrealEditor-Cmd</span> is located automatically.
+                        Optional if not applying fixes.
+                    </div>
+                </div>
+            </div>
+
+            <div id="wz-setup-status" class="body-sm mt-4" style="min-height:18px;"></div>
+        `;
+        document.getElementById('wz-repo').focus();
+
+    } else if (step === 'systems') {
+        wzRenderSystems(el);
+
+    } else if (step === 'build') {
+        el.innerHTML = `
+            <div class="label-lg mb-3">Build Settings <span class="body-sm text-variant">(optional — skip if not applying fixes)</span></div>
+            <div style="display:grid;gap:14px;">
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">.uproject file</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input id="wz-proj-file" type="text" class="input" style="flex:1;"
+                            value="${escH(_wz.build.project_file)}"
+                            placeholder="E:\\Projects\\MyGame\\MyGame.uproject"
+                            oninput="_wz.build.project_file = this.value.trim()">
+                        <button onclick="spOpen({inputId:'wz-proj-file',abs:true,fileFilter:'.uproject'},this)" class="btn btn-sm scan-safe" style="white-space:nowrap;">Browse…</button>
+                    </div>
+                    <div id="wz-uproject-status" class="body-sm text-variant mt-1">Required for automated fix application and test runs.</div>
+                </div>
+                <details style="margin-top:4px;">
+                    <summary class="body-sm text-variant" style="cursor:pointer;user-select:none;">Timeout settings</summary>
+                    <div class="flex gap-4 mt-3">
+                        <div style="flex:1;">
+                            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Build timeout (s)</label>
+                            <input type="number" class="input" style="width:100%;"
+                                value="${_wz.build.build_timeout_seconds}"
+                                oninput="_wz.build.build_timeout_seconds = +this.value || 1800">
+                        </div>
+                        <div style="flex:1;">
+                            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Test timeout (s)</label>
+                            <input type="number" class="input" style="width:100%;"
+                                value="${_wz.build.test_timeout_seconds}"
+                                oninput="_wz.build.test_timeout_seconds = +this.value || 600">
+                        </div>
+                    </div>
+                </details>
+            </div>
+        `;
+        // Auto-detect .uproject if the field is still empty
+        if (!_wz.build.project_file) wzFindUproject();
+
+    } else if (step === 'schedule') {
+        el.innerHTML = `
+            <div class="label-lg mb-3">Scan Schedule</div>
+            <div style="display:grid;gap:18px;">
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                        Incremental scan interval:
+                        <strong id="wz-inc-label">${_wz.scan_schedule.incremental_interval_hours}h</strong>
+                    </label>
+                    <input type="range" min="1" max="24" style="width:100%;"
+                        value="${_wz.scan_schedule.incremental_interval_hours}"
+                        oninput="_wz.scan_schedule.incremental_interval_hours=+this.value;document.getElementById('wz-inc-label').textContent=this.value+'h'">
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="wz-rotation"
+                        ${_wz.scan_schedule.rotation_enabled ? 'checked' : ''}
+                        onchange="_wz.scan_schedule.rotation_enabled=this.checked;document.getElementById('wz-rot-opts').style.display=this.checked?'':'none'">
+                    <label for="wz-rotation" class="body-sm">Enable rotation (periodic full scan)</label>
+                </div>
+                <div id="wz-rot-opts" style="${_wz.scan_schedule.rotation_enabled ? '' : 'display:none'}">
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">
+                        Rotation interval:
+                        <strong id="wz-rot-label">${_wz.scan_schedule.rotation_interval_hours}h</strong>
+                    </label>
+                    <input type="range" min="12" max="168" step="12" style="width:100%;"
+                        value="${_wz.scan_schedule.rotation_interval_hours}"
+                        oninput="_wz.scan_schedule.rotation_interval_hours=+this.value;document.getElementById('wz-rot-label').textContent=this.value+'h'">
+                </div>
+                <div>
+                    <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Min Confidence</label>
+                    <select class="input input-sm" onchange="_wz.min_confidence=this.value">
+                        ${['low','medium','high'].map(c =>
+                            `<option value="${c}" ${_wz.min_confidence===c?'selected':''}>${c}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="wz-fast"
+                        ${_wz.claude_fast_mode ? 'checked' : ''}
+                        onchange="_wz.claude_fast_mode=this.checked">
+                    <label for="wz-fast" class="body-sm">Claude fast mode</label>
+                </div>
+            </div>
+        `;
+
+    } else if (step === 'review') {
+        wzRenderReview(el);
+    }
+}
+
+// ── Step 2: Sources ───────────────────────────────────────────────────────────
+function wzRenderSources(el) {
+    el.innerHTML = `
+        <div class="flex items-center gap-2 mb-3">
+            <div class="label-lg" style="flex:1;">Source Directories</div>
+            <button onclick="wzDetectSources(this)" class="btn btn-sm scan-safe" id="wz-src-detect-btn">Re-detect</button>
+        </div>
+        <p class="body-sm text-variant mb-4">
+            These are the top-level source folders in your repository.
+            Mark each one as <strong>Active</strong> (C++ code to scan) or
+            <strong>Ignored</strong> (skip completely — no findings generated).
+            Only Active directories will be scanned in the next step.
+        </p>
+        <div id="wz-src-list">
+            <div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Detecting…</div>
+        </div>`;
+
+    // Auto-detect if we haven't detected for this repo_path yet
+    if (_wz._sourceDetectedFor !== _wz.repo_path || !_wz.source_dirs.length) {
+        wzDetectSources(null);
+    } else {
+        wzRenderSourceList();
+    }
+}
+
+async function wzDetectSources(btn) {
+    const listEl = document.getElementById('wz-src-list');
+    const detectBtn = document.getElementById('wz-src-detect-btn');
+    const nextBtn = document.getElementById('wz-next-btn');
+    if (detectBtn) { detectBtn.disabled = true; detectBtn.textContent = 'Detecting…'; }
+    if (nextBtn) nextBtn.disabled = true;
+
+    try {
+        const r = await fetch('/api/detect-source-dirs?repo_path=' + encodeURIComponent(_wz.repo_path));
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+
+        // Merge: preserve user overrides for dirs already in _wz.source_dirs,
+        // add newly detected dirs
+        const existing = {};
+        for (const sd of _wz.source_dirs) existing[sd.path] = sd.source_type;
+        _wz.source_dirs = d.dirs.map(dir => ({
+            path: dir.path,
+            source_type: existing[dir.path] !== undefined ? existing[dir.path] : dir.source_type,
+            auto: dir.auto,
+        }));
+        _wz._sourceDetectedFor = _wz.repo_path;
+        wzRenderSourceList();
+    } catch (e) {
+        if (listEl) listEl.innerHTML =
+            `<div style="color:#ef4444;font-size:0.85rem;padding:12px 0;">Detection failed: ${escH(e.message)}</div>
+             <p class="body-sm text-variant mt-2">You can continue and add systems manually in the next step.</p>`;
+    } finally {
+        if (detectBtn) { detectBtn.disabled = false; detectBtn.textContent = 'Re-detect'; }
+        if (nextBtn) nextBtn.disabled = false;
+    }
+}
+
+function wzRenderSourceList() {
+    const el = document.getElementById('wz-src-list');
+    if (!el) return;
+    if (!_wz.source_dirs.length) {
+        el.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            No source directories found. Check that the repo path is correct.
+        </div>`;
+        return;
+    }
+    const rows = _wz.source_dirs.map((dir, idx) => {
+        const isActive  = dir.source_type === 'active';
+        const isIgnored = dir.source_type === 'ignored';
+        const badge = dir.auto ? '' :
+            `<span style="font-size:0.7rem;color:var(--on-surface-variant);margin-left:4px;">(unclassified)</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;
+                            background:var(--surface-container-low);border-radius:6px;margin-bottom:6px;">
+            <span class="mono body-sm" style="flex:1;word-break:break-all;">${escH(dir.path)}${badge}</span>
+            <div class="type-toggle">
+                <button class="${isActive ? 'tgl-on tgl-active' : ''}"
+                        onclick="_wz.source_dirs[${idx}].source_type='active';wzRenderSourceList()">Active</button>
+                <button class="${isIgnored ? 'tgl-on tgl-ignored' : ''}"
+                        onclick="_wz.source_dirs[${idx}].source_type='ignored';wzRenderSourceList()">Ignored</button>
+            </div>
+        </div>`;
+    }).join('');
+    el.innerHTML = rows;
+}
+
+// ── Step 3: Systems ───────────────────────────────────────────────────────────
+function wzRenderSystems(el) {
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+    el.innerHTML = `
+        <div class="flex items-center gap-2 mb-3">
+            <div class="label-lg" style="flex:1;">Systems</div>
+            <button onclick="wzSuggestAll(this)" class="btn btn-sm scan-safe" id="wz-suggest-btn">✨ Suggest with Claude</button>
+        </div>
+        <p class="body-sm text-variant mb-4">
+            Systems categorize gameplay modules within each active source directory.
+            Each system groups related paths that Claude analyses together in one pass.
+            Click <strong>Suggest with Claude</strong> to auto-generate systems, or add them manually per directory.
+        </p>
+        <div id="wz-sys-list"></div>
+        <div id="wz-overlaps"></div>`;
+
+    wzRenderSysList(document.getElementById('wz-sys-list'));
+    wzCheckOverlaps();
+}
+
+function wzRenderSysList(listEl) {
+    if (!listEl) return;
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+
+    if (!activeDirs.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            No active source directories — go back and mark at least one as Active.
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    for (const dir of activeDirs) {
+        const dirSystems = _wz.systems
+            .map((s, i) => ({s, i}))
+            .filter(({s}) => s.source_dir === dir.path);
+
+        html += `<div style="margin-bottom:18px;">
+            <div class="flex items-center gap-2 mb-2" style="padding:6px 0;border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.06));">
+                <span class="mono body-sm" style="flex:1;">📁 ${escH(dir.path)}</span>
+                <button data-srcdir="${escH(dir.path)}" onclick="wzAddSysUnder(this.getAttribute('data-srcdir'))"
+                        class="btn btn-sm scan-safe">+ Add System</button>
+            </div>`;
+
+        if (!dirSystems.length) {
+            html += `<div class="body-sm text-variant" style="padding:8px 0 4px 4px;font-size:0.82rem;">
+                No systems yet — click "+ Add System".
+            </div>`;
+        } else {
+            html += dirSystems.map(({s, i}) => wzSysCard(s, i)).join('');
+        }
+        html += '</div>';
+    }
+    listEl.innerHTML = html;
+}
+
+async function wzSuggestAll(btn) {
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+    if (!activeDirs.length) {
+        document.getElementById('wz-err').textContent =
+            'No active source directories — go back and mark at least one as Active';
+        return;
+    }
+    const nextBtn = document.getElementById('wz-next-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Asking Claude…'; }
+    if (nextBtn) nextBtn.disabled = true;
+    const listEl = document.getElementById('wz-sys-list');
+    if (listEl && !_wz.systems.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            <span style="display:inline-block;animation:spin 1s linear infinite;">⟳</span>
+            Claude is analysing your source structure…
+        </div>`;
+    }
+    try {
+        const r = await fetch('/api/suggest-systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                repo_path: _wz.repo_path,
+                source_dirs: _wz.source_dirs,
+            }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        if (!d.systems.length) {
+            document.getElementById('wz-err').textContent =
+                'Claude returned no suggestions — add systems manually';
+            wzRenderSysList(listEl);
+        } else {
+            const existing = new Set(_wz.systems.map(s => s.name));
+            for (const s of d.systems) {
+                if (!existing.has(s.name)) {
+                    _wz.systems.push({name: s.name, paths: s.paths || [], source_dir: s.source_dir || '', hint: ''});
+                }
+            }
+            document.getElementById('wz-err').textContent = '';
+            wzRerender();
+        }
+    } catch (e) {
+        document.getElementById('wz-err').textContent = 'Suggestion failed: ' + e.message;
+        wzRenderSysList(listEl);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
+        if (nextBtn) nextBtn.disabled = false;
+    }
+}
+
+function wzSysCard(s, i) {
+    const paths = s.paths.map((p, pi) => wzPathRow(i, pi, p, s.source_dir || '')).join('');
+    return `<div class="wz-sys-card" id="wz-card-${i}">
+        <div class="flex items-center gap-2 mb-3">
+            <input type="text" class="input input-sm" style="flex:1;" placeholder="System name"
+                value="${escH(s.name)}" oninput="wzSysName(${i},this.value)">
+            <button onclick="wzRemoveSys(${i})" class="scan-safe"
+                style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.2rem;padding:2px 6px;">&times;</button>
+        </div>
+        <div id="wz-paths-${i}">${paths}</div>
+        <button onclick="wzAddPath(${i})" class="btn btn-sm scan-safe" style="margin-top:6px;font-size:0.78rem;">+ Add Path</button>
+    </div>`;
+}
+
+function wzPathRow(si, pi, path, srcDir) {
+    // Use single-quoted JS string so it's safe inside a double-quoted HTML attribute
+    const _srcDirQ = (srcDir || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" id="wz-pr-${si}-${pi}">
+        <button onclick="spOpen({si:${si},pi:${pi},srcDir:'${_srcDirQ}'},this)" class="scan-safe"
+            style="flex:1;text-align:left;background:var(--surface-container-low);border:1px solid var(--outline);
+                   border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.78rem;font-family:monospace;
+                   color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${escH(path)}">
+            📁 ${path ? escH(path) : '<span style="opacity:.5">click to browse</span>'}
+        </button>
+        <button onclick="wzRemovePath(${si},${pi})" class="scan-safe"
+            style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                   font-size:1.1rem;padding:2px 6px;">&times;</button>
+    </div>`;
+}
+
+function wzRerender() {
+    const cfgOpen = document.getElementById('cfg-systems-overlay')?.style.display === 'flex';
+    if (cfgOpen) {
+        _cfgSysRender();
+    } else {
+        wzRenderSysList(document.getElementById('wz-sys-list'));
+        wzCheckOverlaps();
+    }
+}
+
+function wzSysName(i, v) {
+    _wz.systems[i].name = v;
+    const cfgOpen = document.getElementById('cfg-systems-overlay')?.style.display === 'flex';
+    if (cfgOpen) _cfgSysRender(); else wzCheckOverlaps();
+}
+function wzAddSysUnder(srcDir) {
+    const existingUnder = _wz.systems.filter(s => s.source_dir === srcDir);
+    // First system under a source dir defaults to the root path (scan everything).
+    // Subsequent systems start with an empty path so the user picks a specific subdirectory.
+    const defaultPath = (existingUnder.length === 0 && srcDir)
+        ? (srcDir.endsWith('/') ? srcDir : srcDir + '/')
+        : '';
+    const newIdx = _wz.systems.length;
+    _wz.systems.push({name: '', paths: [defaultPath], source_dir: srcDir || '', hint: ''});
+    wzRerender();
+    // Auto-open the browser for new systems that start with an empty path
+    if (!defaultPath) {
+        setTimeout(() => {
+            const pathBtn = document.querySelector(`#wz-pr-${newIdx}-0 button`);
+            if (pathBtn) spOpen({si: newIdx, pi: 0, srcDir: srcDir || ''}, pathBtn);
+        }, 50);
+    }
+}
+function wzRemoveSys(i) { _wz.systems.splice(i, 1); wzRerender(); }
+
+function wzAddPath(si) {
+    _wz.systems[si].paths.push('');
+    wzRerender();
+    // Auto-open browser for the new blank path — defer one frame so layout is settled
+    const srcDir = _wz.systems[si]?.source_dir || '';
+    const pi = _wz.systems[si].paths.length - 1;
+    requestAnimationFrame(() => {
+        const btn = document.querySelector(`#wz-pr-${si}-${pi} button`);
+        if (btn) spOpen({si, pi, srcDir}, btn);
+    });
+}
+
+function wzRemovePath(si, pi) {
+    _wz.systems[si].paths.splice(pi, 1);
+    spClose();
+    wzRerender();
+}
+
+function wzCheckOverlaps() {
+    const el = document.getElementById('wz-overlaps');
+    if (!el) return;
+    const all = [];
+    for (const s of _wz.systems) {
+        for (const p of s.paths) {
+            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/, '/')});
+        }
+    }
+    const warns = [];
+    for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+            const a = all[i], b = all[j];
+            // Only flag exact duplicates — parent/child paths are valid under
+            // longest-prefix ownership (the more specific path always wins).
+            if (a.path === b.path) {
+                const msg = `Duplicate path: "${a.path}" is used by both "${a.sys}" and "${b.sys}"`;
+                if (!warns.includes(msg)) warns.push(msg);
+            }
+        }
+    }
+    el.innerHTML = warns.map(w =>
+        `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
+                     background:rgba(245,158,11,.1);border-radius:6px;margin-top:6px;">
+            <span style="color:#f59e0b;flex-shrink:0;">⚠</span>
+            <span class="body-sm">${escH(w)}</span>
+        </div>`
+    ).join('');
+}
+
+// ── Step 4: Build ────────────────────────────────────────────────────────────
+async function wzFindUproject() {
+    const statusEl = document.getElementById('wz-uproject-status');
+    const input = document.getElementById('wz-proj-file');
+    if (!statusEl || !input) return;
+    statusEl.textContent = 'Searching for .uproject…';
+    try {
+        const r = await fetch('/api/find-uproject?repo_path=' + encodeURIComponent(_wz.repo_path));
+        const d = await r.json();
+        if (d.uproject) {
+            input.value = d.uproject;
+            _wz.build.project_file = d.uproject;
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Found automatically</span>`;
+        } else {
+            statusEl.textContent = 'No .uproject found in repo root — browse to set manually.';
+        }
+    } catch (e) {
+        statusEl.textContent = 'Required for automated fix application and test runs.';
+    }
+}
+
+// ── Step 6: Review ────────────────────────────────────────────────────────────
+function wzRenderReview(el) {
+    const systems = _wz.systems.filter(s => s.name && s.paths.filter(p=>p).length);
+    const activeDirs = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+
+    // Build grouped systems summary
+    let systemsSummary = '';
+    if (systems.length) {
+        for (const dir of activeDirs) {
+            const dirSys = systems.filter(s => s.source_dir === dir.path);
+            if (!dirSys.length) continue;
+            systemsSummary += `<div style="margin-bottom:10px;">
+                <div class="mono body-sm" style="color:var(--on-surface-variant);margin-bottom:4px;">📁 ${escH(dir.path)}</div>
+                ${dirSys.map(s => `<div style="padding:3px 0 3px 14px;display:flex;align-items:baseline;gap:8px;">
+                    <span class="body-sm" style="font-weight:600;">${escH(s.name)}</span>
+                    <span class="mono body-sm text-variant">${s.paths.filter(Boolean).map(escH).join(', ')}</span>
+                </div>`).join('')}
+            </div>`;
+        }
+        // Systems with no matching active dir
+        const unassigned = systems.filter(s => !activeDirs.find(d => d.path === s.source_dir));
+        if (unassigned.length) {
+            systemsSummary += `<div style="margin-bottom:10px;">
+                <div class="body-sm text-variant" style="margin-bottom:4px;">⚠ Unassigned source dir</div>
+                ${unassigned.map(s => `<div style="padding:3px 0 3px 14px;">
+                    <span class="body-sm" style="font-weight:600;">${escH(s.name)}</span>
+                    <span class="mono body-sm text-variant" style="margin-left:8px;">${s.paths.filter(Boolean).map(escH).join(', ')}</span>
+                </div>`).join('')}
+            </div>`;
+        }
+    } else {
+        systemsSummary = '<div class="body-sm text-variant">No systems configured</div>';
+    }
+
+    el.innerHTML = `
+        <div class="label-lg mb-4">Review & Confirm</div>
+
+        <div style="margin-bottom:14px;">
+            <div class="section-label mb-2">Repository</div>
+            <div class="mono body-sm">${escH(_wz.repo_path)}</div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <div class="section-label mb-2">Systems (${systems.length})</div>
+            <div style="background:var(--surface-container);border-radius:6px;padding:12px;max-height:200px;overflow-y:auto;">
+                ${systemsSummary}
+            </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <div class="section-label mb-2">Scan Schedule</div>
+            <div class="body-sm">
+                Incremental every <strong>${_wz.scan_schedule.incremental_interval_hours}h</strong>${_wz.scan_schedule.rotation_enabled ? ` · Rotation every <strong>${_wz.scan_schedule.rotation_interval_hours}h</strong>` : ''}
+                · Min confidence: <strong>${_wz.min_confidence}</strong>
+                ${_wz.claude_fast_mode ? ' · Fast mode on' : ''}
+            </div>
+        </div>
+
+        <div>
+            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Save config to</label>
+            <input id="wz-cfgpath" type="text" class="input" style="width:100%;"
+                value="${escH(_wz.config_path)}"
+                oninput="_wz.config_path=this.value.trim()"
+                placeholder="~/.code-auditor/my-project.yaml">
+            <div class="body-sm text-variant mt-1">
+                Each project gets its own <span class="mono">.yaml</span> file in <span class="mono">~/.code-auditor/</span>.
+            </div>
+        </div>
+        <div id="wz-result" style="margin-top:14px;"></div>
+    `;
+}
+
+// ── Wizard navigation ─────────────────────────────────────────────────────────
+function wzBack() {
+    if (_wz.step > 0) { _wz.step--; wzRender(); }
+}
+
+async function wzNext() {
+    const btn = document.getElementById('wz-next-btn');
+    const err = document.getElementById('wz-err');
+    err.textContent = '';
+    btn.disabled = true;
+
+    function _fail(msg) {
+        err.textContent = msg;
+        btn.disabled = false;
+    }
+
+    const step = WZ_STEPS[_wz.step].id;
+
+    if (step === 'setup') {
+        const name = document.getElementById('wz-proj-name')?.value.trim() || '';
+        const repo = document.getElementById('wz-repo')?.value.trim() || '';
+        const ueDir = document.getElementById('wz-ue-dir')?.value.trim() || '';
+        _wz.project_name = name;
+        _wz.repo_path = repo;
+        _wz.build.ue_installation_dir = ueDir;
+
+        if (!name) { _fail('Project name is required'); return; }
+        if (!repo) { _fail('Repository path is required'); return; }
+
+        // Derive config path from project name (slugify)
+        const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+        _wz.config_path = `~/.code-auditor/${slug}.yaml`;
+
+        const statusEl = document.getElementById('wz-setup-status');
+        statusEl.textContent = 'Validating…';
+        btn.textContent = 'Validating…';
+        try {
+            const r = await fetch('/api/browse-abs?path=' + encodeURIComponent(repo));
+            if (!r.ok) {
+                _fail('Repository path not found: ' + repo);
+                statusEl.textContent = '';
+                return;
+            }
+            const gitCheck = await fetch('/api/detect-source-dirs?repo_path=' + encodeURIComponent(repo));
+            const gd = await gitCheck.json();
+            if (gd.error) { _fail(gd.error); statusEl.textContent = ''; return; }
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Repository found — ${gd.dirs.length} source director${gd.dirs.length !== 1 ? 'ies' : 'y'} detected</span>`;
+        } catch (e) {
+            _fail('Could not validate repository path: ' + e.message);
+            statusEl.textContent = '';
+            return;
+        }
+
+    } else if (step === 'sources') {
+        const active = _wz.source_dirs.filter(d => d.source_type !== 'ignored');
+        if (!_wz.source_dirs.length) {
+            _fail('No source directories detected — check your repository path in step 1');
+            return;
+        }
+        if (!active.length) {
+            _fail('All directories are marked as Ignored — mark at least one as Active');
+            return;
+        }
+        // Reset systems if sources changed substantially (user re-detected)
+        if (_wz.systems.length && _wz._sourceDetectedFor !== _wz.repo_path) {
+            _wz.systems = [];
+        }
+
+    } else if (step === 'systems') {
+        const valid = _wz.systems.filter(s => s.name.trim() && s.paths.filter(p => p.trim()).length);
+        if (!valid.length) {
+            _fail('Add at least one system with a name and at least one path');
+            return;
+        }
+        _wz.systems = valid.map(s => ({...s, paths: s.paths.filter(p => p.trim())}));
+
+    } else if (step === 'review') {
+        await wzCreate();
+        return;
+    }
+
+    _wz.step++;
+    wzRender();  // resets btn.disabled = false and restores button text
+}
+
+async function wzCreate() {
+    const btn = document.getElementById('wz-next-btn');
+    const result = document.getElementById('wz-result');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    try {
+        const r = await fetch('/api/projects/init', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                project_name: _wz.project_name,
+                repo_path: _wz.repo_path,
+                systems: _wz.systems,
+                build: _wz.build,
+                scan_schedule: _wz.scan_schedule,
+                claude_fast_mode: _wz.claude_fast_mode,
+                min_confidence: _wz.min_confidence,
+                config_path: _wz.config_path,
+                source_dirs: _wz.source_dirs
+                    .filter(d => d.path)
+                    .map(d => ({path: d.path, source_type: d.source_type})),
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            result.innerHTML = `
+                <div style="color:#22c55e;font-weight:500;margin-bottom:10px;">
+                    ✓ Config saved to <span class="mono">${escH(d.config_path)}</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="switchProject(this.dataset.path)" data-path="${escH(d.config_path)}" class="btn btn-sm btn-primary scan-safe">
+                        Switch to this project
+                    </button>
+                    <button onclick="closeWizard()" class="btn btn-sm scan-safe">Close</button>
+                </div>`;
+            btn.style.display = 'none';
+            await loadProjects();
+        } else {
+            result.innerHTML = `<div style="color:#ef4444;">${escH(d.error || 'Unknown error')}</div>`;
+        }
+    } catch (e) {
+        result.innerHTML = `<div style="color:#ef4444;">Failed: ${escH(e.message)}</div>`;
+    } finally {
+        btn.disabled = false;
+        if (btn.style.display !== 'none') btn.textContent = 'Create Project';
+    }
+}
+
+// ── Shared path browser ───────────────────────────────────────────────────────
+// ctx variants:
+//   {si, pi}          → repo-relative browser, result stored in wizard system path
+//   {inputId, abs}    → absolute filesystem browser, result written to an <input>
+
+let _spCtx = null;
+let _spCurrent = '';
+
+async function spOpen(ctx, anchorEl) {
+    _spCtx = ctx;
+    let startPath = '';
+    if (ctx?.abs) {
+        // Start from whatever is already typed in the target input
+        startPath = (document.getElementById(ctx.inputId)?.value.trim() || '')
+            .replace(/\\/g, '/');
+        // If the value points to a file (has an extension in the last segment),
+        // navigate to the parent directory instead — can't browse a file as a directory
+        if (startPath && /\/[^/]*\.[^/]+$/.test(startPath)) {
+            startPath = startPath.replace(/\/[^/]+$/, '');
+        }
+    } else if (ctx?.si != null) {
+        startPath = (_wz.systems[ctx.si]?.paths[ctx.pi] || ctx?.srcDir || '').replace(/\/?$/, '');
+    }
+    await spNavigate(startPath);
+
+    const picker = document.getElementById('sp-picker');
+    picker.style.display = 'flex';
+    spPosition(picker, anchorEl);
+}
+
+function spPosition(picker, anchorEl) {
+    if (!anchorEl) { picker.style.top = '160px'; picker.style.left = '50%'; picker.style.transform = 'translateX(-50%)'; return; }
+    picker.style.transform = '';
+    const ar = anchorEl.getBoundingClientRect();
+    const ph = 380, pw = 460;
+    let top = ar.bottom + 6;
+    if (top + ph > window.innerHeight - 10) top = Math.max(10, ar.top - ph - 6);
+    let left = ar.left;
+    if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+    picker.style.top = top + 'px';
+    picker.style.left = left + 'px';
+}
+
+async function spNavigate(path) {
+    _spCurrent = path.replace(/\\/g, '/');
+    // Trim trailing slash for display, but keep for abs root detection
+    const el = document.getElementById('sp-entries');
+    el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
+    try {
+        let url;
+        if (_spCtx?.abs) {
+            url = '/api/browse-abs?path=' + encodeURIComponent(_spCurrent);
+            if (_spCtx.fileFilter) url += '&file_ext=' + encodeURIComponent(_spCtx.fileFilter);
+        } else {
+            const base = _wz.repo_path || '';
+            const relPath = _spCurrent.replace(/\/?$/, '');
+            url = '/api/browse?path=' + encodeURIComponent(relPath)
+                + (base ? '&base=' + encodeURIComponent(base) : '');
+        }
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(await r.text());
+        spRender(await r.json());
+    } catch (e) {
+        el.innerHTML = `<div style="padding:10px 14px;font-size:0.82rem;color:#f87171;">Failed to load: ${escH(e.message)}</div>`;
+    }
+}
+
+function spRender(data) {
+    // ── Breadcrumb ────────────────────────────────────────────────────────────
+    let crumb = '';
+    if (_spCtx?.abs) {
+        const curPath = (data.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+        if (!curPath) {
+            crumb = '<span style="color:var(--on-surface-variant);">My Computer</span>';
+        } else {
+            crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">My Computer</span>`;
+            const parts = curPath.replace(/^\//, '').split('/').filter(Boolean);
+            let cum = '';
+            for (const p of parts) {
+                cum = cum ? cum + '/' + p : (curPath.startsWith('/') ? '/' + p : p);
+                const cp = cum + '/';
+                crumb += ` / <span onclick="spNavigate('${escH(cp)}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+            }
+        }
+    } else {
+        const curPath = (_spCurrent || '').replace(/\/?$/, '');
+        crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
+        const parts = curPath ? curPath.split('/').filter(Boolean) : [];
+        let cum = '';
+        for (const p of parts) {
+            cum += (cum ? '/' : '') + p;
+            const cp = cum;
+            crumb += ` / <span onclick="spNavigate('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+        }
+    }
+    document.getElementById('sp-crumb').innerHTML = crumb;
+
+    // ── Entries ───────────────────────────────────────────────────────────────
+    const el = document.getElementById('sp-entries');
+    const fileFilter = _spCtx?.fileFilter || '';
+    const dirs  = (data.entries || []).filter(e => !e.is_file);
+    const files = (data.entries || []).filter(e =>  e.is_file);
+    const hasContent = dirs.length || files.length;
+
+    if (!hasContent) {
+        const emptyMsg = fileFilter
+            ? `No ${escH(fileFilter)} files or subdirectories here`
+            : 'No subdirectories';
+        el.innerHTML = `<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">${emptyMsg}</div>`;
+    } else {
+        const dirRows = dirs.map(e => {
+            const pathEsc = e.path.replace(/\\/g, '/').replace(/'/g, "\\'");
+            return `<div onclick="spNavigate('${pathEsc}')"
+                  style="display:flex;align-items:center;padding:7px 14px;cursor:pointer;
+                         border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+                  onmouseenter="this.style.background='var(--surface-container)'"
+                  onmouseleave="this.style.background=''">
+                <span style="flex:1;font-size:0.8rem;font-family:monospace;
+                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📁 ${escH(e.name)}</span>
+            </div>`;
+        });
+        const fileRows = files.map(e => {
+            const pathEsc = e.path.replace(/\\/g, '/').replace(/'/g, "\\'");
+            return `<div onclick="spSelect('${pathEsc}')"
+                  style="display:flex;align-items:center;padding:7px 14px;cursor:pointer;
+                         border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+                  onmouseenter="this.style.background='var(--surface-container)'"
+                  onmouseleave="this.style.background=''">
+                <span style="flex:1;font-size:0.8rem;font-family:monospace;
+                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                             color:var(--primary);">📄 ${escH(e.name)}</span>
+                <span style="font-size:0.7rem;color:var(--on-surface-variant);margin-left:6px;white-space:nowrap;">click to select</span>
+            </div>`;
+        });
+        el.innerHTML = dirRows.concat(fileRows).join('');
+    }
+
+    // ── Select-current button — hidden in file-picker mode (select via file row) ─
+    const selectBtn = document.getElementById('sp-select-btn');
+    const curPath = (data.path || '').replace(/\\/g, '/');
+    if (!curPath || fileFilter) {
+        selectBtn.style.display = 'none';
+    } else {
+        selectBtn.style.display = '';
+        const label = curPath.replace(/\/$/, '').split('/').pop() || curPath;
+        selectBtn.textContent = `Select "${label}"`;
+    }
+}
+
+function spSelectCurrent() {
+    const curPath = _spCurrent.replace(/\\/g, '/');
+    spSelect(curPath.endsWith('/') ? curPath : curPath + '/');
+}
+
+function spSelect(path) {
+    const norm = path.replace(/\\/g, '/');
+    const ctx = _spCtx;  // capture before spClose() clears it
+    spClose();
+
+    if (ctx?.abs && ctx.inputId) {
+        // Absolute path → write to input, trim trailing slash for display
+        const input = document.getElementById(ctx.inputId);
+        if (input) {
+            input.value = norm.replace(/\/$/, '');
+            input.dispatchEvent(new Event('input'));
+        }
+        // If this was a file selection, update the status hint
+        if (ctx.fileFilter) {
+            const statusEl = document.getElementById('wz-uproject-status');
+            if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e;">✓ Selected</span>`;
+        }
+    } else if (ctx?.si != null) {
+        // Repo-relative → store in wizard system path (keep trailing slash)
+        const relNorm = norm.endsWith('/') ? norm : norm + '/';
+        if (_wz.systems[ctx.si]) {
+            _wz.systems[ctx.si].paths[ctx.pi] = relNorm;
+            wzRerender();
+        }
+    }
+}
+
+function spClose() {
+    document.getElementById('sp-picker').style.display = 'none';
+    _spCtx = null;
+}
+
+// ── Keyboard / outside-click handlers ────────────────────────────────────────
+document.addEventListener('click', e => {
+    const picker = document.getElementById('sp-picker');
+    if (picker?.style.display !== 'none'
+        && !picker.contains(e.target)
+        && !e.target.closest('button[onclick*="spOpen"]')
+        && !e.target.closest('button[onclick*="spNavigate"]'))
+        spClose();
+}, true);
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('sp-picker')?.style.display !== 'none') { spClose(); return; }
+    if (document.getElementById('wizard-overlay')?.style.display !== 'none') closeWizard();
+});
+
+// ── Git Branch ───────────────────────────────────────────────────────────────
+
+let _branchesLoaded = false;
+
+async function loadBranches() {
+    const sel = document.getElementById('branch-select');
+    const btn = document.getElementById('branch-load-btn');
+    const saveBtn = document.getElementById('branch-save-btn');
+    const status = document.getElementById('branch-status');
+    if (!sel) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    status.textContent = '';
+
+    try {
+        const res = await fetch('/api/git/branches');
+        const data = await res.json();
+        if (data.error) { status.textContent = data.error; return; }
+
+        const current = sel.value; // what was server-rendered
+        sel.innerHTML = '';
+        for (const b of data.branches) {
+            const opt = document.createElement('option');
+            opt.value = b;
+            opt.textContent = b;
+            if (b === data.configured) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        _branchesLoaded = true;
+        saveBtn.disabled = false;
+        status.textContent = '';
+    } catch (e) {
+        status.textContent = 'Failed to load branches';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reload';
+    }
+}
+
+function confirmBranchChange() {
+    const sel = document.getElementById('branch-select');
+    const status = document.getElementById('branch-status');
+    if (!sel || !_branchesLoaded) {
+        status.textContent = 'Load branches first.';
+        return;
+    }
+    const branch = sel.value;
+    const confirmed = confirm(
+        `Change the active git branch to "${branch}"?\n\n` +
+        `⚠️  ALL findings and batches will be permanently deleted.\n` +
+        `You will need to run a full scan after switching.\n\n` +
+        `This cannot be undone. Continue?`
+    );
+    if (!confirmed) return;
+    applyBranchChange(branch);
+}
+
+async function applyBranchChange(branch) {
+    const saveBtn = document.getElementById('branch-save-btn');
+    const status = document.getElementById('branch-status');
+    saveBtn.disabled = true;
+    status.textContent = 'Changing…';
+
+    try {
+        const res = await fetch('/api/config/branch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({branch}),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            status.textContent = `✓ Branch set to "${branch}". ${data.wiped_findings} finding(s) deleted. Run a full scan to repopulate.`;
+            status.style.color = 'var(--primary, #004ac6)';
+        } else {
+            status.textContent = data.error || 'Failed to change branch.';
+            status.style.color = '#ef4444';
+        }
+    } catch (e) {
+        status.textContent = 'Request failed: ' + e.message;
+        status.style.color = '#ef4444';
+    } finally {
+        saveBtn.disabled = false;
+    }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadProjects();
+loadHealth();
+
+// Auto-open wizard when redirected here with ?setup=1 (first-run)
+if (new URLSearchParams(location.search).get('setup') === '1') {
+    openWizard();
 }
 </script>
 {% endblock %}

@@ -4,12 +4,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from auditor.config import AuditorConfig, get_db_path, init_config, load_config
+from auditor.config import AuditorConfig, DEFAULT_CONFIG_PATH, get_active_config_path, get_db_path, init_config, load_config
 from auditor.database import Database
 from auditor.web.routes import router
 
@@ -21,14 +22,43 @@ logging.basicConfig(
 logger = logging.getLogger("auditor")
 
 
-def create_app(config: AuditorConfig) -> FastAPI:
+def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI:
+    import asyncio
+    from auditor.ws_manager import manager as ws_manager
+
     app = FastAPI(title="Code Auditor", version="0.1.0")
+
+    @app.on_event("startup")
+    async def startup():
+        ws_manager.set_loop(asyncio.get_event_loop())
 
     db = Database(get_db_path(config))
     db.init_schema()
 
+    # One-time migration: if YAML config has systems and the DB has none, copy them.
+    if config.systems and not db.list_systems():
+        logger.info(
+            "Migrating %d system(s) from YAML config to database", len(config.systems)
+        )
+        db.replace_systems([
+            {
+                "name": s.name,
+                "source_dir": s.source_dir,  # "" for legacy YAML systems
+                "paths": list(s.paths),
+                "min_confidence": s.min_confidence,
+                "file_extensions": list(s.file_extensions) if s.file_extensions else None,
+                "claude_fast_mode": s.claude_fast_mode,
+            }
+            for s in config.systems
+        ])
+
     app.state.db = db
     app.state.config = config
+    app.state.config_path = str(config_path) if config_path else ""
+
+    stale = db.fail_stale_scans()
+    if stale:
+        logger.warning("Marked %d stale running scan(s) as failed on startup", stale)
 
     static_dir = Path(__file__).parent / "web" / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
@@ -36,36 +66,38 @@ def create_app(config: AuditorConfig) -> FastAPI:
 
     app.include_router(router)
 
-    # Set up scheduled scans if configured
+    # Set up scheduled scan notifications if configured
     if config.scan_schedule.incremental_interval_hours > 0:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
-            from auditor.scanner.scheduler import run_scan
+
+            def _notify_scan_due(scan_type: str = "incremental") -> None:
+                ws_manager.push_scan_due(scan_type, reason="schedule")
 
             scheduler = BackgroundScheduler()
             scheduler.add_job(
-                run_scan,
+                _notify_scan_due,
                 "interval",
                 hours=config.scan_schedule.incremental_interval_hours,
-                args=[config, db, "incremental"],
+                kwargs={"scan_type": "incremental"},
                 id="incremental_scan",
-                name="Incremental code scan",
+                name="Incremental code scan (notify)",
             )
 
             if config.scan_schedule.rotation_enabled:
                 scheduler.add_job(
-                    run_scan,
+                    _notify_scan_due,
                     "interval",
                     hours=config.scan_schedule.rotation_interval_hours,
-                    args=[config, db, "rotation"],
+                    kwargs={"scan_type": "rotation"},
                     id="rotation_scan",
-                    name="Rotation full scan",
+                    name="Rotation full scan (notify)",
                 )
 
             scheduler.start()
             app.state.scheduler = scheduler
             logger.info(
-                "Scheduled incremental scans every %d hours",
+                "Scheduled scan notifications every %d hours",
                 config.scan_schedule.incremental_interval_hours,
             )
         except Exception:
@@ -73,6 +105,13 @@ def create_app(config: AuditorConfig) -> FastAPI:
 
     @app.on_event("shutdown")
     def shutdown():
+        from auditor.scan_state import canceller
+        if not canceller.is_cancelled:
+            # Kill any active Claude subprocess and signal scan threads to stop
+            canceller.cancel()
+        stale = db.fail_stale_scans()
+        if stale:
+            logger.warning("Shutdown: marked %d running scan(s) as failed", stale)
         if hasattr(app.state, "scheduler"):
             app.state.scheduler.shutdown()
         db.close()
@@ -121,17 +160,30 @@ def run():
         return
 
     if args.command == "serve" or args.command is None:
-        config_path = getattr(args, "config", None)
+        config_path_str = getattr(args, "config", None)
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8420)
 
-        try:
-            config = load_config(Path(config_path) if config_path else None)
-        except FileNotFoundError as e:
-            print(str(e))
-            sys.exit(1)
+        if config_path_str:
+            # Explicit --config flag takes precedence
+            resolved_config_path = Path(config_path_str).expanduser()
+        else:
+            # Use the active project pointer; fall back to legacy config.yaml only if it exists
+            resolved_config_path = get_active_config_path()
+            if resolved_config_path is None and DEFAULT_CONFIG_PATH.exists():
+                resolved_config_path = DEFAULT_CONFIG_PATH
 
-        app = create_app(config)
+        if resolved_config_path is not None:
+            try:
+                config = load_config(resolved_config_path)
+            except FileNotFoundError:
+                config = AuditorConfig()
+                resolved_config_path = None
+        else:
+            # No project configured yet — start blank so the wizard can run
+            config = AuditorConfig()
+
+        app = create_app(config, config_path=resolved_config_path)
         logger.info("Starting Code Auditor on http://%s:%d", host, port)
         uvicorn.run(app, host=host, port=port, log_level="info")
         return

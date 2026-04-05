@@ -40,8 +40,7 @@ class Confidence(str, Enum):
 
 
 class FindingSource(str, Enum):
-    PROJECT = "project"
-    PLUGIN = "plugin"
+    ACTIVE = "active"
     IGNORED = "ignored"
 
 
@@ -65,6 +64,7 @@ class ScanStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class BatchStatus(str, Enum):
@@ -94,7 +94,8 @@ class Finding(BaseModel):
     reasoning: str
     test_code: Optional[str] = None
     test_description: Optional[str] = None
-    source: FindingSource = FindingSource.PROJECT
+    locations: Optional[str] = None  # JSON-encoded list of {file_path, line_start, line_end}
+    source: FindingSource = FindingSource.ACTIVE
     status: FindingStatus = FindingStatus.PENDING
     batch_id: Optional[str] = None
     fingerprint: str = ""
