@@ -91,6 +91,21 @@ ALTER TABLE systems ADD COLUMN tracking_enabled   INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE systems ADD COLUMN tracking_verbosity TEXT    NOT NULL DEFAULT 'Standard';
 ```
 
+`tracking_verbosity` is the **system verbosity** — the default logging filter applied to all files in the system when no per-file override is set.
+
+### 3a-ii. New `system_file_verbosity` table
+
+Stores per-file verbosity overrides. Each row overrides the system verbosity for one specific file.
+
+```sql
+CREATE TABLE IF NOT EXISTS system_file_verbosity (
+    system_name  TEXT NOT NULL,
+    file_path    TEXT NOT NULL,   -- repo-relative path (e.g. "Source/MyGame/Combat/AMyCharacter.h")
+    verbosity    TEXT NOT NULL,   -- Critical | Standard | Verbose | Ignore
+    PRIMARY KEY (system_name, file_path)
+);
+```
+
 ### 3b. New `nytwatch_sessions` table
 
 ```sql
@@ -133,6 +148,12 @@ Tracking active/inactive state is **not persisted**. It is held in `app.state.tr
 get_armed_systems() -> list[dict]
 set_system_tracking(name: str, enabled: bool, verbosity: str) -> None
 
+# Per-file verbosity overrides
+get_file_verbosity_overrides(system_name: str) -> list[dict]          # returns [{file_path, verbosity}, ...]
+set_file_verbosity_override(system_name: str, file_path: str, verbosity: str) -> None
+delete_file_verbosity_override(system_name: str, file_path: str) -> None
+replace_file_verbosity_overrides(system_name: str, overrides: list[dict]) -> None   # atomic replace
+
 # Sessions
 insert_session(session: dict) -> None
 get_session(session_id: str) -> Optional[dict]
@@ -154,6 +175,8 @@ Responsibility: Generate and write `NytwatchConfig.json` into the game project w
 
 Key logic:
 - Reads armed systems from the database (`tracking_enabled = 1`)
+- For each armed system, reads per-file verbosity overrides from `system_file_verbosity` table
+- Resolves repo-relative file paths to absolute paths when writing `file_overrides` into the JSON
 - Constructs the JSON payload (see Section 8a for schema)
 - **Game project root = `config.repo_path`**. Resolves each system's repo-relative `paths` to absolute paths by joining with `config.repo_path` — paths written to the config are absolute, not repo-relative
 - **Creates `<repo_path>/Saved/Nytwatch/` if it does not exist** before writing. The plugin creates this directory on first PIE run, but config_writer must also create it so the server can write `NytwatchConfig.json` before the plugin has ever run
@@ -226,6 +249,7 @@ Key logic:
 
 - Extend `_migrate()` to add the two `systems` columns if absent
 - Add `nytwatch_sessions` table to `SCHEMA_SQL`
+- Add `system_file_verbosity` table to `SCHEMA_SQL`
 - Add all new method bodies listed in Section 3c
 - Update `list_systems()`, `replace_systems()`, `upsert_system()` to include tracking fields
 
@@ -283,8 +307,9 @@ enum class ENytwatchVerbosity : uint8 { Critical, Standard, Verbose, Ignore };
 struct FNytwatchSystemConfig
 {
     FString SystemName;
-    ENytwatchVerbosity VerbosityCeiling;
-    TArray<FString> AbsolutePaths;    // absolute paths, written by Nytwatch server
+    ENytwatchVerbosity SystemVerbosity;                       // default filter for all files in system
+    TMap<FString, ENytwatchVerbosity> FileOverrides;          // keyed by absolute file path; overrides SystemVerbosity for that file
+    TArray<FString> AbsolutePaths;                            // absolute paths, written by Nytwatch server
 };
 
 struct FNytwatchConfig
@@ -322,20 +347,28 @@ Skip conditions per object:
 - Has `RF_Transient` flag and is not a registered Actor
 - Source module name is `"NytwatchAgent"` (self-exclusion)
 
-**Three-tier verbosity resolution** (most specific wins, evaluated per property per object):
+**Verbosity model** — two independent concerns:
 
-1. `UPROPERTY(meta=(NytwatchVerbosity="Ignore"))` → always skip, hard excluded
-2. `UPROPERTY(meta=(NytwatchVerbosity="Critical|Standard|Verbose"))` → compare against system ceiling
-3. `UCLASS(meta=(NytwatchVerbosity="..."))` → class-level default for all untagged properties
-4. System ceiling (from UI) as final fallback for untagged properties
+**1. Property verbosity** — what tier this property is (resolved per property, compile-time):
+- `UPROPERTY(meta=(NytwatchVerbosity="Ignore"))` → always skip, no override possible
+- `UPROPERTY(meta=(NytwatchVerbosity="Critical|Standard|Verbose"))` → explicit tier
+- No `UPROPERTY` tag → inherits from `UCLASS(meta=(NytwatchVerbosity="..."))` on the class
+- No `UCLASS` tag either → defaults to `Standard`
 
-Ceiling stacking (additive upward):
-- `Critical` → Critical only
-- `Standard` → Critical + Standard
-- `Verbose` → Critical + Standard + Verbose
-- `Ignore` → never tracked regardless of ceiling level
+**2. File filter** — what tier threshold must be met to log from this file (runtime, set in UI):
+- Per-file override (from `NytwatchConfig.json` `file_overrides`) → filter for this file
+- No per-file override → system verbosity (the value set when arming the system)
 
-UI ceiling is a **hard cap**: if a system is set to `Critical` in the dashboard, `Verbose`-tagged properties are silently skipped even if they explicitly requested to be tracked.
+The UI per-file override **replaces the `UCLASS` metadata tag** as the effective default for untagged properties in that file. `UPROPERTY` tags are always respected as-is.
+
+**Logging decision per property:**
+- `Ignore` tier → never log (bypasses filter entirely)
+- All other tiers: log if property tier ≤ filter threshold
+
+Filter stacking (what logs at each filter level):
+- `Critical` filter → Critical only
+- `Standard` filter → Critical + Standard
+- `Verbose` filter → Critical + Standard + Verbose
 
 Usage in game code:
 ```cpp
@@ -343,18 +376,20 @@ UCLASS(meta=(NytwatchVerbosity="Standard"))
 class APlayerCharacter : public ACharacter
 {
     UPROPERTY(meta=(NytwatchVerbosity="Critical"))
-    float CurrentHealth;          // promoted above class default
+    float CurrentHealth;          // always Critical — UI filter still applies
 
     UPROPERTY()
-    FVector CurrentVelocity;      // inherits Standard from class
+    FVector CurrentVelocity;      // Standard from UCLASS; logged unless filter=Critical
 
     UPROPERTY(meta=(NytwatchVerbosity="Verbose"))
-    float AccelerationDelta;      // only tracked at Verbose ceiling
+    float AccelerationDelta;      // only logged when filter=Verbose
 
     UPROPERTY(meta=(NytwatchVerbosity="Ignore"))
-    float CachedFrameDelta;       // never tracked
+    float CachedFrameDelta;       // never logged, period
 };
 ```
+
+If the UI sets `APlayerCharacter.h` → `Critical` override: `CurrentVelocity` (untagged, would inherit Standard from UCLASS) is now filtered by `Critical` → skipped. `CurrentHealth` (tagged Critical) still logs.
 
 API:
 - `void SnapshotObject(UObject* Obj, const FNytwatchSystemConfig& System)` — initial snapshot, no events emitted
@@ -429,6 +464,8 @@ Responsibility: `IModuleInterface` implementation. Minimal — subsystem handles
 | `GET` | `/api/sessions/{id}/content` | Returns raw markdown text of the session file (for inline preview) |
 | `GET` | `/api/nytwatch/arm` | Returns current arm config: systems with tracking fields, `tick_interval_seconds`, `object_scan_cap` |
 | `POST` | `/api/nytwatch/arm` | Body: `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds": 0.1, "object_scan_cap": 2000}`. Persists to DB config table and rewrites `NytwatchConfig.json` |
+| `GET` | `/api/nytwatch/systems/{name}/files` | Lists all `.h` files discovered under the system's paths (scanned from disk). Returns `[{file_path, verbosity_override_or_null}, ...]` |
+| `POST` | `/api/nytwatch/systems/{name}/files/verbosity` | Body: `{"overrides": [{"file_path": "...", "verbosity": "Critical|Standard|Verbose|Ignore"}, ...]}`. Replaces all per-file overrides for the system atomically. Rewrites `NytwatchConfig.json`. |
 | `POST` | `/api/nytwatch/tracking/start` | Enables tracking: sets `app.state.tracking_active = True`, rewrites `NytwatchConfig.json` with `"status": "On"` |
 | `POST` | `/api/nytwatch/tracking/stop` | Disables tracking: sets `app.state.tracking_active = False`, rewrites `NytwatchConfig.json` with `"status": "Off"` |
 
@@ -510,12 +547,21 @@ Persistent banner element always present in DOM, hidden by default. Three mutual
 
 **Per-system tracking** (added to each system row, collapsed by default, expandable):
 - Toggle switch: "Arm for Tracking" — enables this system for tracking when Start is active
-- When armed: reveals verbosity selector (Critical / Standard / Verbose; default Standard)
+- When armed: reveals verbosity selector (Critical / Standard / Verbose; default Standard) — this is the **system verbosity**, the default filter for all files in the system
+- When armed: reveals "Configure file verbosity →" link that navigates to the per-file verbosity page for this system
 - Tick interval field (shared across all systems): number input in seconds
 - Object scan cap field (shared across all systems): number input, default 2000
 - Saved via `POST /api/nytwatch/arm`
 - System name shows small "Armed" badge when `tracking_enabled = 1`
 - Systems whose paths resolve entirely inside `Plugins/NytwatchAgent/` are rendered greyed-out with tooltip: "This is the NytwatchAgent plugin itself and cannot be tracked."
+
+**Per-file verbosity page** (`/settings/tracking/{system_name}/files`):
+- Lists all `.h` files discovered under the system's paths (fetched from `GET /api/nytwatch/systems/{name}/files`)
+- Each row: file path (repo-relative), verbosity selector (inherits system default if no override set)
+- Files with an override show the override value; files without show the system verbosity as a greyed placeholder
+- "Clear" button per row to remove the override (revert to system default)
+- "Save" button persists all changes via `POST /api/nytwatch/systems/{name}/files/verbosity`
+- Rewrites `NytwatchConfig.json` on save
 
 ### 7e. Dashboard changes (`dashboard.html`)
 
@@ -541,14 +587,19 @@ Location: `<GameProject>/Saved/Nytwatch/NytwatchConfig.json`
   "armed_systems": [
     {
       "name": "Combat",
-      "verbosity_ceiling": "Standard",
+      "system_verbosity": "Standard",
+      "file_overrides": {
+        "C:/Projects/DragonRacer/Source/DragonRacer/Combat/AWeapon.h": "Ignore",
+        "C:/Projects/DragonRacer/Source/DragonRacer/Combat/APlayerCharacter.h": "Critical"
+      },
       "paths": [
         "C:/Projects/DragonRacer/Source/DragonRacer/Combat/"
       ]
     },
     {
       "name": "AI",
-      "verbosity_ceiling": "Critical",
+      "system_verbosity": "Critical",
+      "file_overrides": {},
       "paths": [
         "C:/Projects/DragonRacer/Source/DragonRacer/AI/"
       ]
@@ -562,7 +613,8 @@ Location: `<GameProject>/Saved/Nytwatch/NytwatchConfig.json`
 Schema rules:
 - `version`: Semver string matching the plugin's `VERSION` file. Plugin logs warning on minor mismatch; shows `FNotificationManager` popup and refuses to track on major mismatch.
 - `status`: `"On"` or `"Off"`. Plugin checks this first — if `"Off"`, no tracking occurs regardless of `armed_systems`. Written as `"Off"` when the user stops tracking, `"On"` when started.
-- `verbosity_ceiling`: One of `"Critical"`, `"Standard"`, `"Verbose"`. Acts as a hard UI ceiling.
+- `system_verbosity`: One of `"Critical"`, `"Standard"`, `"Verbose"`. Default logging filter for all files in the system when no per-file override is set.
+- `file_overrides`: Object keyed by **absolute file path**. Each entry overrides `system_verbosity` for that specific file. `"Ignore"` prevents any logging from that file. Empty object `{}` means no overrides. The Nytwatch server resolves repo-relative paths to absolute paths before writing.
 - `paths`: **Absolute filesystem paths** (not repo-relative). Nytwatch server resolves these by joining `config.repo_path` (the game project root) with each system's repo-relative paths before writing.
 - `object_scan_cap`: Max UObjects inspected per tick cycle. Persisted in DB config table as `tracking_scan_cap`. Plugin prioritises previously-seen objects when truncating.
 - `tick_interval_seconds`: Polling frequency. Persisted in DB config table as `tracking_tick_interval`. Configurable from Nytwatch Settings UI.

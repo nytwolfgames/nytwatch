@@ -1742,8 +1742,12 @@ async def api_stats(request: Request):
     return JSONResponse(db.get_stats())
 
 
+_WS_PING_INTERVAL = 25  # seconds between server-side heartbeat pings
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    import asyncio
     from nytwatch.ws_manager import manager as ws_manager
     from nytwatch.scan_state import canceller
 
@@ -1757,8 +1761,14 @@ async def websocket_endpoint(websocket: WebSocket):
             "scan": running,
             "cancelling": canceller.is_cancelled,
         }))
+        _ping = json.dumps({"type": "ping"})
         while True:
-            await websocket.receive_text()
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=_WS_PING_INTERVAL)
+            except asyncio.TimeoutError:
+                # No message from client — send a keepalive ping so the
+                # connection is not dropped by OS/browser idle timeouts.
+                await websocket.send_text(_ping)
     except WebSocketDisconnect:
         pass
     except Exception:
