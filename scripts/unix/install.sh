@@ -1,25 +1,20 @@
 #!/usr/bin/env bash
-# Nytwatch — Unix Installer (macOS / Linux)
-# Installs the nytwatch package, adds the CLI to PATH via shell profile,
-# and creates the config directory. No sudo required.
+# Nytwatch - Unix Installer (macOS / Linux)
+# Clean install of nytwatch. No knowledge of legacy code-auditor.
+# No sudo required.
 
 set -euo pipefail
 
 PACKAGE_NAME="nytwatch"
-LEGACY_NAME="code-auditor"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=11
 CONFIG_DIR="$HOME/.nytwatch"
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 step()  { printf "\n\033[36m>> %s\033[0m\n" "$*"; }
-ok()    { printf "   \033[32mOK\033[0m  %s\n" "$*"; }
+ok()    { printf "   \033[32mOK\033[0m   %s\n" "$*"; }
 warn()  { printf "   \033[33mWARN\033[0m %s\n" "$*"; }
 fail()  { printf "\n   \033[31mERROR\033[0m %s\n" "$*"; exit 1; }
 
-# Detect the shell profile file to update
 detect_profile() {
     if [ -n "${ZSH_VERSION:-}" ] || [ "$(basename "${SHELL:-}")" = "zsh" ]; then
         echo "$HOME/.zshrc"
@@ -47,23 +42,16 @@ for candidate in python3 python; do
     fi
 done
 
-if [ -z "$PYTHON_BIN" ]; then
-    fail "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ not found. Install it and re-run this script."
-fi
+[ -n "$PYTHON_BIN" ] || fail "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ not found. Install it and re-run this script."
 
 # ---------------------------------------------------------------------------
-# 2. Check for existing installations
+# 2. Check for existing nytwatch installation
 # ---------------------------------------------------------------------------
-step "Checking for existing installations..."
+step "Checking for existing installation..."
 
-if command -v "$LEGACY_NAME" &>/dev/null; then
-    fail "Found an existing '$LEGACY_NAME' installation at: $(command -v $LEGACY_NAME)
-   Run 'scripts/unix/uninstall.sh' first to remove it before installing Nytwatch."
-fi
-
-if command -v "$PACKAGE_NAME" &>/dev/null; then
-    existing_ver=$("$PYTHON_BIN" -m pip show "$PACKAGE_NAME" 2>/dev/null | grep "^Version:" | sed 's/Version: *//')
-    warn "Nytwatch $existing_ver is already installed — upgrading if needed."
+existing_ver=$("$PYTHON_BIN" -m pip show "$PACKAGE_NAME" 2>/dev/null | grep "^Version:" | sed 's/Version: *//' || true)
+if [ -n "$existing_ver" ]; then
+    warn "Nytwatch $existing_ver already installed - upgrading if needed."
 fi
 
 # ---------------------------------------------------------------------------
@@ -100,16 +88,14 @@ EXPORT_LINE="export PATH=\"$BIN_DIR:\$PATH\""
 
 if echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
     ok "Already in PATH: $BIN_DIR"
-elif grep -qF "$EXPORT_LINE" "$PROFILE" 2>/dev/null; then
+elif grep -qF "$BIN_DIR" "$PROFILE" 2>/dev/null; then
     ok "Already in profile: $PROFILE"
 else
     echo "" >> "$PROFILE"
     echo "# Added by Nytwatch installer" >> "$PROFILE"
     echo "$EXPORT_LINE" >> "$PROFILE"
-    ok "Added to $PROFILE"
-    # Source now so it's available in this session
     export PATH="$BIN_DIR:$PATH"
-    ok "PATH updated for current session."
+    ok "Added to $PROFILE (active in current session)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -127,10 +113,10 @@ fi
 # ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
-INSTALLED_VERSION=$("$PYTHON_BIN" -m pip show "$PACKAGE_NAME" 2>/dev/null | grep "^Version:" | sed 's/Version: *//')
+installed_ver=$("$PYTHON_BIN" -m pip show "$PACKAGE_NAME" 2>/dev/null | grep "^Version:" | sed 's/Version: *//')
 
 printf "\n\033[32mNytwatch installed successfully.\033[0m\n\n"
-printf "   Version  : %s\n" "$INSTALLED_VERSION"
+printf "   Version  : %s\n" "$installed_ver"
 printf "   Config   : %s\n" "$CONFIG_DIR"
 printf "   Command  : nytwatch\n\n"
 printf "   Run 'nytwatch --help' to get started.\n\n"
