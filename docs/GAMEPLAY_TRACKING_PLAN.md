@@ -778,9 +778,14 @@ Step 3 — Run the installer
 
 Step 4 — Migrate existing data (if needed)
   nytwatch migrate --from ~/.code-auditor/
-  # copies the SQLite database and config into ~/.nytwatch/
+  # copies the SQLite database and config.yaml into ~/.nytwatch/
   # on success, automatically deletes ~/.code-auditor/
   # (migration command is a Phase 2 addition)
+
+  Schema evolution note: the copied database will have the old schema
+  (no tracking columns, no nytwatch_sessions table). The normal _migrate()
+  handler runs automatically on the first `nytwatch serve` and brings the
+  schema up to date. No manual schema steps needed.
 
 Step 5 — Run the uninstaller (if not already done in Step 1)
   .\scripts\windows\uninstall.ps1   # Windows
@@ -846,7 +851,7 @@ Two types of changes apply across all documents:
   - What a session log looks like and how to use it with Claude
 - New **Sessions** section under Dashboard pages: how to browse, rename, bookmark, and delete sessions
 - New **Migration** section: step-by-step guide for users moving from code-auditor using `uninstall.ps1` + `install.ps1` + `nytwatch migrate`
-- Updated **CLI Reference** table: add `nytwatch install-plugin` / `nw install-plugin` command; document `nw` as the short alias for all commands
+- Updated **CLI Reference** table: add `nytwatch install-plugin` command
 
 ---
 
