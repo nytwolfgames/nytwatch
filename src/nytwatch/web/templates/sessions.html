@@ -290,7 +290,7 @@
                 <td style="text-align:right;">
                     {% if not is_plugin %}
                     <button class="btn btn-sm scan-safe"
-                            onclick="openVerbosityDrawer('{{ s.name | e }}', document.getElementById('verb-{{ s.name | e }}').value)">
+                            onclick="openVerbosityDrawer('{{ s.name | e }}', document.getElementById('verb-{{ s.name | e }}').value, '{{ (group.source_dir or '') | e }}')">
                         Configure →
                     </button>
                     {% endif %}
@@ -337,6 +337,7 @@
             <thead>
                 <tr style="border-bottom:1px solid var(--outline-variant);background:var(--surface-raised);position:sticky;top:0;z-index:1;">
                     <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:600;color:var(--on-surface-variant);">File</th>
+                    <th style="text-align:center;padding:8px 12px;font-size:11px;font-weight:600;color:var(--on-surface-variant);width:56px;">Track</th>
                     <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:var(--on-surface-variant);width:155px;">Verbosity</th>
                     <th style="width:52px;"></th>
                 </tr>
@@ -723,9 +724,9 @@ function saveTrackingConfig() {
 
 async function _doSaveTracking() {
     const systems = [];
-    document.querySelectorAll('#tracking-systems-list .tracking-system-item').forEach(item => {
-        const cb  = item.querySelector('input[type=checkbox]');
-        const sel = item.querySelector('select');
+    document.querySelectorAll('#tracking-systems-list .ts-row').forEach(row => {
+        const cb  = row.querySelector('input[type=checkbox][id^="arm-"]');
+        const sel = row.querySelector('select[id^="verb-"]');
         if (!cb) return;
         const name = cb.id.replace(/^arm-/, '');
         systems.push({ name, tracking_enabled: cb.checked, tracking_verbosity: sel ? sel.value : 'Standard' });
@@ -772,12 +773,13 @@ async function toggleTracking() {
 }
 
 // ── File verbosity drawer ─────────────────────────────────────────────────────
-let _vdSystem = null;
-let _vdDefault = 'Standard';
-
-async function openVerbosityDrawer(systemName, defaultVerbosity) {
-    _vdSystem  = systemName;
-    _vdDefault = defaultVerbosity || 'Standard';
+let _vdSystem    = null;
+let _vdDefault   = 'Standard';
+let _vdSourceDir = '';
+async function openVerbosityDrawer(systemName, defaultVerbosity, sourceDir) {
+    _vdSystem    = systemName;
+    _vdDefault   = defaultVerbosity || 'Standard';
+    _vdSourceDir = (sourceDir || '').replace(/\\/g, '/').replace(/\/?$/, '/');
 
     document.getElementById('vd-title').textContent = `File Verbosity — ${systemName}`;
     document.getElementById('vd-filter').value = '';
@@ -816,19 +818,35 @@ function vdRender(files) {
 
     const LEVELS = ['Critical', 'Standard', 'Verbose', 'Ignore'];
     tbody.innerHTML = files.map(f => {
-        const ov = f.verbosity_override || '';
-        const hasOv = !!ov;
-        const opts = LEVELS.map(l =>
-            `<option value="${l}"${ov === l ? ' selected' : ''}>${l}</option>`
+        const ov      = f.verbosity_override || '';
+        const ignored = ov === 'Ignore';
+        const hasOv   = !!ov;
+        // Strip source-dir prefix for display; keep full path in data-path for API
+        let displayPath = f.file_path;
+        if (_vdSourceDir && f.file_path.startsWith(_vdSourceDir)) {
+            displayPath = f.file_path.slice(_vdSourceDir.length);
+        }
+        const opts = LEVELS.filter(l => l !== 'Ignore').map(l =>
+            `<option value="${l}"${(!ignored && ov === l) ? ' selected' : ''}>${l}</option>`
         ).join('');
         return `<tr class="vd-row${hasOv ? ' has-override' : ''}" data-path="${f.file_path}"
-                    style="border-bottom:1px solid var(--outline-variant);">
+                    data-prev-verbosity="${ignored ? '' : ov}"
+                    data-original-verbosity="${ov}"
+                    style="border-bottom:1px solid var(--outline-variant);${ignored ? 'opacity:0.55;' : ''}">
             <td style="padding:7px 16px;">
                 <span class="mono" style="font-size:0.75rem;word-break:break-all;"
-                      title="${f.file_path}">${f.file_path}</span>
+                      title="${f.file_path}">${displayPath}</span>
+            </td>
+            <td style="padding:6px 8px;text-align:center;">
+                <label class="arm-toggle" style="vertical-align:middle;">
+                    <input type="checkbox" class="vd-track-toggle"
+                           ${!ignored ? 'checked' : ''}
+                           onchange="vdToggleTrack(this)">
+                    <span class="arm-slider"></span>
+                </label>
             </td>
             <td style="padding:6px 8px;">
-                <select class="input vd-select" style="width:180px;font-size:0.8rem;"
+                <select class="input vd-select" style="width:155px;font-size:0.8rem;"
                         onchange="vdMarkDirty(this)">
                     <option value=""${!ov ? ' selected' : ''} style="color:var(--on-surface-variant);">— default (${_vdDefault}) —</option>
                     ${opts}
@@ -845,6 +863,25 @@ function vdRender(files) {
     table.style.display = '';
 }
 
+function vdToggleTrack(cb) {
+    const row = cb.closest('tr');
+    const sel = row.querySelector('.vd-select');
+    if (!cb.checked) {
+        // Turning off — record current verbosity, dim row
+        row.dataset.prevVerbosity = sel.value;
+        row.style.opacity = '0.55';
+        row.classList.add('has-override');
+        row.querySelector('.vd-clear-btn').style.visibility = 'visible';
+    } else {
+        // Turning on — restore previous verbosity, undim row
+        sel.value = row.dataset.prevVerbosity || '';
+        row.style.opacity = '';
+        const hasOv = sel.value !== '';
+        row.classList.toggle('has-override', hasOv);
+        row.querySelector('.vd-clear-btn').style.visibility = hasOv ? 'visible' : 'hidden';
+    }
+}
+
 function vdMarkDirty(sel) {
     const row = sel.closest('tr');
     const hasOv = sel.value !== '';
@@ -853,16 +890,22 @@ function vdMarkDirty(sel) {
 }
 
 function vdClearRow(btn) {
-    const row = btn.closest('tr');
+    const row    = btn.closest('tr');
+    const toggle = row.querySelector('.vd-track-toggle');
     row.querySelector('.vd-select').value = '';
+    if (toggle && !toggle.disabled) toggle.checked = true;
     row.classList.remove('has-override');
+    row.style.opacity = '';
     btn.style.visibility = 'hidden';
 }
 
 function vdClearAll() {
-    document.querySelectorAll('.vd-select').forEach(s => { s.value = ''; });
     document.querySelectorAll('.vd-row').forEach(r => {
+        const toggle = r.querySelector('.vd-track-toggle');
+        r.querySelector('.vd-select').value = '';
+        if (toggle && !toggle.disabled) toggle.checked = true;
         r.classList.remove('has-override');
+        r.style.opacity = '';
         r.querySelector('.vd-clear-btn').style.visibility = 'hidden';
     });
 }
@@ -871,8 +914,10 @@ function vdFilter(text) {
     const overridesOnly = document.getElementById('vd-overrides-only').checked;
     const q = text.toLowerCase();
     document.querySelectorAll('.vd-row').forEach(row => {
+        const toggle  = row.querySelector('.vd-track-toggle');
+        const ignored = toggle && !toggle.checked;
         const match = (!q || row.dataset.path.toLowerCase().includes(q))
-                   && (!overridesOnly || row.classList.contains('has-override'));
+                   && (!overridesOnly || row.classList.contains('has-override') || ignored);
         row.style.display = match ? '' : 'none';
     });
 }
@@ -884,10 +929,18 @@ async function vdSave() {
     status.textContent = 'Saving…';
     status.style.color = 'var(--on-surface-variant)';
 
+    // Only send rows whose effective verbosity changed from what was loaded from DB.
+    // This prevents accidental deletion of valid overrides for untouched rows.
     const overrides = [];
     document.querySelectorAll('.vd-row').forEach(row => {
-        const val = row.querySelector('.vd-select').value;
-        if (val) overrides.push({ file_path: row.dataset.path, verbosity: val });
+        const toggle   = row.querySelector('.vd-track-toggle');
+        const current  = (toggle && !toggle.checked)
+            ? 'Ignore'
+            : (row.querySelector('.vd-select').value || '');
+        const original = row.dataset.originalVerbosity ?? '';
+        if (current !== original) {
+            overrides.push({ file_path: row.dataset.path, verbosity: current });
+        }
     });
 
     try {
@@ -898,7 +951,16 @@ async function vdSave() {
         });
         const d = await r.json();
         if (d.ok) {
-            status.textContent = `✓ Saved ${overrides.length} override${overrides.length !== 1 ? 's' : ''}`;
+            // Update original-verbosity so further edits in the same drawer session track cleanly
+            document.querySelectorAll('.vd-row').forEach(row => {
+                const toggle  = row.querySelector('.vd-track-toggle');
+                const current = (toggle && !toggle.checked)
+                    ? 'Ignore'
+                    : (row.querySelector('.vd-select').value || '');
+                row.dataset.originalVerbosity = current;
+            });
+            const n = overrides.length;
+            status.textContent = n ? `✓ Saved ${n} change${n !== 1 ? 's' : ''}` : '✓ No changes';
             status.style.color = 'var(--status-verified-fg)';
             setTimeout(() => { status.textContent = ''; }, 2500);
         } else {

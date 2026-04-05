@@ -1994,13 +1994,25 @@ async def api_set_file_verbosity(request: Request, system_name: str):
     overrides = body.get("overrides", [])
     valid_verbosities = {"Critical", "Standard", "Verbose", "Ignore"}
     for o in overrides:
-        if o.get("verbosity") not in valid_verbosities:
+        v = o.get("verbosity") or ""
+        if v and v not in valid_verbosities:
             return JSONResponse(
-                {"error": f"Invalid verbosity: {o.get('verbosity')}"},
+                {"error": f"Invalid verbosity: {v}"},
                 status_code=400,
             )
 
-    db.replace_file_verbosity_overrides(system_name, overrides)
+    # Merge: upsert entries with a verbosity, delete entries with empty verbosity.
+    # Files not present in the request are left untouched so that system-verbosity
+    # changes never silently wipe overrides that the drawer didn't render.
+    for o in overrides:
+        fp = o.get("file_path", "").strip()
+        v  = (o.get("verbosity") or "").strip()
+        if not fp:
+            continue
+        if v:
+            db.set_file_verbosity_override(system_name, fp, v)
+        else:
+            db.delete_file_verbosity_override(system_name, fp)
 
     from nytwatch.tracking.config_writer import write_config
     tracking_active = getattr(request.app.state, "tracking_active", False)

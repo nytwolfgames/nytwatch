@@ -148,9 +148,7 @@ async function saveAll() {
     const overrides = [];
     document.querySelectorAll('.file-row').forEach(row => {
         const sel = row.querySelector('.verbosity-select');
-        if (sel.value) {
-            overrides.push({ file_path: row.dataset.path, verbosity: sel.value });
-        }
+        overrides.push({ file_path: row.dataset.path, verbosity: sel.value || '' });
     });
 
     try {
