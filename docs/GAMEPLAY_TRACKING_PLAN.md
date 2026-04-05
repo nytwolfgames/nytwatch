@@ -1065,6 +1065,9 @@ Everything needed to go from zero to a working, logged session.
 | Q8 | Version mismatch notification | Minor mismatch: Output Log warning only. Major mismatch: `FNotificationManager` in-editor popup + tracking disabled. |
 | Q9 | Session deleted from disk | DB record removed unconditionally regardless of bookmark status. No orphaned records. |
 | Q10 | Metadata key name | `NytwatchVerbosity` — applied to both `UCLASS` and `UPROPERTY` metadata tags throughout the plugin and all game code annotations. |
+| Q11 | CLI short alias | No short alias. `nytwatch` is the only entrypoint. (`nw` was considered but conflicts with PowerShell's built-in `New-Object` alias on Windows.) |
+| Q12 | Migration schema evolution | `nytwatch migrate` copies the DB as-is. The normal `_migrate()` startup handler evolves the schema on first `nytwatch serve`. No manual steps needed. |
+| Q13 | Server port | Stays at 8420. No change. |
 
 ---
 
