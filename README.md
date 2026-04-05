@@ -283,6 +283,7 @@ The database has five main tables:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `project_name` | string | `""` | Human-readable project name. Shown in the project switcher dropdown. Defaults to repo folder name if not set. |
 | `repo_path` | string | `""` | Path to the game repository |
 | `build.ue_installation_dir` | string | `""` | UE install root — editor cmd derived from this |
 | `build.ue_editor_cmd` | string | `""` | Explicit path to UnrealEditor-Cmd (overrides `ue_installation_dir`) |

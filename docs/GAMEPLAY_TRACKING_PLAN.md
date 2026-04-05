@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS nytwatch_sessions (
     bookmarked      INTEGER NOT NULL DEFAULT 0,
     plugin_version  TEXT NOT NULL DEFAULT '',
     ue_project_name TEXT NOT NULL DEFAULT '',
-    systems_tracked TEXT NOT NULL DEFAULT '[]',   -- JSON array of system names
+    systems_tracked TEXT NOT NULL DEFAULT '[]',   -- JSON array of system names e.g. ["Combat","AI"]
     event_count     INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL            -- when Nytwatch first imported this session
 );
@@ -114,6 +114,17 @@ CREATE INDEX IF NOT EXISTS idx_nytwatch_sessions_project    ON nytwatch_sessions
 CREATE INDEX IF NOT EXISTS idx_nytwatch_sessions_bookmarked ON nytwatch_sessions(bookmarked);
 CREATE INDEX IF NOT EXISTS idx_nytwatch_sessions_started    ON nytwatch_sessions(started_at DESC);
 ```
+
+### 3b-ii. DB `config` table entries for tracking
+
+Two new key-value entries are stored in the existing `config` table (no schema change needed):
+
+| Key | Default | Description |
+|---|---|---|
+| `tracking_tick_interval` | `"0.1"` | Tick interval in seconds. Written by `POST /api/nytwatch/arm`. Read by `config_writer.py` when generating `NytwatchConfig.json`. |
+| `tracking_scan_cap` | `"2000"` | Max UObjects per tick cycle. Same lifecycle as above. |
+
+Tracking active/inactive state is **not persisted**. It is held in `app.state.tracking_active` (bool, default `False`). Server restart always resets tracking to off — the user explicitly starts it.
 
 ### 3c. New database methods (added to `Database` class)
 
@@ -144,9 +155,12 @@ Responsibility: Generate and write `NytwatchConfig.json` into the game project w
 Key logic:
 - Reads armed systems from the database (`tracking_enabled = 1`)
 - Constructs the JSON payload (see Section 8a for schema)
-- Resolves system `paths` to absolute paths using the registered game project root — paths in the config are absolute, not repo-relative
-- Writes atomically: write to `.tmp` then rename so the plugin never reads a partial file
-- Called from the API handler whenever `POST /api/nytwatch/arm` is saved
+- **Game project root = `config.repo_path`**. Resolves each system's repo-relative `paths` to absolute paths by joining with `config.repo_path` — paths written to the config are absolute, not repo-relative
+- **Creates `<repo_path>/Saved/Nytwatch/` if it does not exist** before writing. The plugin creates this directory on first PIE run, but config_writer must also create it so the server can write `NytwatchConfig.json` before the plugin has ever run
+- Writes atomically: write to `NytwatchConfig.json.tmp` then rename so the plugin never reads a partial file
+- Also writes the current `tracking_tick_interval` and `tracking_scan_cap` values from the DB config table
+- Also writes `"status": "On"` or `"status": "Off"` reflecting `app.state.tracking_active`
+- Called from: `POST /api/nytwatch/arm` (saves config), `POST /api/nytwatch/tracking/start` (sets On), `POST /api/nytwatch/tracking/stop` (sets Off)
 - Filters out any path resolving to inside `Plugins/NytwatchAgent/` (auto-exclusion)
 
 ### 4b. `src/nytwatch/tracking/session_parser.py`
@@ -166,8 +180,8 @@ Responsibility: Thin wrapper around `nytwatch_sessions` DB methods, coordinating
 
 Key logic:
 - `import_session_file(file_path, project_dir, db)` — parse then upsert; idempotent via `session_exists_for_file()`
-- `rename_session(session_id, new_name, db)` — updates `display_name` in DB and renames the `.md` file on disk; handles name collision with `_2` suffix
-- `delete_session(session_id, db)` — deletes the `.md` file then removes DB row; if file is already gone, removes DB row anyway
+- `rename_session(session_id, new_name, db)` — **DB-only**: updates `display_name` in the `nytwatch_sessions` table. The `.md` file is always named `<session_id>.md` and is never renamed. No collision handling needed.
+- `delete_session(session_id, db)` — deletes the `.md` file then removes DB row; if file is already gone, removes DB row anyway. **Raises an error if the session is bookmarked** — callers must check before deleting.
 - `bookmark_session(session_id, bookmarked, db)` — DB update only
 
 ### 4d. `src/nytwatch/tracking/watcher.py`
@@ -176,15 +190,17 @@ Responsibility: Watchdog-based filesystem observer monitoring `Saved/Nytwatch/` 
 
 Key logic:
 - Instantiated once at app startup (in `create_app()`), started in a daemon thread
+- **Watches the active project only** — not all registered projects simultaneously
 - Uses `watchdog.observers.Observer` with a custom `FileSystemEventHandler` subclass
 - On `nytwatch.lock` created: broadcast `{"type": "pie_state", "running": true, ...}` via `ws_manager`
 - On `nytwatch.lock` deleted: broadcast `{"type": "pie_state", "running": false, ...}`, schedule session import after 1-second debounce
 - On new `.md` file in `Sessions/`: call `session_store.import_session_file()`, broadcast `{"type": "session_imported", ...}`
 - On `.md` file deleted externally: remove DB row regardless of bookmark status, broadcast `{"type": "session_deleted", ...}`
+- **Stale lock on server restart**: if `nytwatch.lock` already exists when the watcher starts, it is **ignored** — PIE state is initialised to `running: false`. The lock from a previous session is treated as stale.
 - PIE state held in a module-level dict keyed by `project_dir`
-- `add_watch(project_dir)` — registers a new watch path; only called if `Saved/Nytwatch/` already exists in the project (created by the plugin on first PIE run). If the directory does not yet exist, the watcher polls for its creation at startup and registers dynamically once it appears
+- `add_watch(project_dir)` — registers a watch on `<project_dir>/Saved/Nytwatch/`. Since `config_writer.py` now creates this directory if absent, the watch can be registered immediately without polling
 - `remove_watch(project_dir)` — unregisters; called when switching away from a project
-- Project switch hook: the existing `/settings/switch-project` endpoint must call `watcher.remove_watch(old_dir)` and `watcher.add_watch(new_dir)` if the new project has NytwatchAgent installed
+- Project switch hook: the existing `/api/projects/switch` endpoint calls `watcher.remove_watch(old_dir)` and `watcher.add_watch(new_dir)`
 
 ### 4e. `src/nytwatch/tracking/plugin_installer.py`
 
@@ -199,10 +215,10 @@ Key logic:
 
 ### 4f. `src/nytwatch/main.py` changes
 
-- Rename CLI entrypoint from `code-auditor` to `nytwatch` in `pyproject.toml`
 - Add `install-plugin` subcommand: `nytwatch install-plugin --project /path [--force]`
-- Add watcher startup in `create_app()` startup handler
+- Add watcher startup in `create_app()` startup handler — watches `config.repo_path` if configured
 - Add watcher shutdown in the shutdown handler
+- Initialise `app.state.tracking_active = False` in `create_app()`
 
 ### 4g. `src/nytwatch/database.py` changes
 
@@ -404,15 +420,17 @@ Responsibility: `IModuleInterface` implementation. Minimal — subsystem handles
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/nytwatch/pie-state` | Current PIE state for all watched projects |
-| `GET` | `/api/sessions` | List sessions. Query params: `project_dir`, `bookmarked_only`, `q`, `limit` |
+| `GET` | `/api/nytwatch/pie-state` | PIE state for the active project |
+| `GET` | `/api/sessions` | List sessions. Query params: `bookmarked_only`, `q`, `limit` |
 | `GET` | `/api/sessions/{id}` | Single session detail |
-| `POST` | `/api/sessions/{id}/rename` | Body: `{"display_name": "..."}`. Renames DB record and file on disk |
+| `POST` | `/api/sessions/{id}/rename` | Body: `{"display_name": "..."}`. Updates `display_name` in DB only — file is never renamed (always `<session_id>.md`) |
 | `POST` | `/api/sessions/{id}/bookmark` | Body: `{"bookmarked": true/false}` |
-| `DELETE` | `/api/sessions/{id}` | Deletes DB record and `.md` file. Returns error if bookmarked |
+| `DELETE` | `/api/sessions/{id}` | Deletes DB record and `.md` file. Returns **400** if session is bookmarked |
 | `GET` | `/api/sessions/{id}/content` | Returns raw markdown text of the session file (for inline preview) |
-| `GET` | `/api/nytwatch/arm` | Returns current tracking config for all systems |
-| `POST` | `/api/nytwatch/arm` | Body: `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds": 0.1, "object_scan_cap": 2000}`. Saves to DB and writes `NytwatchConfig.json` |
+| `GET` | `/api/nytwatch/arm` | Returns current arm config: systems with tracking fields, `tick_interval_seconds`, `object_scan_cap` |
+| `POST` | `/api/nytwatch/arm` | Body: `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds": 0.1, "object_scan_cap": 2000}`. Persists to DB config table and rewrites `NytwatchConfig.json` |
+| `POST` | `/api/nytwatch/tracking/start` | Enables tracking: sets `app.state.tracking_active = True`, rewrites `NytwatchConfig.json` with `"status": "On"` |
+| `POST` | `/api/nytwatch/tracking/stop` | Disables tracking: sets `app.state.tracking_active = False`, rewrites `NytwatchConfig.json` with `"status": "Off"` |
 
 ### Modified endpoints
 
@@ -421,7 +439,7 @@ Responsibility: `IModuleInterface` implementation. Minimal — subsystem handles
 | `GET` | `/api/systems` | Include `tracking_enabled` and `tracking_verbosity` in response |
 | `POST` | `/api/systems` | Persist `tracking_enabled` and `tracking_verbosity` |
 | `GET` | `/` (dashboard) | Pass `pie_state` to template context |
-| `POST` | `/settings/switch-project` | After switch, call `watcher.remove_watch(old)` / `watcher.add_watch(new)` if NytwatchAgent is installed in new project |
+| `POST` | `/api/projects/switch` | After switch, call `watcher.remove_watch(old)` / `watcher.add_watch(new)`. Reset `app.state.tracking_active = False`. |
 
 ### WebSocket new message types
 
@@ -482,18 +500,21 @@ Persistent banner element always present in DOM, hidden by default. Three mutual
 - Timeline density strip: 1D strip divided into equal time buckets coloured by event density (light → dark)
 - Log access: "Open File" button (opens containing folder), "Copy Path" button, "Preview" toggle
 - Inline preview: scrollable `<pre>` with raw markdown fetched from `/api/sessions/{id}/content`
-- Inline rename: click display name to edit, confirm with Enter or blur; calls `/api/sessions/{id}/rename`
-- Delete button: confirmation modal explicitly mentioning the file will be deleted from disk; disabled if bookmarked (tooltip: "Unbookmark before deleting")
+- Inline rename: click display name to edit, confirm with Enter or blur; calls `/api/sessions/{id}/rename`. Updates `display_name` in DB only — the `.md` file always keeps its `<session_id>.md` filename.
+- Delete button: confirmation modal explicitly mentioning the file will be deleted from disk; **disabled if bookmarked** (tooltip: "Unbookmark before deleting"). API also returns 400 if attempted while bookmarked.
 
 ### 7d. Settings page changes
 
-**Nytwatch Tracking** section added to each system row (collapsed by default, expandable):
-- Toggle switch: "Arm for Tracking"
-- When armed: reveals verbosity selector (Critical / Standard / Verbose)
+**Nytwatch Tracking** section at the top of Settings (project-level):
+- **Start / Stop Tracking** toggle button — calls `POST /api/nytwatch/tracking/start` or `stop`. State reflects `app.state.tracking_active`. Resets to Off on server restart. Tracking only occurs when this is On AND systems are armed.
+
+**Per-system tracking** (added to each system row, collapsed by default, expandable):
+- Toggle switch: "Arm for Tracking" — enables this system for tracking when Start is active
+- When armed: reveals verbosity selector (Critical / Standard / Verbose; default Standard)
 - Tick interval field (shared across all systems): number input in seconds
 - Object scan cap field (shared across all systems): number input, default 2000
-- Both saved via `POST /api/nytwatch/arm`
-- System name shows small "Tracked" badge when `tracking_enabled = 1`
+- Saved via `POST /api/nytwatch/arm`
+- System name shows small "Armed" badge when `tracking_enabled = 1`
 - Systems whose paths resolve entirely inside `Plugins/NytwatchAgent/` are rendered greyed-out with tooltip: "This is the NytwatchAgent plugin itself and cannot be tracked."
 
 ### 7e. Dashboard changes (`dashboard.html`)
@@ -516,6 +537,7 @@ Location: `<GameProject>/Saved/Nytwatch/NytwatchConfig.json`
 {
   "version": "1.0.0",
   "generated_at": "2026-04-04T14:10:00Z",
+  "status": "On",
   "armed_systems": [
     {
       "name": "Combat",
@@ -539,10 +561,11 @@ Location: `<GameProject>/Saved/Nytwatch/NytwatchConfig.json`
 
 Schema rules:
 - `version`: Semver string matching the plugin's `VERSION` file. Plugin logs warning on minor mismatch; shows `FNotificationManager` popup and refuses to track on major mismatch.
+- `status`: `"On"` or `"Off"`. Plugin checks this first — if `"Off"`, no tracking occurs regardless of `armed_systems`. Written as `"Off"` when the user stops tracking, `"On"` when started.
 - `verbosity_ceiling`: One of `"Critical"`, `"Standard"`, `"Verbose"`. Acts as a hard UI ceiling.
-- `paths`: **Absolute filesystem paths** (not repo-relative). Nytwatch server resolves these from `SystemDef.paths` + the registered game project root before writing.
-- `object_scan_cap`: Max UObjects inspected per tick cycle. Plugin prioritises previously-seen objects when truncating.
-- `tick_interval_seconds`: Polling frequency. Configurable from Nytwatch Settings UI.
+- `paths`: **Absolute filesystem paths** (not repo-relative). Nytwatch server resolves these by joining `config.repo_path` (the game project root) with each system's repo-relative paths before writing.
+- `object_scan_cap`: Max UObjects inspected per tick cycle. Persisted in DB config table as `tracking_scan_cap`. Plugin prioritises previously-seen objects when truncating.
+- `tick_interval_seconds`: Polling frequency. Persisted in DB config table as `tracking_tick_interval`. Configurable from Nytwatch Settings UI.
 
 Written atomically: server writes to `NytwatchConfig.json.tmp` then renames.
 
@@ -570,7 +593,7 @@ plugin_version: 1.0.0
 started_at: 2026-04-04T14:15:23Z
 ended_at: 2026-04-04T14:17:45Z
 duration_seconds: 142
-systems_tracked: Combat, AI
+systems_tracked: ["Combat", "AI"]
 event_count: 87
 ---
 
@@ -993,16 +1016,15 @@ Systems whose paths resolve entirely inside `Plugins/NytwatchAgent/` are rendere
 Everything needed to go from zero to a working, logged session.
 
 **Backend**:
-- Database migration (two new `systems` columns, `nytwatch_sessions` table)
+- Database migration (two new `systems` columns, `nytwatch_sessions` table, `tracking_tick_interval` + `tracking_scan_cap` in config table)
 - `session_parser.py`
-- `session_store.py`
-- `watcher.py` (including project-switch hook)
-- `config_writer.py` (with absolute path resolution)
+- `session_store.py` (rename = DB-only; delete blocked if bookmarked)
+- `watcher.py` (active project only; stale lock ignored on startup)
+- `config_writer.py` (creates `Saved/Nytwatch/` if absent; writes `status` field; uses `config.repo_path` as project root)
 - `plugin_installer.py` and `nytwatch install-plugin` CLI subcommand
-- New API endpoints: `/api/nytwatch/arm`, `/api/sessions/*`, `/api/nytwatch/pie-state`
-- Watcher startup/shutdown in `create_app()`
+- New API endpoints: `/api/nytwatch/arm`, `/api/nytwatch/tracking/start`, `/api/nytwatch/tracking/stop`, `/api/sessions/*`, `/api/nytwatch/pie-state`
+- Watcher startup/shutdown in `create_app()`; initialise `app.state.tracking_active = False`
 - All DB method additions
-- CLI entrypoint renamed from `code-auditor` to `nytwatch`
 
 **NytwatchAgent Plugin**:
 - All source files as described in Section 5

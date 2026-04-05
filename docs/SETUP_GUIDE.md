@@ -32,13 +32,13 @@ A complete, step-by-step guide to installing, configuring, and running the Nytwa
 | Linux (Ubuntu 22.04+, Fedora 38+) | Yes | Desktop notifications via `notify-send` (`libnotify`). |
 | Windows | Partial | Python tooling works. UE build paths differ. Desktop notifications not implemented. |
 
-### Python 3.9+
+### Python 3.11+
 
-Required. The project uses `from __future__ import annotations`, Pydantic v2, and `str` enum types that require 3.9 minimum.
+Required. The project uses `from __future__ import annotations`, Pydantic v2, and `watchdog` for filesystem monitoring.
 
 ```bash
 python3 --version
-# Expected: Python 3.9.x or higher (3.10, 3.11, 3.12, 3.13 all work)
+# Expected: Python 3.11.x or higher (3.12, 3.13 also work)
 ```
 
 **If not installed:**

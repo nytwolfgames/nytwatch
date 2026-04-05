@@ -159,7 +159,7 @@ async def dashboard(request: Request):
 # --- Findings ---
 
 @router.get("/findings", response_class=HTMLResponse)
-async def findings_list(
+async def findings_list(  # noqa: C901
     request: Request,
     status: Optional[str] = None,
     severity: Optional[str] = None,
@@ -171,6 +171,8 @@ async def findings_list(
 ):
     config = get_config(request)
     db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
 
     path_prefixes = None
     if system:
@@ -226,6 +228,8 @@ async def clean_findings(
     system: Optional[str] = None,
 ):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     path_prefixes = None
     if system:
         sys_def = next((s for s in db.list_systems() if s["name"] == system), None)
@@ -395,6 +399,8 @@ async def findings_export(
 @router.get("/findings/{finding_id}", response_class=HTMLResponse)
 async def finding_detail(request: Request, finding_id: str):
     db = get_db(request)
+    if db is None:
+        return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
     finding = db.get_finding(finding_id)
     if not finding:
         return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
@@ -406,6 +412,8 @@ async def finding_detail(request: Request, finding_id: str):
 @router.post("/findings/{finding_id}/approve")
 async def approve_finding(request: Request, finding_id: str):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "Finding not found"}, status_code=404)
     finding = db.get_finding(finding_id)
     if not finding:
         return JSONResponse({"error": "Finding not found"}, status_code=404)
@@ -419,6 +427,8 @@ async def approve_finding(request: Request, finding_id: str):
 @router.post("/findings/{finding_id}/reject")
 async def reject_finding(request: Request, finding_id: str):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "Finding not found"}, status_code=404)
     finding = db.get_finding(finding_id)
     if not finding:
         return JSONResponse({"error": "Finding not found"}, status_code=404)
@@ -432,6 +442,8 @@ async def reject_finding(request: Request, finding_id: str):
 @router.post("/findings/{finding_id}/toggle-test")
 async def toggle_finding_test(request: Request, finding_id: str):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "Finding not found"}, status_code=404)
     finding = db.get_finding(finding_id)
     if not finding:
         return JSONResponse({"error": "Finding not found"}, status_code=404)
@@ -444,6 +456,8 @@ async def toggle_finding_test(request: Request, finding_id: str):
 async def recheck_finding(request: Request, finding_id: str):
     import asyncio
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
     config = get_config(request)
 
     finding = db.get_finding(finding_id)
@@ -472,7 +486,7 @@ async def recheck_finding(request: Request, finding_id: str):
 @router.get("/api/findings/{finding_id}/chat")
 async def get_finding_chat(request: Request, finding_id: str):
     db = get_db(request)
-    if not db.get_finding(finding_id):
+    if db is None or not db.get_finding(finding_id):
         return JSONResponse({"error": "Not found"}, status_code=404)
     messages = db.get_finding_chat(finding_id)
     return JSONResponse({"messages": messages})
@@ -482,6 +496,8 @@ async def get_finding_chat(request: Request, finding_id: str):
 async def post_finding_chat(request: Request, finding_id: str):
     import asyncio
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
     config = get_config(request)
 
     finding = db.get_finding(finding_id)
@@ -526,6 +542,8 @@ async def post_finding_chat(request: Request, finding_id: str):
 @router.get("/scans", response_class=HTMLResponse)
 async def scans_list(request: Request):
     db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
     scans = db.list_scans()
     log_counts = db.get_scan_log_counts()
     return templates.TemplateResponse(request, "scans.html", {
@@ -702,6 +720,8 @@ async def get_all_source_dirs_api(request: Request):
 async def append_systems_api(request: Request):
     """Add new systems without touching existing ones."""
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     body = await request.json()
     new_systems = body.get("systems", [])
     for s in new_systems:
@@ -734,6 +754,8 @@ async def append_systems_api(request: Request):
 @router.post("/api/systems")
 async def save_systems_api(request: Request):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     body = await request.json()
     systems_data = body.get("systems", [])
     for s in systems_data:
@@ -1455,6 +1477,8 @@ async def update_config_api(request: Request):
 async def trigger_scan(request: Request):
     config = get_config(request)
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     db_path = db.db_path
 
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -1502,6 +1526,8 @@ async def trigger_scan(request: Request):
 @router.delete("/scans/{scan_id}")
 async def delete_scan(request: Request, scan_id: str):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "Scan not found"}, status_code=404)
     scan = db.get_scan(scan_id)
     if not scan:
         return JSONResponse({"error": "Scan not found"}, status_code=404)
@@ -1516,6 +1542,8 @@ async def delete_scan(request: Request, scan_id: str):
 async def cancel_scan(request: Request):
     from nytwatch.scan_state import canceller
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
 
     if not canceller.is_cancelled:
         canceller.cancel()
@@ -1569,6 +1597,8 @@ async def settings_page(request: Request):
 @router.post("/settings/source-dirs")
 async def update_source_dir(request: Request):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     body = await request.json()
     path = body.get("path", "").strip()
     source_type = body.get("source_type", "").strip()
@@ -1582,6 +1612,8 @@ async def update_source_dir(request: Request):
 @router.delete("/settings/source-dirs")
 async def delete_source_dir(request: Request):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     body = await request.json()
     path = body.get("path", "").strip()
     if not path:
@@ -1601,6 +1633,8 @@ async def bulk_update_source_dirs(request: Request):
     }
     """
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
     body = await request.json()
     valid_types = {"active", "ignored"}
 
@@ -1630,6 +1664,8 @@ async def bulk_update_source_dirs(request: Request):
 @router.get("/batches", response_class=HTMLResponse)
 async def batches_list(request: Request):
     db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
     batches = db.list_batches()
     return templates.TemplateResponse(request, "batches.html", {
         "batches": batches,
@@ -1639,6 +1675,8 @@ async def batches_list(request: Request):
 @router.get("/batches/{batch_id}", response_class=HTMLResponse)
 async def batch_detail(request: Request, batch_id: str):
     db = get_db(request)
+    if db is None:
+        return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
     batch = db.get_batch(batch_id)
     if not batch:
         return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
@@ -1654,6 +1692,8 @@ async def batch_detail(request: Request, batch_id: str):
 async def apply_batch(request: Request):
     config = get_config(request)
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
 
     approved = db.get_approved_findings()
     if not approved:
@@ -1695,6 +1735,8 @@ async def apply_batch(request: Request):
 @router.get("/api/stats")
 async def api_stats(request: Request):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"findings": 0, "pending": 0, "approved": 0, "rejected": 0})
     return JSONResponse(db.get_stats())
 
 
@@ -1706,7 +1748,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
         db = websocket.app.state.db
-        running = db.get_running_scan()
+        running = db.get_running_scan() if db is not None else None
         await websocket.send_text(json.dumps({
             "type": "scan_status",
             "running": running is not None,
@@ -1718,7 +1760,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        logger.exception("WebSocket error")
     finally:
         ws_manager.disconnect(websocket)
 
@@ -1726,6 +1768,8 @@ async def websocket_endpoint(websocket: WebSocket):
 @router.get("/api/scans/{scan_id}/logs")
 async def api_scan_logs(request: Request, scan_id: str, offset: int = 0):
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"logs": [], "running": False, "total": 0})
     logs = db.get_scan_logs(scan_id, offset=offset)
     scan = db.get_scan(scan_id)
     running = scan["status"] == "running" if scan else False
@@ -1744,6 +1788,8 @@ async def api_findings_stream(request: Request, scan_id: str, offset: int = 0):
 async def api_scan_status(request: Request):
     from nytwatch.scan_state import canceller
     db = get_db(request)
+    if db is None:
+        return JSONResponse({"running": False, "scan": None, "cancelling": False})
     running = db.get_running_scan()
     return JSONResponse({
         "running": running is not None,

@@ -181,7 +181,7 @@
 |-----|------|-------------|
 | `config` | `AuditorConfig` | Active project configuration |
 | `config_path` | `str` | Absolute path to the active config YAML, or `""` if none |
-| `db` | `Database` | Active project SQLite database |
+| `db` | `Database \| None` | Active project SQLite database. `None` when no project is configured (wizard-only mode). |
 | `scheduler` | `BackgroundScheduler` | APScheduler instance (only present if scheduling is enabled) |
 
 ---
@@ -196,7 +196,7 @@
 | `ScanSchedule` | `incremental_interval_hours: int = 4`, `rotation_enabled: bool = False`, `rotation_interval_hours: int = 24` | Scan scheduling parameters |
 | `BuildConfig` | `ue_installation_dir: str = ""`, `ue_editor_cmd: str = ""`, `project_file: str = ""`, `build_timeout_seconds: int = 1800`, `test_timeout_seconds: int = 600` | UE build/test configuration. `ue_installation_dir` is the UE root (e.g. `/Users/Shared/Epic Games/UE_5.4`); `ue_editor_cmd` is an explicit override that takes precedence. |
 | `NotificationConfig` | `desktop: bool = True`, `slack_webhook: Optional[str] = None`, `discord_webhook: Optional[str] = None` | Notification channels |
-| `AuditorConfig` | `repo_path: str = ""`, `systems: list[SystemDef] = []`, `scan_schedule: ScanSchedule`, `build: BuildConfig`, `notifications: NotificationConfig`, `data_dir: str = "~/.nytwatch"`, `claude_fast_mode: bool = True`, `min_confidence: str = "medium"`, `file_extensions: list[str] = [".h", ".cpp"]` | Root configuration model. `repo_path` defaults to `""` so the app can start without a config (setup wizard mode). |
+| `AuditorConfig` | `project_name: str = ""`, `repo_path: str = ""`, `systems: list[SystemDef] = []`, `scan_schedule: ScanSchedule`, `build: BuildConfig`, `notifications: NotificationConfig`, `data_dir: str = "~/.nytwatch"`, `claude_fast_mode: bool = True`, `min_confidence: str = "medium"`, `file_extensions: list[str] = [".h", ".cpp"]` | Root configuration model. `project_name` is the human-readable label shown in the project switcher — falls back to `Path(repo_path).name` if empty. `repo_path` defaults to `""` so the app can start without a config (setup wizard mode). |
 
 **Module Constants:**
 
@@ -213,7 +213,7 @@
 | `set_active_config_path` | `(path: Path) -> None` | Writes the absolute path string to `ACTIVE_POINTER_PATH`. Called by `init_project` (after wizard create) and `switch_project`. |
 | `load_config` | `(path: Optional[Path] = None) -> AuditorConfig` | Loads and validates config from YAML. Raises `FileNotFoundError` if missing. Falls back to `DEFAULT_CONFIG_PATH` if `path` is None. |
 | `save_full_config` | `(config: AuditorConfig, path: Optional[Path] = None) -> None` | Serializes all config fields to YAML (excluding the `systems` key). Creates parent dirs if needed. Used by the setup wizard and config repair. |
-| `list_project_configs` | `() -> list[dict]` | Scans `~/.nytwatch/*.yaml` for files with a non-empty `repo_path`. Returns `[{path, repo_path, name}]`. Empty/unconfigured YAMLs are excluded. |
+| `list_project_configs` | `() -> list[dict]` | Scans `~/.nytwatch/*.yaml` for files with a non-empty `repo_path`. Returns `[{path, repo_path, name}]`. `name` is `project_name` from the YAML if set, otherwise `Path(repo_path).name`. Empty/unconfigured YAMLs are excluded. |
 | `validate_config_errors` | `(config: AuditorConfig, systems: Optional[list] = None) -> list[str]` | Returns human-readable validation problems. Pass the `systems` list (from the database) to include system-level checks (missing paths, duplicate prefixes, empty names). |
 | `detect_systems_from_repo` | `(repo_path: str) -> list[dict]` | Auto-detects systems from repo structure using UE heuristics: `.uplugin` files → plugin systems (hint=`"plugin"`), `Source/**/*.Build.cs` → game module systems (hint=`"module"`). Returns `[{name, paths, hint}]`. Skips `Binaries/`, `Intermediate/`, `Saved/`, etc. |
 | `get_data_dir` | `(config: AuditorConfig) -> Path` | Returns expanded data directory, creating it if needed. |
@@ -618,7 +618,7 @@ Registered on `templates.env.globals` at module load time. All are callables tha
 
 | Global | Signature | Description |
 |--------|-----------|-------------|
-| `active_project_name` | `(request) -> str` | Short project name — `Path(config.repo_path).name`. Empty string if no project configured. |
+| `active_project_name` | `(request) -> str` | Display name for the active project — `config.project_name` if set, otherwise `Path(config.repo_path).name`. Empty string if no project configured. |
 | `active_config_path` | `(request) -> str` | Absolute path to the active config YAML, or `""`. |
 | `active_repo_path` | `(request) -> str` | `config.repo_path` for the active project, or `""`. |
 
