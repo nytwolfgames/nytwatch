@@ -1224,9 +1224,11 @@ Rules:
 - Feature folders (Combat, AI, Inventory, UI, etc.) at any depth → one system each
 - A UE module wrapper folder (same name as the project/plugin) is not itself a split point — look inside it
 - Small/leaf directories with no meaningful subdirs → one system at that path
+- System names must be unique across ALL systems — no two systems may share the same name
 - System names should be short and descriptive (use the feature folder name)
 - "source_dir" must exactly match one of the active source directory paths listed above (with trailing slash)
 - All paths must use forward slashes with a trailing slash
+- Every path must be unique across ALL systems — no path may appear in more than one system's paths list
 - UE module Public/Private rule: a UE module directory contains both a Public/ and a Private/ subfolder. There are two valid cases:
   1. If you want the entire module → use the module root path (e.g. "Module/") which covers all code inside it
   2. If you are splitting by feature folder inside the module → return BOTH sides explicitly, e.g. ["Module/Public/Combat/", "Module/Private/Combat/"]
