@@ -1,4 +1,4 @@
-# Code Auditor Agent -- Product Brief
+# Nytwatch -- Product Brief
 
 **Version:** 0.1.0 (MVP)
 **Last updated:** April 2026
@@ -7,7 +7,7 @@
 
 ## 1. Executive Summary
 
-Code Auditor is an AI-powered, proactive code analysis agent purpose-built for Unreal Engine C++ game projects. It scans a game codebase on a configurable schedule, identifies bugs, performance issues, UE anti-patterns, memory problems, and modern C++ violations, then presents findings in a local web dashboard where a developer can review, approve, and batch-apply fixes -- with full build verification and automated test generation before a PR is ever created.
+Nytwatch is an AI-powered, proactive code analysis agent purpose-built for Unreal Engine C++ game projects. It scans a game codebase on a configurable schedule, identifies bugs, performance issues, UE anti-patterns, memory problems, and modern C++ violations, then presents findings in a local web dashboard where a developer can review, approve, and batch-apply fixes -- with full build verification and automated test generation before a PR is ever created.
 
 **Who it's for:** Solo game developers and small teams building games in Unreal Engine C++ who lack the bandwidth or team size for thorough code review.
 
@@ -33,7 +33,7 @@ Game development in Unreal Engine C++ is uniquely difficult to review:
 
 ## 3. Solution
 
-Code Auditor is an always-on auditing agent that:
+Nytwatch is an always-on auditing agent that:
 
 1. **Runs automatically** on a configurable schedule (default: every 4 hours) or on manual trigger
 2. **Analyzes code by game system** (Combat, Character, AI, UI), not file-by-file, giving the AI model holistic context about how components interact
@@ -199,11 +199,11 @@ Useful for sharing with team leads, sending to publishers, or archiving audit re
 
 ### Setup (one-time, ~10 minutes)
 
-1. **Install**: `pip install -e .` in the code-auditor directory
-2. **Initialize config**: `code-auditor init /path/to/game/repo`
-3. **Define game systems**: Edit `~/.code-auditor/config.yaml` to map directory paths to logical game systems (Combat, Character, AI, etc.)
+1. **Install**: `pip install -e .` in the nytwatch directory
+2. **Initialize config**: `nytwatch init /path/to/game/repo`
+3. **Define game systems**: Edit `~/.nytwatch/config.yaml` to map directory paths to logical game systems (Combat, Character, AI, etc.)
 4. **Point to UE**: Set `ue_editor_cmd` and `project_file` in the build config
-5. **Start dashboard**: `code-auditor serve`
+5. **Start dashboard**: `nytwatch serve`
 
 ### Daily Use
 
@@ -274,9 +274,9 @@ Morning: Open http://127.0.0.1:8420
 
 **Key architectural properties:**
 
-- All state is in a single SQLite database (`~/.code-auditor/auditor.db`) with WAL mode for concurrent reads
+- All state is in a single SQLite database (`~/.nytwatch/nytwatch.db`) with WAL mode for concurrent reads
 - The dashboard and pipeline run in the same process; batch pipelines execute on background threads
-- Claude CLI calls are logged to `~/.code-auditor/logs/` (prompts and responses) for debugging
+- Claude CLI calls are logged to `~/.nytwatch/logs/` (prompts and responses) for debugging
 - No external services required beyond Claude CLI and GitHub CLI
 
 ---
@@ -306,7 +306,7 @@ Morning: Open http://127.0.0.1:8420
 
 **$0 incremental cost.**
 
-Code Auditor runs entirely on a developer's existing Claude Max subscription. There is no separate API key, no per-token billing, and no cloud service to pay for.
+Nytwatch runs entirely on a developer's existing Claude Max subscription. There is no separate API key, no per-token billing, and no cloud service to pay for.
 
 | Resource | Cost |
 |----------|------|
@@ -367,7 +367,7 @@ The only variable is how many Claude CLI calls per scan. An incremental scan of 
 
 | Tool | UE-Aware | Understands Systems | Generates Fixes | Generates Tests | Applies Fixes | Verifies Build | Creates PR | Cost |
 |------|----------|-------------------|-----------------|-----------------|--------------|---------------|-----------|------|
-| **Code Auditor** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | $0 (Claude Max) |
+| **Nytwatch** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | $0 (Claude Max) |
 | **SonarQube** | No | No | No | No | No | No | No | Free/$150+/mo |
 | **Coverity** | Partial | No | No | No | No | No | No | Enterprise pricing |
 | **PVS-Studio** | Partial | No | No | No | No | No | No | ~$570/yr solo |
@@ -377,15 +377,15 @@ The only variable is how many Claude CLI calls per scan. An incremental scan of 
 ### Key differentiators
 
 **vs. SonarQube / Coverity / PVS-Studio:**
-These are traditional static analysis tools. They analyze files in isolation, produce warnings without fixes, and have no understanding of Unreal Engine's object model, lifecycle, or replication system. They won't catch a missing `UPROPERTY` on a `UObject*` or warn about `FName` construction in a Tick function. Code Auditor's prompts include a UE-specific reference sheet and analyze code by game system, catching domain-specific issues these tools miss entirely.
+These are traditional static analysis tools. They analyze files in isolation, produce warnings without fixes, and have no understanding of Unreal Engine's object model, lifecycle, or replication system. They won't catch a missing `UPROPERTY` on a `UObject*` or warn about `FName` construction in a Tick function. Nytwatch's prompts include a UE-specific reference sheet and analyze code by game system, catching domain-specific issues these tools miss entirely.
 
 **vs. GitHub Copilot:**
-Copilot is a code completion tool. It helps you write code, but it doesn't proactively review existing code, doesn't run on a schedule, doesn't generate test cases, and doesn't verify that its suggestions compile. Code Auditor operates in the opposite direction -- it's a reviewer, not a writer.
+Copilot is a code completion tool. It helps you write code, but it doesn't proactively review existing code, doesn't run on a schedule, doesn't generate test cases, and doesn't verify that its suggestions compile. Nytwatch operates in the opposite direction -- it's a reviewer, not a writer.
 
 **vs. Clang-Tidy:**
-Clang-Tidy catches some C++ issues and can auto-fix a narrow set of patterns. It doesn't understand UE macros, can't reason about game logic, doesn't generate tests, and requires manual integration. Code Auditor covers a broader set of issues with richer context and a complete fix-verify-PR pipeline.
+Clang-Tidy catches some C++ issues and can auto-fix a narrow set of patterns. It doesn't understand UE macros, can't reason about game logic, doesn't generate tests, and requires manual integration. Nytwatch covers a broader set of issues with richer context and a complete fix-verify-PR pipeline.
 
-**The fundamental difference:** Code Auditor is not a linter. It's a full review-fix-verify pipeline that understands Unreal Engine C++ at the system level and delivers merged PRs, not warnings.
+**The fundamental difference:** Nytwatch is not a linter. It's a full review-fix-verify pipeline that understands Unreal Engine C++ at the system level and delivers merged PRs, not warnings.
 
 ---
 
@@ -414,7 +414,7 @@ min_confidence: "medium"
 file_extensions: [".h", ".cpp"]
 ```
 
-Config file location: `~/.code-auditor/config.yaml`
-Database location: `~/.code-auditor/auditor.db`
-Log files: `~/.code-auditor/logs/`
+Config file location: `~/.nytwatch/config.yaml`
+Database location: `~/.nytwatch/nytwatch.db`
+Log files: `~/.nytwatch/logs/`
 Dashboard: `http://127.0.0.1:8420`

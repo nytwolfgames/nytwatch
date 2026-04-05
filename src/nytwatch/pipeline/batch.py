@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from auditor.config import AuditorConfig
-from auditor.database import Database
-from auditor.models import BatchStatus, FindingStatus, now_iso
-from auditor.pipeline.applicator import apply_batch_fixes
-from auditor.pipeline.builder import run_ue_build
-from auditor.pipeline.git_ops import (
+from nytwatch.config import AuditorConfig
+from nytwatch.database import Database
+from nytwatch.models import BatchStatus, FindingStatus, now_iso
+from nytwatch.pipeline.applicator import apply_batch_fixes
+from nytwatch.pipeline.builder import run_ue_build
+from nytwatch.pipeline.git_ops import (
     checkout_branch,
     commit_changes,
     create_branch,
@@ -17,9 +17,9 @@ from auditor.pipeline.git_ops import (
     stash_changes,
     stash_pop,
 )
-from auditor.pipeline.notifier import format_batch_complete_message, notify
-from auditor.pipeline.test_runner import run_tests
-from auditor.pipeline.test_writer import cleanup_test_files, write_test_files
+from nytwatch.pipeline.notifier import format_batch_complete_message, notify
+from nytwatch.pipeline.test_runner import run_tests
+from nytwatch.pipeline.test_writer import cleanup_test_files, write_test_files
 
 logger = logging.getLogger(__name__)
 

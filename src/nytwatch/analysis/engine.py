@@ -13,9 +13,9 @@ from typing import Optional
 
 from pydantic import ValidationError
 
-from auditor.analysis.schemas import ScanResult, BatchApplyResult
-from auditor.analysis.prompts import build_scan_prompt, build_batch_apply_prompt, build_finding_chat_prompt, build_recheck_prompt
-from auditor.models import new_id
+from nytwatch.analysis.schemas import ScanResult, BatchApplyResult
+from nytwatch.analysis.prompts import build_scan_prompt, build_batch_apply_prompt, build_finding_chat_prompt, build_recheck_prompt
+from nytwatch.models import new_id
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def call_claude(
         raise ValueError("Empty prompt")
 
     call_id = new_id()[:8]
-    log_dir = Path.home() / ".code-auditor" / "logs"
+    log_dir = Path.home() / ".nytwatch" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / f"{call_id}_prompt.txt").write_text(prompt, encoding="utf-8")
 
@@ -79,7 +79,7 @@ def call_claude(
         call_id, len(prompt), timeout, repo_path or ".",
     )
 
-    from auditor.scan_state import canceller
+    from nytwatch.scan_state import canceller
 
     class _Result:
         def __init__(self, returncode: int, out: str, err: str) -> None:

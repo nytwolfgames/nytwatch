@@ -7,7 +7,7 @@ import subprocess
 import urllib.request
 from typing import Optional
 
-from auditor.config import AuditorConfig
+from nytwatch.config import AuditorConfig
 
 log = logging.getLogger(__name__)
 

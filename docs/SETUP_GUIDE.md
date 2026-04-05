@@ -1,6 +1,6 @@
-# Code Auditor -- Setup Guide
+# Nytwatch -- Setup Guide
 
-A complete, step-by-step guide to installing, configuring, and running the Code Auditor agent. Written to be followed by a human or an AI agent with zero ambiguity.
+A complete, step-by-step guide to installing, configuring, and running the Nytwatch agent. Written to be followed by a human or an AI agent with zero ambiguity.
 
 ---
 
@@ -170,8 +170,8 @@ The full absolute path to this file is what goes into `config.yaml`.
 ### Clone the repository
 
 ```bash
-git clone https://github.com/hariharanvelusamy2607/code-auditor.git
-cd code-auditor
+git clone https://github.com/hariharanvelusamy2607/nytwatch.git
+cd nytwatch
 ```
 
 ### Install in editable mode
@@ -180,7 +180,7 @@ cd code-auditor
 pip install -e .
 ```
 
-This installs the `code-auditor` CLI command and all dependencies:
+This installs the `nytwatch` CLI command and all dependencies:
 
 | Dependency | Purpose |
 |---|---|
@@ -196,15 +196,15 @@ This installs the `code-auditor` CLI command and all dependencies:
 ### Verify installation
 
 ```bash
-code-auditor --help
+nytwatch --help
 ```
 
 **Expected output:**
 
 ```
-usage: code-auditor [-h] {init,serve,scan} ...
+usage: nytwatch [-h] {init,serve,scan} ...
 
-Code Auditor Agent
+Nytwatch
 
 positional arguments:
   {init,serve,scan}
@@ -256,7 +256,7 @@ python3.12 -m pip install -e .
 Start the server and open the dashboard:
 
 ```bash
-code-auditor serve
+nytwatch serve
 # Open http://127.0.0.1:8420
 ```
 
@@ -268,7 +268,7 @@ The wizard runs entirely in the browser — no manual YAML editing required.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| Project name | Yes | Used as the config filename: `~/.code-auditor/<name>.yaml` |
+| Project name | Yes | Used as the config filename: `~/.nytwatch/<name>.yaml` |
 | Repository path | Yes | Absolute path to your game repo root. Use the **Browse…** button to navigate the filesystem. |
 | UE installation directory | No | UE root folder (e.g. `C:\Epic Games\UE_5.4`). Use **Browse…**. `UnrealEditor-Cmd` is located automatically inside `Engine/Binaries/`. |
 
@@ -303,7 +303,7 @@ Configure automatic incremental scans and rotation schedules.
 
 **Step 6 — Review**
 
-Shows a grouped systems summary (organized by source directory) and the config file path (auto-named `~/.code-auditor/<project-name>.yaml`, editable). Click **Create Project** to save.
+Shows a grouped systems summary (organized by source directory) and the config file path (auto-named `~/.nytwatch/<project-name>.yaml`, editable). Click **Create Project** to save.
 
 On success, the new project becomes active, the config YAML is written, and source directory classifications and systems are stored in the database.
 
@@ -312,19 +312,19 @@ On success, the new project becomes active, the config YAML is written, and sour
 ### Option B — CLI init (advanced / AI agent use)
 
 ```bash
-code-auditor init /absolute/path/to/your/game/repo
+nytwatch init /absolute/path/to/your/game/repo
 # Optional custom config path:
-code-auditor init ~/Projects/DragonRacer --config ~/.code-auditor/dragon-racer.yaml
+nytwatch init ~/Projects/DragonRacer --config ~/.nytwatch/dragon-racer.yaml
 ```
 
 **Expected output:**
 
 ```
-Config created at: /Users/<you>/.code-auditor/dragon-racer.yaml
+Config created at: /Users/<you>/.nytwatch/dragon-racer.yaml
 Edit the config to define your game systems and UE paths.
 ```
 
-Then open `~/.code-auditor/dragon-racer.yaml` in your editor. See the annotated example below.
+Then open `~/.nytwatch/dragon-racer.yaml` in your editor. See the annotated example below.
 
 ### Complete annotated config YAML
 
@@ -341,7 +341,7 @@ repo_path: /Users/hari/Projects/DragonRacer
 # systems — stored in the database, not in this YAML
 # Use the Setup Wizard or the Systems section on the Settings page to
 # manage systems. They are organized under their parent Active source
-# directory and stored in ~/.code-auditor/<project>/auditor.db.
+# directory and stored in ~/.nytwatch/<project>/nytwatch.db.
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
@@ -408,9 +408,9 @@ notifications:
 # --------------------------------------------------------------------------
 # data_dir
 # Where the SQLite database, logs, and Claude prompt/response logs are stored.
-# Default: ~/.code-auditor
+# Default: ~/.nytwatch
 # --------------------------------------------------------------------------
-data_dir: "~/.code-auditor"
+data_dir: "~/.nytwatch"
 
 # --------------------------------------------------------------------------
 # claude_fast_mode
@@ -446,7 +446,7 @@ Systems are the core organizational unit. Each system should represent a logical
 
 **Where to manage systems**
 
-Systems are managed in the dashboard (**Settings page > Systems section**) or through the Setup Wizard (Step 3). They are not written to the YAML config — they live in the project database (`~/.code-auditor/<project>/auditor.db`).
+Systems are managed in the dashboard (**Settings page > Systems section**) or through the Setup Wizard (Step 3). They are not written to the YAML config — they live in the project database (`~/.nytwatch/<project>/nytwatch.db`).
 
 **Two-level hierarchy**
 
@@ -558,14 +558,14 @@ Use the full absolute path in `config.yaml`.
 ### Start the server
 
 ```bash
-code-auditor serve
+nytwatch serve
 ```
 
 **Expected log output:**
 
 ```
 2026-04-02 10:00:00 [INFO] auditor: Scheduled incremental scans every 4 hours
-2026-04-02 10:00:00 [INFO] auditor: Starting Code Auditor on http://127.0.0.1:8420
+2026-04-02 10:00:00 [INFO] auditor: Starting Nytwatch on http://127.0.0.1:8420
 INFO:     Uvicorn running on http://127.0.0.1:8420 (Press CTRL+C to quit)
 ```
 
@@ -604,13 +604,13 @@ curl -s http://127.0.0.1:8420/api/stats | python3 -m json.tool
 **Via CLI (in a separate terminal):**
 
 ```bash
-code-auditor scan --type incremental
+nytwatch scan --type incremental
 ```
 
 Or scan a specific system:
 
 ```bash
-code-auditor scan --type full --system Combat
+nytwatch scan --type full --system Combat
 ```
 
 ### What to expect
@@ -809,7 +809,7 @@ Navigate to http://127.0.0.1:8420/settings.
 
 ### Active Project card
 
-Shows the currently active project's repository path and config file path. The **Switch to** dropdown lists all discovered project YAMLs in `~/.code-auditor/`. Switching instantly reloads config and database — all dashboard pages reflect the new project immediately.
+Shows the currently active project's repository path and config file path. The **Switch to** dropdown lists all discovered project YAMLs in `~/.nytwatch/`. Switching instantly reloads config and database — all dashboard pages reflect the new project immediately.
 
 The sidebar on every page shows the active project name. When no project is configured, a red "No project configured" badge links to the setup wizard.
 
@@ -869,7 +869,7 @@ Click **"+ Setup New Project"** to open the wizard and configure an additional p
 
 ### How automatic scans work
 
-When the server starts (`code-auditor serve`), it configures APScheduler with background jobs:
+When the server starts (`nytwatch serve`), it configures APScheduler with background jobs:
 
 1. **Incremental scan**: Runs every `incremental_interval_hours` (default: 4). Only analyzes files changed since the last scan via `git diff`.
 2. **Rotation scan** (optional): Runs every `rotation_interval_hours` (default: 24). Cycles through game systems in order, doing a full scan of one system per interval.
@@ -878,7 +878,7 @@ The scheduler runs as a background thread inside the server process.
 
 ### Configure scan intervals
 
-Edit `~/.code-auditor/config.yaml`:
+Edit `~/.nytwatch/config.yaml`:
 
 ```yaml
 scan_schedule:
@@ -893,7 +893,7 @@ Restart the server after changing the config:
 
 ```bash
 # Stop the server (Ctrl+C), then:
-code-auditor serve
+nytwatch serve
 ```
 
 ### How rotation scanning works
@@ -914,7 +914,7 @@ The current rotation index is stored in the database (`config` table, key `rotat
 
 **macOS (launchd):**
 
-Create `~/Library/LaunchAgents/com.code-auditor.serve.plist`:
+Create `~/Library/LaunchAgents/com.nytwatch.serve.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -922,10 +922,10 @@ Create `~/Library/LaunchAgents/com.code-auditor.serve.plist`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.code-auditor.serve</string>
+    <string>com.nytwatch.serve</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/code-auditor</string>
+        <string>/usr/local/bin/nytwatch</string>
         <string>serve</string>
     </array>
     <key>RunAtLoad</key>
@@ -933,9 +933,9 @@ Create `~/Library/LaunchAgents/com.code-auditor.serve.plist`:
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/code-auditor-stdout.log</string>
+    <string>/tmp/nytwatch-stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/code-auditor-stderr.log</string>
+    <string>/tmp/nytwatch-stderr.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -945,31 +945,31 @@ Create `~/Library/LaunchAgents/com.code-auditor.serve.plist`:
 </plist>
 ```
 
-Adjust the path to `code-auditor` based on your installation. Find it with `which code-auditor`.
+Adjust the path to `nytwatch` based on your installation. Find it with `which nytwatch`.
 
 ```bash
 # Load the service:
-launchctl load ~/Library/LaunchAgents/com.code-auditor.serve.plist
+launchctl load ~/Library/LaunchAgents/com.nytwatch.serve.plist
 
 # Verify it's running:
-launchctl list | grep code-auditor
+launchctl list | grep nytwatch
 
 # Stop the service:
-launchctl unload ~/Library/LaunchAgents/com.code-auditor.serve.plist
+launchctl unload ~/Library/LaunchAgents/com.nytwatch.serve.plist
 ```
 
 **Linux (systemd):**
 
-Create `~/.config/systemd/user/code-auditor.service`:
+Create `~/.config/systemd/user/nytwatch.service`:
 
 ```ini
 [Unit]
-Description=Code Auditor Agent
+Description=Nytwatch
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/code-auditor serve
+ExecStart=/usr/local/bin/nytwatch serve
 Restart=on-failure
 RestartSec=10
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
@@ -978,22 +978,22 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 WantedBy=default.target
 ```
 
-Adjust the path to `code-auditor` based on your installation.
+Adjust the path to `nytwatch` based on your installation.
 
 ```bash
 # Enable and start:
 systemctl --user daemon-reload
-systemctl --user enable code-auditor
-systemctl --user start code-auditor
+systemctl --user enable nytwatch
+systemctl --user start nytwatch
 
 # Check status:
-systemctl --user status code-auditor
+systemctl --user status nytwatch
 
 # View logs:
-journalctl --user -u code-auditor -f
+journalctl --user -u nytwatch -f
 
 # Stop:
-systemctl --user stop code-auditor
+systemctl --user stop nytwatch
 ```
 
 ---
@@ -1095,14 +1095,14 @@ notifications:
 
 ## 11. CLI Reference
 
-### `code-auditor init <repo_path>`
+### `nytwatch init <repo_path>`
 
 Initialize the config file with a starter template.
 
 | Argument/Flag | Required | Default | Description |
 |---|---|---|---|
 | `repo_path` | Yes | -- | Absolute path to the game repository |
-| `--config` | No | `~/.code-auditor/config.yaml` | Custom config file path |
+| `--config` | No | `~/.nytwatch/config.yaml` | Custom config file path |
 
 **Creates:** The config file at the specified path with default values. The parent directory is created if it does not exist.
 
@@ -1111,39 +1111,39 @@ Initialize the config file with a starter template.
 **Example:**
 
 ```bash
-code-auditor init ~/Projects/DragonRacer
-code-auditor init ~/Projects/DragonRacer --config ./my-config.yaml
+nytwatch init ~/Projects/DragonRacer
+nytwatch init ~/Projects/DragonRacer --config ./my-config.yaml
 ```
 
-### `code-auditor serve`
+### `nytwatch serve`
 
 Start the web dashboard and scheduled scan server.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config` | `~/.code-auditor/config.yaml` | Path to config file |
+| `--config` | `~/.nytwatch/config.yaml` | Path to config file |
 | `--host` | `127.0.0.1` | Host to bind to. Use `0.0.0.0` for network access. |
 | `--port` | `8420` | Port to bind to |
 
-**Creates:** SQLite database at `~/.code-auditor/auditor.db` (if it does not exist). Static files directory at `src/auditor/web/static/` (if it does not exist).
+**Creates:** SQLite database at `~/.nytwatch/nytwatch.db` (if it does not exist). Static files directory at `src/nytwatch/web/static/` (if it does not exist).
 
 **Blocks:** The command runs until interrupted (Ctrl+C).
 
 **Examples:**
 
 ```bash
-code-auditor serve
-code-auditor serve --host 0.0.0.0 --port 9000
-code-auditor serve --config ~/custom-config.yaml
+nytwatch serve
+nytwatch serve --host 0.0.0.0 --port 9000
+nytwatch serve --config ~/custom-config.yaml
 ```
 
-### `code-auditor scan`
+### `nytwatch scan`
 
 Run a scan immediately from the command line (blocks until complete).
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config` | `~/.code-auditor/config.yaml` | Path to config file |
+| `--config` | `~/.nytwatch/config.yaml` | Path to config file |
 | `--type` | `incremental` | Scan type: `incremental`, `full`, or `rotation` |
 | `--system` | (auto-selected) | System name for `full` scan. Required for `--type full`. Ignored for `incremental`. |
 
@@ -1158,11 +1158,11 @@ Run a scan immediately from the command line (blocks until complete).
 **Examples:**
 
 ```bash
-code-auditor scan
-code-auditor scan --type incremental
-code-auditor scan --type full --system Combat
-code-auditor scan --type rotation
-code-auditor scan --config ~/custom-config.yaml --type full --system UI
+nytwatch scan
+nytwatch scan --type incremental
+nytwatch scan --type full --system Combat
+nytwatch scan --type rotation
+nytwatch scan --config ~/custom-config.yaml --type full --system UI
 ```
 
 ---
@@ -1174,11 +1174,11 @@ code-auditor scan --config ~/custom-config.yaml --type full --system UI
 **"Config file not found"**
 
 ```
-Config file not found: /Users/<you>/.code-auditor/config.yaml
-Run 'code-auditor init' or create it manually.
+Config file not found: /Users/<you>/.nytwatch/config.yaml
+Run 'nytwatch init' or create it manually.
 ```
 
-Solution: Run `code-auditor init /path/to/repo`.
+Solution: Run `nytwatch init /path/to/repo`.
 
 ---
 
@@ -1213,7 +1213,7 @@ The repository has fewer than 20 commits.
 Solution: Use a full scan instead:
 
 ```bash
-code-auditor scan --type full --system <SystemName>
+nytwatch scan --type full --system <SystemName>
 ```
 
 ---
@@ -1226,7 +1226,7 @@ Possible causes:
 3. No files have changed since the last scan (for incremental scans).
 4. Claude analysis returned no issues (the code is clean).
 
-Debug: Check logs at `~/.code-auditor/logs/` -- each Claude call generates `<id>_prompt.txt` and `<id>_response.txt`.
+Debug: Check logs at `~/.nytwatch/logs/` -- each Claude call generates `<id>_prompt.txt` and `<id>_response.txt`.
 
 ---
 
@@ -1260,7 +1260,7 @@ gh pr create --help  # Verify gh works
 
 Claude returned JSON that didn't match the expected schema. The engine automatically retries up to 2 times.
 
-If persistent, check `~/.code-auditor/logs/<id>_response.txt` for the raw response. Common causes:
+If persistent, check `~/.nytwatch/logs/<id>_response.txt` for the raw response. Common causes:
 - Claude returned commentary outside the JSON
 - Missing required fields in the response
 
@@ -1279,23 +1279,23 @@ This means:
 
 ### How to check logs
 
-All Claude prompt/response pairs are logged to `~/.code-auditor/logs/`:
+All Claude prompt/response pairs are logged to `~/.nytwatch/logs/`:
 
 ```bash
-ls ~/.code-auditor/logs/
+ls ~/.nytwatch/logs/
 # Files: <call_id>_prompt.txt, <call_id>_response.txt, <call_id>_timeout.txt
 ```
 
-Application logs go to stdout/stderr (visible in the terminal running `code-auditor serve`).
+Application logs go to stdout/stderr (visible in the terminal running `nytwatch serve`).
 
 To see more detail, check the log files:
 
 ```bash
 # Latest prompt sent to Claude:
-ls -lt ~/.code-auditor/logs/*_prompt.txt | head -1
+ls -lt ~/.nytwatch/logs/*_prompt.txt | head -1
 
 # Latest response from Claude:
-ls -lt ~/.code-auditor/logs/*_response.txt | head -1
+ls -lt ~/.nytwatch/logs/*_response.txt | head -1
 ```
 
 ### How to reset the database
@@ -1303,7 +1303,7 @@ ls -lt ~/.code-auditor/logs/*_response.txt | head -1
 Delete the SQLite database. It will be recreated on next server start.
 
 ```bash
-rm ~/.code-auditor/auditor.db
+rm ~/.nytwatch/nytwatch.db
 ```
 
 This removes ALL findings, scans, batches, source classifications, and the last-scan-commit reference. The next incremental scan will use `HEAD~20` as baseline.
@@ -1311,42 +1311,42 @@ This removes ALL findings, scans, batches, source classifications, and the last-
 To reset only the source directory classifications (forcing re-detection):
 
 ```bash
-sqlite3 ~/.code-auditor/auditor.db "DELETE FROM source_dirs;"
+sqlite3 ~/.nytwatch/nytwatch.db "DELETE FROM source_dirs;"
 ```
 
 ### How to re-run source detection
 
 Source detection runs automatically at the start of every scan. To force it:
 
-1. Clear existing classifications: `sqlite3 ~/.code-auditor/auditor.db "DELETE FROM source_dirs;"`
-2. Run any scan: `code-auditor scan --type incremental`
+1. Clear existing classifications: `sqlite3 ~/.nytwatch/nytwatch.db "DELETE FROM source_dirs;"`
+2. Run any scan: `nytwatch scan --type incremental`
 3. Check the Settings page to verify classifications
 
 ---
 
 ## 13. AI Agent Setup Script
 
-The following script automates the entire setup process. An AI agent or human can run it to go from zero to a working Code Auditor instance.
+The following script automates the entire setup process. An AI agent or human can run it to go from zero to a working Nytwatch instance.
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 # ============================================================================
-# code-auditor-setup.sh
-# Automated setup for Code Auditor Agent
+# nytwatch-setup.sh
+# Automated setup for Nytwatch
 #
 # Usage:
-#   ./code-auditor-setup.sh /path/to/ue/repo
+#   ./nytwatch-setup.sh /path/to/ue/repo
 #
 # Prerequisites: Python 3.9+, Git, npm (for Claude CLI), gh (GitHub CLI)
 # ============================================================================
 
 REPO_PATH="${1:?Usage: $0 /path/to/ue/repo}"
-AUDITOR_REPO="https://github.com/hariharanvelusamy2607/code-auditor.git"
-AUDITOR_DIR="${AUDITOR_DIR:-$HOME/Projects/code-auditor}"
-CONFIG_PATH="$HOME/.code-auditor/config.yaml"
-DATA_DIR="$HOME/.code-auditor"
+AUDITOR_REPO="https://github.com/hariharanvelusamy2607/nytwatch.git"
+AUDITOR_DIR="${AUDITOR_DIR:-$HOME/Projects/nytwatch}"
+CONFIG_PATH="$HOME/.nytwatch/config.yaml"
+DATA_DIR="$HOME/.nytwatch"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -1405,25 +1405,25 @@ fi
 log "Repository is a git repo"
 
 # --------------------------------------------------------------------------
-# Step 2: Install code-auditor
+# Step 2: Install nytwatch
 # --------------------------------------------------------------------------
 echo ""
-echo "=== Step 2: Installing code-auditor ==="
+echo "=== Step 2: Installing nytwatch ==="
 
 if [ -d "$AUDITOR_DIR" ]; then
-    log "Code Auditor already cloned at $AUDITOR_DIR"
+    log "Nytwatch already cloned at $AUDITOR_DIR"
     (cd "$AUDITOR_DIR" && git pull --ff-only 2>/dev/null) || warn "Could not pull latest (may have local changes)"
 else
     git clone "$AUDITOR_REPO" "$AUDITOR_DIR"
-    log "Cloned code-auditor to $AUDITOR_DIR"
+    log "Cloned nytwatch to $AUDITOR_DIR"
 fi
 
-pip install -e "$AUDITOR_DIR" || pip install --user -e "$AUDITOR_DIR" || fail "Failed to install code-auditor"
-log "Installed code-auditor"
+pip install -e "$AUDITOR_DIR" || pip install --user -e "$AUDITOR_DIR" || fail "Failed to install nytwatch"
+log "Installed nytwatch"
 
 # Verify
-code-auditor --help >/dev/null 2>&1 || fail "code-auditor command not found after install. Check your PATH."
-log "code-auditor CLI verified"
+nytwatch --help >/dev/null 2>&1 || fail "nytwatch command not found after install. Check your PATH."
+log "nytwatch CLI verified"
 
 # --------------------------------------------------------------------------
 # Step 3: Initialize config
@@ -1434,7 +1434,7 @@ echo "=== Step 3: Initializing configuration ==="
 if [ -f "$CONFIG_PATH" ]; then
     warn "Config already exists at $CONFIG_PATH -- skipping init (delete it to regenerate)"
 else
-    code-auditor init "$REPO_PATH"
+    nytwatch init "$REPO_PATH"
     log "Config created at $CONFIG_PATH"
 fi
 
@@ -1536,7 +1536,7 @@ build:
   test_timeout_seconds: 600
 notifications:
   desktop: true
-data_dir: "~/.code-auditor"
+data_dir: "~/.nytwatch"
 claude_fast_mode: true
 min_confidence: "medium"
 file_extensions:
@@ -1564,10 +1564,10 @@ if systems:
 
 if [ -n "$FIRST_SYSTEM" ]; then
     log "Running full scan on system: $FIRST_SYSTEM"
-    code-auditor scan --type full --system "$FIRST_SYSTEM" && log "Scan complete" || warn "Scan failed (check logs at $DATA_DIR/logs/)"
+    nytwatch scan --type full --system "$FIRST_SYSTEM" && log "Scan complete" || warn "Scan failed (check logs at $DATA_DIR/logs/)"
 else
     log "Running incremental scan"
-    code-auditor scan --type incremental && log "Scan complete" || warn "Scan failed (check logs at $DATA_DIR/logs/)"
+    nytwatch scan --type incremental && log "Scan complete" || warn "Scan failed (check logs at $DATA_DIR/logs/)"
 fi
 
 # --------------------------------------------------------------------------
@@ -1576,11 +1576,11 @@ fi
 echo ""
 echo "=== Step 8: Verification ==="
 
-[ -f "$DATA_DIR/auditor.db" ] && log "Database exists at $DATA_DIR/auditor.db" || warn "Database not created"
+[ -f "$DATA_DIR/nytwatch.db" ] && log "Database exists at $DATA_DIR/nytwatch.db" || warn "Database not created"
 
 FINDING_COUNT=$(python3 -c "
 import sqlite3
-conn = sqlite3.connect('$DATA_DIR/auditor.db')
+conn = sqlite3.connect('$DATA_DIR/nytwatch.db')
 row = conn.execute('SELECT COUNT(*) FROM findings').fetchone()
 print(row[0])
 conn.close()
@@ -1590,7 +1590,7 @@ log "Total findings in database: $FINDING_COUNT"
 
 SCAN_COUNT=$(python3 -c "
 import sqlite3
-conn = sqlite3.connect('$DATA_DIR/auditor.db')
+conn = sqlite3.connect('$DATA_DIR/nytwatch.db')
 row = conn.execute('SELECT COUNT(*) FROM scans').fetchone()
 print(row[0])
 conn.close()
@@ -1603,7 +1603,7 @@ echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Review config: $CONFIG_PATH"
-echo "  2. Start the dashboard: code-auditor serve"
+echo "  2. Start the dashboard: nytwatch serve"
 echo "  3. Open in browser: http://127.0.0.1:8420"
 echo "  4. Review findings and approve/reject"
 if [ -z "$UE_CMD" ]; then
@@ -1615,8 +1615,8 @@ echo ""
 **Save and run:**
 
 ```bash
-chmod +x code-auditor-setup.sh
-./code-auditor-setup.sh /path/to/your/game/repo
+chmod +x nytwatch-setup.sh
+./nytwatch-setup.sh /path/to/your/game/repo
 ```
 
 The script is idempotent: running it again will skip steps that are already done (existing clone, existing config, etc.).

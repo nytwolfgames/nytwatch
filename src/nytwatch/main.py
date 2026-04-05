@@ -10,23 +10,23 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from auditor.config import AuditorConfig, DEFAULT_CONFIG_PATH, get_active_config_path, get_db_path, init_config, load_config
-from auditor.database import Database
-from auditor.web.routes import router
+from nytwatch.config import AuditorConfig, DEFAULT_CONFIG_PATH, get_active_config_path, get_db_path, init_config, load_config
+from nytwatch.database import Database
+from nytwatch.web.routes import router
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("auditor")
+logger = logging.getLogger("nytwatch")
 
 
 def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI:
     import asyncio
-    from auditor.ws_manager import manager as ws_manager
+    from nytwatch.ws_manager import manager as ws_manager
 
-    app = FastAPI(title="Code Auditor", version="0.1.0")
+    app = FastAPI(title="Nytwatch", version="0.1.0")
 
     @app.on_event("startup")
     async def startup():
@@ -105,7 +105,7 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
 
     @app.on_event("shutdown")
     def shutdown():
-        from auditor.scan_state import canceller
+        from nytwatch.scan_state import canceller
         if not canceller.is_cancelled:
             # Kill any active Claude subprocess and signal scan threads to stop
             canceller.cancel()
@@ -120,7 +120,7 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
 
 
 def run():
-    parser = argparse.ArgumentParser(description="Code Auditor Agent")
+    parser = argparse.ArgumentParser(description="Nytwatch")
     subparsers = parser.add_subparsers(dest="command")
 
     # init command
@@ -153,7 +153,7 @@ def run():
         config = load_config(Path(args.config) if args.config else None)
         db = Database(get_db_path(config))
         db.init_schema()
-        from auditor.scanner.scheduler import run_scan
+        from nytwatch.scanner.scheduler import run_scan
         scan_id = run_scan(config, db, scan_type=args.type, system_name=args.system)
         print(f"Scan complete: {scan_id}")
         db.close()
@@ -184,7 +184,7 @@ def run():
             config = AuditorConfig()
 
         app = create_app(config, config_path=resolved_config_path)
-        logger.info("Starting Code Auditor on http://%s:%d", host, port)
+        logger.info("Starting Nytwatch on http://%s:%d", host, port)
         uvicorn.run(app, host=host, port=port, log_level="info")
         return
 

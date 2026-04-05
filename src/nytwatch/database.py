@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from auditor.models import (
+from nytwatch.models import (
     Batch,
     BatchStatus,
     Finding,
@@ -243,7 +243,7 @@ class Database:
 
     def fail_stale_scans(self) -> int:
         """Mark any scans still in 'running' state as failed (left over from a crashed session)."""
-        from auditor.models import now_iso
+        from nytwatch.models import now_iso
         with self._lock:
             cursor = self.conn.execute(
                 "UPDATE scans SET status = 'failed', completed_at = ? WHERE status = 'running'",

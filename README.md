@@ -1,4 +1,4 @@
-# Code Auditor Agent
+# Nytwatch
 
 A proactive code analysis agent for Unreal Engine C++ game projects. It scans your codebase on a schedule, identifies bugs, performance issues, UE anti-patterns, and improvement opportunities, then presents them in a local web dashboard where you can review, approve, and batch-apply fixes — with build verification and automated testing.
 
@@ -28,7 +28,7 @@ A proactive code analysis agent for Unreal Engine C++ game projects. It scans yo
 
 | Document | Description |
 |----------|-------------|
-| [Product Brief](docs/PRODUCT_BRIEF.md) | What Code Auditor is, who it's for, features, roadmap, competitive landscape |
+| [Product Brief](docs/PRODUCT_BRIEF.md) | What Nytwatch is, who it's for, features, roadmap, competitive landscape |
 | [Technical Specification](docs/TECHNICAL_SPEC.md) | Complete module reference, database schema, API endpoints, prompt engineering, status lifecycles |
 | [Setup Guide](docs/SETUP_GUIDE.md) | Step-by-step setup for humans and AI agents, with automated setup script |
 | [Design System](docs/DESIGN_SYSTEM.md) | "Clinical Precision" visual language — colors, typography, components, interaction patterns |
@@ -46,14 +46,14 @@ A proactive code analysis agent for Unreal Engine C++ game projects. It scans yo
 ### 1. Install
 
 ```bash
-cd /path/to/code-auditor
+cd /path/to/nytwatch
 pip install -e .
 ```
 
 ### 2. Start the dashboard
 
 ```bash
-code-auditor serve
+nytwatch serve
 ```
 
 Open http://127.0.0.1:8420 in your browser. If no project is configured yet, you will be redirected automatically to the setup wizard.
@@ -69,7 +69,7 @@ Click **"+ Setup New Project"** on the Settings page (or follow the first-run re
 | **3 — Systems** | Gameplay module systems, grouped under each active source directory. Each system groups related sub-paths that Claude analyses together. Click **✨ Suggest with Claude** to auto-generate systems from your source structure. |
 | **4 — Build** | `.uproject` file path and timeout overrides |
 | **5 — Schedule** | Incremental scan interval and rotation schedule |
-| **6 — Review** | Grouped systems summary and config file path (auto-named `~/.code-auditor/<project-name>.yaml`) |
+| **6 — Review** | Grouped systems summary and config file path (auto-named `~/.nytwatch/<project-name>.yaml`) |
 
 On completion the config is saved, source directory classifications and systems are stored in the database, and the new project becomes active.
 
@@ -78,17 +78,17 @@ On completion the config is saved, source directory classifications and systems 
 Click **"Trigger Scan"** in the dashboard, or from the CLI:
 
 ```bash
-code-auditor scan --type incremental
+nytwatch scan --type incremental
 ```
 
 ---
 
 ## Project management
 
-Code Auditor supports multiple projects. Each project is stored as its own YAML file named after the project:
+Nytwatch supports multiple projects. Each project is stored as its own YAML file named after the project:
 
 ```
-~/.code-auditor/
+~/.nytwatch/
   my-game.yaml          # project "MyGame"
   rts-prototype.yaml    # project "RTS Prototype"
   .active               # pointer to the currently active project config
@@ -123,7 +123,7 @@ min_confidence: "medium"
 file_extensions: [".h", ".cpp"]
 ```
 
-> **Systems are stored in the database** — source directory classifications and gameplay module systems are managed through the web dashboard or setup wizard and stored in `~/.code-auditor/<project>/auditor.db`. They are not written to the YAML config.
+> **Systems are stored in the database** — source directory classifications and gameplay module systems are managed through the web dashboard or setup wizard and stored in `~/.nytwatch/<project>/nytwatch.db`. They are not written to the YAML config.
 
 ## Usage
 
@@ -144,15 +144,15 @@ All pages are scoped to the active project. The sidebar shows the active project
 
 ```bash
 # Initialize config
-code-auditor init /path/to/repo
+nytwatch init /path/to/repo
 
 # Start dashboard server
-code-auditor serve
-code-auditor serve --host 0.0.0.0 --port 9000
+nytwatch serve
+nytwatch serve --host 0.0.0.0 --port 9000
 
 # Run scans directly
-code-auditor scan --type incremental
-code-auditor scan --type full --system Combat
+nytwatch scan --type incremental
+nytwatch scan --type full --system Combat
 ```
 
 ### Scanning
@@ -221,7 +221,7 @@ Scan Scheduler --> Analysis Engine --> Findings Store (SQLite)
 ### Project structure
 
 ```
-src/auditor/
+src/nytwatch/
   main.py              # FastAPI app + CLI entry point
   config.py            # YAML config management
   models.py            # Pydantic models (Finding, Scan, Batch)
@@ -253,11 +253,11 @@ src/auditor/
 Each project has its own SQLite database derived from the active config path:
 
 ```
-~/.code-auditor/
+~/.nytwatch/
   my-game.yaml           # project config
-  my-game/auditor.db     # project database
+  my-game/nytwatch.db     # project database
   rts-prototype.yaml
-  rts-prototype/auditor.db
+  rts-prototype/nytwatch.db
   .active                # active project pointer
   logs/                  # Claude call logs
 ```
@@ -291,7 +291,7 @@ The database has five main tables:
 | `claude_fast_mode` | bool | true | Pass `fast=True` to the analysis engine |
 | `min_confidence` | string | `"medium"` | Minimum confidence to surface (`"low"`, `"medium"`, `"high"`) |
 | `file_extensions` | list | `[".h", ".cpp"]` | File types to scan |
-| `data_dir` | string | `"~/.code-auditor"` | Database and log storage |
+| `data_dir` | string | `"~/.nytwatch"` | Database and log storage |
 
 ### System definition fields
 
@@ -323,7 +323,7 @@ The database has five main tables:
 
 **"Claude CLI not found"**: Ensure `claude` is on your PATH. Install Claude Code if needed.
 
-**Scan returns no findings**: Check that your system paths in config actually contain `.h` and `.cpp` files. Run `code-auditor scan --type full --system SystemName` to scan a specific system.
+**Scan returns no findings**: Check that your system paths in config actually contain `.h` and `.cpp` files. Run `nytwatch scan --type full --system SystemName` to scan a specific system.
 
 **Build fails after applying**: Check the build log in the batch detail view. The branch is automatically cleaned up on failure. You can unapprove specific findings and retry.
 

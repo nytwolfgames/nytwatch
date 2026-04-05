@@ -7,8 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
-from auditor.config import SystemDef
-from auditor.paths import normalize_path
+from nytwatch.config import SystemDef
+from nytwatch.paths import normalize_path
 
 log = logging.getLogger(__name__)
 

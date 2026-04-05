@@ -5,22 +5,22 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-from auditor.config import AuditorConfig
-from auditor.database import Database
-from auditor.models import (
+from nytwatch.config import AuditorConfig
+from nytwatch.database import Database
+from nytwatch.models import (
     Scan,
     ScanStatus,
     ScanType,
     new_id,
     now_iso,
 )
-from auditor.scanner.incremental import (
+from nytwatch.scanner.incremental import (
     run_incremental_scan,
     get_current_commit,
     _process_system,
     _MAX_PARALLEL_SYSTEMS,
 )
-from auditor.scanner.source_detector import detect_source_dirs
+from nytwatch.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
 
@@ -53,11 +53,11 @@ def run_full_scan(
     The scan record is updated after every completed system so the UI reflects
     live progress.
     """
-    from auditor.scan_state import ScanLogHandler
-    from auditor.ws_manager import manager as ws_manager
+    from nytwatch.scan_state import ScanLogHandler
+    from nytwatch.ws_manager import manager as ws_manager
 
     # Determine which systems to scan
-    from auditor.config import SystemDef
+    from nytwatch.config import SystemDef
     all_systems = [SystemDef(**s) for s in db.list_systems()]
 
     if system_name:

@@ -8,10 +8,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-from auditor.config import AuditorConfig, SystemDef
-from auditor.paths import normalize_path
-from auditor.database import Database
-from auditor.models import (
+from nytwatch.config import AuditorConfig, SystemDef
+from nytwatch.paths import normalize_path
+from nytwatch.database import Database
+from nytwatch.models import (
     Category,
     Confidence,
     Finding,
@@ -23,14 +23,14 @@ from auditor.models import (
     new_id,
     now_iso,
 )
-from auditor.analysis.engine import analyze_system
-from auditor.scanner.chunker import (
+from nytwatch.analysis.engine import analyze_system
+from nytwatch.scanner.chunker import (
     collect_system_files,
     list_system_files,
     chunk_paths_by_count,
     build_neighbourhood,
 )
-from auditor.scanner.source_detector import detect_source_dirs
+from nytwatch.scanner.source_detector import detect_source_dirs
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ def _process_system(
     changed_files: Optional[list[str]] = None,
 ) -> tuple[int, int]:
     """Return (findings_count, files_scanned). findings_count == -1 means total failure."""
-    from auditor.config import SystemDef
+    from nytwatch.config import SystemDef
     all_systems = [SystemDef(**s) for s in db.list_systems()]
     system = next((s for s in all_systems if s.name == system_name), None)
     if system is None:
@@ -196,7 +196,7 @@ def _process_system(
             return 0, 0
 
     chunks = chunk_paths_by_count(file_paths, max_files=_CHUNK_SIZE)
-    from auditor.ws_manager import manager as ws_manager
+    from nytwatch.ws_manager import manager as ws_manager
 
     findings_count = 0
     chunks_failed = 0
@@ -313,8 +313,8 @@ def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optio
     )
     db.insert_scan(scan)
 
-    from auditor.scan_state import ScanLogHandler
-    from auditor.ws_manager import manager as ws_manager
+    from nytwatch.scan_state import ScanLogHandler
+    from nytwatch.ws_manager import manager as ws_manager
     _log_handler = ScanLogHandler(scan_id, db)
     _log_handler.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger("auditor").addHandler(_log_handler)
@@ -367,7 +367,7 @@ def run_incremental_scan(config: AuditorConfig, db: Database, system_name: Optio
             db.set_config("last_scan_commit", current_commit)
             return scan_id
 
-        from auditor.config import SystemDef
+        from nytwatch.config import SystemDef
         all_systems = [SystemDef(**s) for s in db.list_systems()]
         systems_to_scan = all_systems
         if system_name:

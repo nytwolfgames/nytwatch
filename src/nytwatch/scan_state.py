@@ -6,7 +6,7 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from auditor.database import Database
+    from nytwatch.database import Database
 
 
 class _ScanCanceller:
@@ -65,7 +65,7 @@ class ScanLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            from auditor.models import now_iso
+            from nytwatch.models import now_iso
             logged_at = now_iso()
             message = self.format(record)
             self._db.insert_scan_log(
@@ -74,7 +74,7 @@ class ScanLogHandler(logging.Handler):
                 record.name,
                 message,
             )
-            from auditor.ws_manager import manager as ws_manager
+            from nytwatch.ws_manager import manager as ws_manager
             ws_manager.push_log(
                 scan_id=self.scan_id,
                 level=record.levelname,

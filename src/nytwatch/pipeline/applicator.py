@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from auditor.analysis.engine import generate_batch_patch
-from auditor.pipeline import git_ops
+from nytwatch.analysis.engine import generate_batch_patch
+from nytwatch.pipeline import git_ops
 
 log = logging.getLogger(__name__)
 

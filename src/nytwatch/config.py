@@ -44,7 +44,7 @@ class AuditorConfig(BaseModel):
     scan_schedule: ScanSchedule = Field(default_factory=ScanSchedule)
     build: BuildConfig = Field(default_factory=BuildConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
-    data_dir: str = "~/.code-auditor"
+    data_dir: str = "~/.nytwatch"
     claude_fast_mode: bool = True
     min_confidence: str = "medium"
     file_extensions: list[str] = Field(default_factory=lambda: [".h", ".cpp"])
@@ -53,8 +53,8 @@ class AuditorConfig(BaseModel):
     git_branch: str = ""
 
 
-DEFAULT_CONFIG_PATH = Path("~/.code-auditor/config.yaml").expanduser()
-ACTIVE_POINTER_PATH = Path("~/.code-auditor/.active").expanduser()
+DEFAULT_CONFIG_PATH = Path("~/.nytwatch/config.yaml").expanduser()
+ACTIVE_POINTER_PATH = Path("~/.nytwatch/.active").expanduser()
 
 
 def get_active_config_path() -> Optional[Path]:
@@ -82,7 +82,7 @@ def load_config(path: Optional[Path] = None) -> AuditorConfig:
     if not config_path.exists():
         raise FileNotFoundError(
             f"Config file not found: {config_path}\n"
-            f"Run 'code-auditor init' or create it manually.\n"
+            f"Run 'nytwatch init' or create it manually.\n"
             f"See README.md for config format."
         )
 
@@ -132,7 +132,7 @@ def save_full_config(config: AuditorConfig, path: Optional[Path] = None) -> None
 
 
 def list_project_configs() -> list[dict]:
-    """Scan ~/.code-auditor/ for *.yaml project config files."""
+    """Scan ~/.nytwatch/ for *.yaml project config files."""
     search_dir = DEFAULT_CONFIG_PATH.parent
     results = []
     if not search_dir.exists():
@@ -255,7 +255,7 @@ def get_data_dir(config: AuditorConfig) -> Path:
 
 
 def get_db_path(config: AuditorConfig) -> Path:
-    return get_data_dir(config) / "auditor.db"
+    return get_data_dir(config) / "nytwatch.db"
 
 
 def init_config(repo_path: str, config_path: Optional[Path] = None) -> Path:
@@ -279,7 +279,7 @@ def init_config(repo_path: str, config_path: Optional[Path] = None) -> Path:
         "notifications": {
             "desktop": True,
         },
-        "data_dir": "~/.code-auditor",
+        "data_dir": "~/.nytwatch",
         "claude_fast_mode": True,
         "min_confidence": "medium",
         "file_extensions": [".h", ".cpp"],

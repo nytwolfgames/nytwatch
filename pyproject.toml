@@ -3,10 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "code-auditor"
+name = "nytwatch"
 version = "0.1.0"
-description = "Proactive code auditor agent for Unreal Engine C++ projects"
-requires-python = ">=3.9"
+description = "Nytwatch — code analysis and gameplay tracking for Unreal Engine C++ projects"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-multipart>=0.0.6",
     "openpyxl>=3.1.0",
+    "watchdog>=4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -26,10 +27,13 @@ dev = [
 ]
 
 [project.scripts]
-code-auditor = "auditor.main:run"
+nytwatch = "nytwatch.main:run"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/auditor"]
+packages = ["src/nytwatch"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"ue5-plugin" = "share/nytwatch/ue5-plugin"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,7 +1,7 @@
-# Code Auditor Agent -- Technical Specification
+# Nytwatch -- Technical Specification
 
-> Canonical technical reference for the Code Auditor system.
-> Generated from source at `src/auditor/` -- all function signatures, schemas, and data structures are authoritative.
+> Canonical technical reference for the Nytwatch system.
+> Generated from source at `src/nytwatch/` -- all function signatures, schemas, and data structures are authoritative.
 
 ---
 
@@ -27,7 +27,7 @@
 ```
 +-----------------------------------------------------------------------+
 |                          CLI Entry Point (main.py)                     |
-|  code-auditor init | serve | scan                                     |
+|  nytwatch init | serve | scan                                     |
 +----+----------------------------+-----------------------------+-------+
      |                            |                             |
      v                            v                             v
@@ -165,14 +165,14 @@
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `init` | `repo_path`, `--config` | Creates a default config YAML at the specified path (or `~/.code-auditor/config.yaml` if omitted) |
-| `serve` | `--config`, `--host` (default `127.0.0.1`), `--port` (default `8420`) | Starts FastAPI/uvicorn server. Without `--config`, uses the active project pointer (`~/.code-auditor/.active`). |
+| `init` | `repo_path`, `--config` | Creates a default config YAML at the specified path (or `~/.nytwatch/config.yaml` if omitted) |
+| `serve` | `--config`, `--host` (default `127.0.0.1`), `--port` (default `8420`) | Starts FastAPI/uvicorn server. Without `--config`, uses the active project pointer (`~/.nytwatch/.active`). |
 | `scan` | `--config`, `--type` (`incremental`/`full`/`rotation`), `--system` | Runs a scan immediately and exits |
 
 **Startup config resolution order (`serve` without `--config`):**
 
-1. Read `~/.code-auditor/.active` — use the pointed-to YAML if the file exists on disk
-2. Fall back to `~/.code-auditor/config.yaml` if it exists (legacy compatibility)
+1. Read `~/.nytwatch/.active` — use the pointed-to YAML if the file exists on disk
+2. Fall back to `~/.nytwatch/config.yaml` if it exists (legacy compatibility)
 3. Start with a blank `AuditorConfig()` — user is redirected to the setup wizard
 
 **`app.state` keys:**
@@ -196,14 +196,14 @@
 | `ScanSchedule` | `incremental_interval_hours: int = 4`, `rotation_enabled: bool = False`, `rotation_interval_hours: int = 24` | Scan scheduling parameters |
 | `BuildConfig` | `ue_installation_dir: str = ""`, `ue_editor_cmd: str = ""`, `project_file: str = ""`, `build_timeout_seconds: int = 1800`, `test_timeout_seconds: int = 600` | UE build/test configuration. `ue_installation_dir` is the UE root (e.g. `/Users/Shared/Epic Games/UE_5.4`); `ue_editor_cmd` is an explicit override that takes precedence. |
 | `NotificationConfig` | `desktop: bool = True`, `slack_webhook: Optional[str] = None`, `discord_webhook: Optional[str] = None` | Notification channels |
-| `AuditorConfig` | `repo_path: str = ""`, `systems: list[SystemDef] = []`, `scan_schedule: ScanSchedule`, `build: BuildConfig`, `notifications: NotificationConfig`, `data_dir: str = "~/.code-auditor"`, `claude_fast_mode: bool = True`, `min_confidence: str = "medium"`, `file_extensions: list[str] = [".h", ".cpp"]` | Root configuration model. `repo_path` defaults to `""` so the app can start without a config (setup wizard mode). |
+| `AuditorConfig` | `repo_path: str = ""`, `systems: list[SystemDef] = []`, `scan_schedule: ScanSchedule`, `build: BuildConfig`, `notifications: NotificationConfig`, `data_dir: str = "~/.nytwatch"`, `claude_fast_mode: bool = True`, `min_confidence: str = "medium"`, `file_extensions: list[str] = [".h", ".cpp"]` | Root configuration model. `repo_path` defaults to `""` so the app can start without a config (setup wizard mode). |
 
 **Module Constants:**
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `DEFAULT_CONFIG_PATH` | `~/.code-auditor/config.yaml` (expanded) | Legacy default config path. Used only as a fallback when no active pointer exists and the file is present. |
-| `ACTIVE_POINTER_PATH` | `~/.code-auditor/.active` (expanded) | Plain-text file containing the absolute path to the currently active project config. Written by `set_active_config_path`; read by `get_active_config_path` on server startup and after project switch. |
+| `DEFAULT_CONFIG_PATH` | `~/.nytwatch/config.yaml` (expanded) | Legacy default config path. Used only as a fallback when no active pointer exists and the file is present. |
+| `ACTIVE_POINTER_PATH` | `~/.nytwatch/.active` (expanded) | Plain-text file containing the absolute path to the currently active project config. Written by `set_active_config_path`; read by `get_active_config_path` on server startup and after project switch. |
 
 **Functions:**
 
@@ -213,11 +213,11 @@
 | `set_active_config_path` | `(path: Path) -> None` | Writes the absolute path string to `ACTIVE_POINTER_PATH`. Called by `init_project` (after wizard create) and `switch_project`. |
 | `load_config` | `(path: Optional[Path] = None) -> AuditorConfig` | Loads and validates config from YAML. Raises `FileNotFoundError` if missing. Falls back to `DEFAULT_CONFIG_PATH` if `path` is None. |
 | `save_full_config` | `(config: AuditorConfig, path: Optional[Path] = None) -> None` | Serializes all config fields to YAML (excluding the `systems` key). Creates parent dirs if needed. Used by the setup wizard and config repair. |
-| `list_project_configs` | `() -> list[dict]` | Scans `~/.code-auditor/*.yaml` for files with a non-empty `repo_path`. Returns `[{path, repo_path, name}]`. Empty/unconfigured YAMLs are excluded. |
+| `list_project_configs` | `() -> list[dict]` | Scans `~/.nytwatch/*.yaml` for files with a non-empty `repo_path`. Returns `[{path, repo_path, name}]`. Empty/unconfigured YAMLs are excluded. |
 | `validate_config_errors` | `(config: AuditorConfig, systems: Optional[list] = None) -> list[str]` | Returns human-readable validation problems. Pass the `systems` list (from the database) to include system-level checks (missing paths, duplicate prefixes, empty names). |
 | `detect_systems_from_repo` | `(repo_path: str) -> list[dict]` | Auto-detects systems from repo structure using UE heuristics: `.uplugin` files → plugin systems (hint=`"plugin"`), `Source/**/*.Build.cs` → game module systems (hint=`"module"`). Returns `[{name, paths, hint}]`. Skips `Binaries/`, `Intermediate/`, `Saved/`, etc. |
 | `get_data_dir` | `(config: AuditorConfig) -> Path` | Returns expanded data directory, creating it if needed. |
-| `get_db_path` | `(config: AuditorConfig) -> Path` | Returns `{data_dir}/auditor.db`. |
+| `get_db_path` | `(config: AuditorConfig) -> Path` | Returns `{data_dir}/nytwatch.db`. |
 | `init_config` | `(repo_path: str, config_path: Optional[Path] = None) -> Path` | Writes a default config YAML template. Returns the path written. |
 
 ---
@@ -400,7 +400,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `call_claude` | `(prompt: str, fast: bool = True, timeout: int = 600, repo_path: str = None) -> str` | Invokes the Claude CLI via subprocess. Writes prompt to a temp file (avoids Windows pipe-buffer deadlock). Reads stdout/stderr in background threads; polls every 30 s for cancellation and timeout. Writes prompt and response to `~/.code-auditor/logs/{call_id}_*.txt`. Raises `ValueError` on empty prompt, `InterruptedError` on cancellation, `TimeoutExpired`, `CalledProcessError`, or `FileNotFoundError`. |
+| `call_claude` | `(prompt: str, fast: bool = True, timeout: int = 600, repo_path: str = None) -> str` | Invokes the Claude CLI via subprocess. Writes prompt to a temp file (avoids Windows pipe-buffer deadlock). Reads stdout/stderr in background threads; polls every 30 s for cancellation and timeout. Writes prompt and response to `~/.nytwatch/logs/{call_id}_*.txt`. Raises `ValueError` on empty prompt, `InterruptedError` on cancellation, `TimeoutExpired`, `CalledProcessError`, or `FileNotFoundError`. |
 | `_strip_markdown_fences` | `(text: str) -> str` | Removes markdown code fences (handles both closed and unclosed fences). |
 | `_extract_json` | `(raw: str) -> dict` | Unwraps the Claude CLI JSON envelope (`{"type":"result","result":"..."}`) and parses the inner JSON. Handles nested string-encoded JSON with optional markdown fences. |
 | `parse_and_validate` | `(raw: str, schema_class) -> Optional[T]` | Extracts JSON from raw response, validates against a Pydantic model class via `model_validate()`. Returns None on parse or validation failure. |
@@ -621,7 +621,7 @@ Used in `base.html` to render the sidebar project pill and browser tab title suf
 
 ## 3. Database Schema
 
-SQLite database stored at `{data_dir}/auditor.db`. Uses WAL journal mode and enforces foreign keys.
+SQLite database stored at `{data_dir}/nytwatch.db`. Uses WAL journal mode and enforces foreign keys.
 
 ### Tables
 
@@ -821,8 +821,8 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 | POST | `/api/systems` | `save_systems_api` | `{"systems": [{name, paths, ...}]}` | `{"ok": true}` | Validates and saves system definitions. Hot-reloads `app.state.config`. |
 | GET | `/api/browse` | `browse_directory` | -- | `{"path": str, "entries": [...], "parent": str\|null}` | Browse subdirectories within the repo. `path` query param is repo-relative. Optional `base` param overrides the root directory (used by setup wizard before a project is active). |
 | GET | `/api/browse-abs` | `browse_absolute` | -- | `{"path": str, "entries": [...], "parent": str\|null}` | Browse the local filesystem by absolute path. On Windows with empty `path`, returns available drive letters (`C:/`, `D:/`, …). Skips system/hidden directories. |
-| GET | `/api/projects` | `list_projects` | -- | `{"projects": [{path, repo_path, name}], "current": str}` | Lists all `*.yaml` files in `~/.code-auditor/` that have a non-empty `repo_path`. Excludes blank/unconfigured YAMLs. |
-| POST | `/api/projects/switch` | `switch_project` | `{"path": str}` | `{"ok": true, "repo_path": str}` | Loads a different project config, swaps `app.state.config` and `app.state.db`, writes the new path to `~/.code-auditor/.active`. |
+| GET | `/api/projects` | `list_projects` | -- | `{"projects": [{path, repo_path, name}], "current": str}` | Lists all `*.yaml` files in `~/.nytwatch/` that have a non-empty `repo_path`. Excludes blank/unconfigured YAMLs. |
+| POST | `/api/projects/switch` | `switch_project` | `{"path": str}` | `{"ok": true, "repo_path": str}` | Loads a different project config, swaps `app.state.config` and `app.state.db`, writes the new path to `~/.nytwatch/.active`. |
 | POST | `/api/projects/init` | `init_project` | `{"project_name", "repo_path", "systems", "build", "scan_schedule", "claude_fast_mode", "min_confidence", "config_path", "source_dirs"}` | `{"ok": true, "config_path": str}` | Creates a new project config YAML (path derived from `project_name` slug if `config_path` not provided), upserts `source_dirs` into the DB, writes `.active` pointer. |
 | GET | `/api/detect-systems` | `detect_systems_api` | -- | `{"systems": [{name, paths, hint}]}` | Detects systems from `repo_path` query param using `detect_systems_from_repo()`. Falls back to active config's repo_path if query param is empty. |
 | GET | `/api/config/status` | `config_status` | -- | `{"config_path", "repo_path", "repo_exists", "errors", "last_commit", "db_size_bytes", "systems": [{name, paths_exist}]}` | Full config health check for the active project. |
@@ -842,11 +842,11 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 
 ### Static Files
 
-Mounted at `/static` from `src/auditor/web/static/`.
+Mounted at `/static` from `src/nytwatch/web/static/`.
 
 ### Templates
 
-Jinja2 templates at `src/auditor/web/templates/`:
+Jinja2 templates at `src/nytwatch/web/templates/`:
 
 - `base.html` -- Base layout
 - `dashboard.html` -- Dashboard view
@@ -861,7 +861,7 @@ Jinja2 templates at `src/auditor/web/templates/`:
 
 ## 6. Configuration YAML Schema
 
-Default location: `~/.code-auditor/config.yaml`
+Default location: `~/.nytwatch/config.yaml`
 
 ```yaml
 # Absolute path to the game repository (required for scanning)
@@ -891,7 +891,7 @@ notifications:
   discord_webhook: null               # Discord webhook URL
 
 # Storage
-data_dir: ~/.code-auditor             # Database and logs location
+data_dir: ~/.nytwatch             # Database and logs location
 
 # Analysis settings
 claude_fast_mode: true                # Passed as fast= to analyze_system()
@@ -917,7 +917,7 @@ file_extensions:                      # File types to scan
 | `notifications.desktop` | `bool` | `true` | No | Enable desktop notifications |
 | `notifications.slack_webhook` | `str` | `null` | No | Slack incoming webhook URL |
 | `notifications.discord_webhook` | `str` | `null` | No | Discord webhook URL |
-| `data_dir` | `str` | `~/.code-auditor` | No | Data directory (tilde-expanded) |
+| `data_dir` | `str` | `~/.nytwatch` | No | Data directory (tilde-expanded) |
 | `claude_fast_mode` | `bool` | `true` | No | Reserved for future use |
 | `min_confidence` | `str` | `medium` | No | Minimum confidence for displayed findings |
 | `file_extensions` | `list[str]` | `[".h", ".cpp"]` | No | File extensions to include in scans |
@@ -1007,7 +1007,7 @@ claude -p - --output-format json
 - Input: prompt via stdin (`-p -`)
 - Output: JSON envelope `{"type": "result", "result": "<escaped JSON string>"}`
 - Timeout: 600s for scans, 60s for source classification
-- Logs: `~/.code-auditor/logs/{call_id}_prompt.txt` and `{call_id}_response.txt`
+- Logs: `~/.nytwatch/logs/{call_id}_prompt.txt` and `{call_id}_response.txt`
 
 ---
 
@@ -1183,7 +1183,7 @@ pipeline/batch.py
 
 - **Reads game repo files**: The scanner reads source files from the configured `repo_path`. It does not write to the game repo during scanning.
 - **Writes during batch**: The batch pipeline writes test files and applies patches to the game repo. This is done on a separate git branch.
-- **Log files**: Prompts and responses are written to `~/.code-auditor/logs/`. These may contain source code and should be treated accordingly.
+- **Log files**: Prompts and responses are written to `~/.nytwatch/logs/`. These may contain source code and should be treated accordingly.
 - **Temp files**: Patch files are written to the repo directory as temp files and cleaned up after use.
 
 ### Network Access
@@ -1197,6 +1197,6 @@ pipeline/batch.py
 
 1. Do not bind the server to `0.0.0.0` without adding authentication.
 2. Store webhook URLs in environment variables rather than the config YAML if the config is committed to version control.
-3. Restrict file permissions on `~/.code-auditor/` (contains database, logs with source code, and config with webhook secrets).
+3. Restrict file permissions on `~/.nytwatch/` (contains database, logs with source code, and config with webhook secrets).
 4. The `ue_editor_cmd` config field accepts an arbitrary path -- validate it points to a real UE binary if accepting config from untrusted sources.
-5. Log files in `~/.code-auditor/logs/` accumulate indefinitely. Implement rotation or cleanup.
+5. Log files in `~/.nytwatch/logs/` accumulate indefinitely. Implement rotation or cleanup.

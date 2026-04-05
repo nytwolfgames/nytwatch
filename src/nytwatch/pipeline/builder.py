@@ -4,7 +4,7 @@ import logging
 import platform
 import subprocess
 
-from auditor.config import AuditorConfig
+from nytwatch.config import AuditorConfig
 
 log = logging.getLogger(__name__)
 

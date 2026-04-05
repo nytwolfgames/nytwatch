@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from auditor.database import Database
-from auditor.paths import normalize_path
+from nytwatch.database import Database
+from nytwatch.paths import normalize_path
 
 log = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def _ai_classify(repo: Path, dirs: list[str]) -> dict[str, str]:
     prompt = _build_classify_prompt(dir_listings)
 
     try:
-        from auditor.analysis.engine import call_claude, _extract_json
+        from nytwatch.analysis.engine import call_claude, _extract_json
         raw = call_claude(prompt, fast=True, timeout=60, use_tools=False)
         data = _extract_json(raw)
 

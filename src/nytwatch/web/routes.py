@@ -12,8 +12,8 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from auditor.database import Database
-from auditor.models import BatchStatus, FindingStatus, now_iso
+from nytwatch.database import Database
+from nytwatch.models import BatchStatus, FindingStatus, now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +450,7 @@ async def recheck_finding(request: Request, finding_id: str):
     if not finding:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
-    from auditor.analysis.engine import run_finding_recheck
+    from nytwatch.analysis.engine import run_finding_recheck
     try:
         loop = asyncio.get_event_loop()
         still_valid, reason = await loop.run_in_executor(
@@ -495,7 +495,7 @@ async def post_finding_chat(request: Request, finding_id: str):
 
     history = db.get_finding_chat(finding_id)
 
-    from auditor.analysis.engine import run_finding_chat
+    from nytwatch.analysis.engine import run_finding_chat
     try:
         loop = asyncio.get_event_loop()
         display_text, updated_fields = await loop.run_in_executor(
@@ -756,7 +756,7 @@ async def save_systems_api(request: Request):
 
 @router.get("/api/projects")
 async def list_projects(request: Request):
-    from auditor.config import list_project_configs
+    from nytwatch.config import list_project_configs
     projects = list_project_configs()
     current_path = getattr(request.app.state, "config_path", "")
     return JSONResponse({"projects": projects, "current": current_path})
@@ -764,7 +764,7 @@ async def list_projects(request: Request):
 
 @router.post("/api/projects/switch")
 async def switch_project(request: Request):
-    from auditor.config import load_config, get_db_path
+    from nytwatch.config import load_config, get_db_path
     body = await request.json()
     config_path_str = body.get("path", "").strip()
     if not config_path_str:
@@ -778,7 +778,7 @@ async def switch_project(request: Request):
         return JSONResponse({"error": str(e)}, status_code=400)
 
     # Switch in-memory config and database
-    from auditor.database import Database
+    from nytwatch.database import Database
     old_db: Database = request.app.state.db
     old_db.close()
 
@@ -808,7 +808,7 @@ async def switch_project(request: Request):
     request.app.state.config_path = str(p)
     request.app.state.db = new_db
 
-    from auditor.config import set_active_config_path
+    from nytwatch.config import set_active_config_path
     set_active_config_path(p)
 
     logger.info("Switched to project: %s", new_config.repo_path)
@@ -822,7 +822,7 @@ async def delete_project(request: Request):
     If the deleted project is currently active, the server switches to the next
     available project (or a blank state) so it remains operational.
     """
-    from auditor.config import (
+    from nytwatch.config import (
         AuditorConfig, ACTIVE_POINTER_PATH, list_project_configs,
         set_active_config_path, get_db_path,
     )
@@ -840,7 +840,7 @@ async def delete_project(request: Request):
 
     # Determine the DB path before we delete the YAML
     try:
-        from auditor.config import load_config
+        from nytwatch.config import load_config
         target_config = load_config(target)
         target_db_path = get_db_path(target_config)
     except Exception:
@@ -882,7 +882,7 @@ async def delete_project(request: Request):
             try:
                 new_config = load_config(Path(remaining[0]["path"]))
                 new_db_path = get_db_path(new_config)
-                from auditor.database import Database
+                from nytwatch.database import Database
                 new_db = Database(new_db_path)
                 new_db.init_schema()
                 request.app.state.config = new_config
@@ -895,7 +895,7 @@ async def delete_project(request: Request):
                 logger.warning("Could not switch to remaining project after delete: %s", e)
 
         # No remaining projects — go blank
-        from auditor.database import Database
+        from nytwatch.database import Database
         blank_config = AuditorConfig()
         blank_db = Database(get_db_path(blank_config))
         blank_db.init_schema()
@@ -910,7 +910,7 @@ async def delete_project(request: Request):
 
 
 def _make_build_config(build_data: dict):
-    from auditor.config import BuildConfig
+    from nytwatch.config import BuildConfig
     from pathlib import Path as _Path
     import platform
 
@@ -933,7 +933,7 @@ def _make_build_config(build_data: dict):
 
 @router.post("/api/projects/init")
 async def init_project(request: Request):
-    from auditor.config import (
+    from nytwatch.config import (
         AuditorConfig, ScanSchedule, BuildConfig,
         NotificationConfig, save_full_config, DEFAULT_CONFIG_PATH, get_db_path,
     )
@@ -980,7 +980,7 @@ async def init_project(request: Request):
         project_name = body.get("project_name", "").strip()
         if project_name:
             slug = re.sub(r"[^a-z0-9_-]+", "-", project_name.lower()).strip("-")
-            config_path_str = f"~/.code-auditor/{slug}.yaml"
+            config_path_str = f"~/.nytwatch/{slug}.yaml"
     config_path = Path(config_path_str).expanduser() if config_path_str else DEFAULT_CONFIG_PATH
 
     try:
@@ -1005,7 +1005,7 @@ async def init_project(request: Request):
             if path:
                 db.upsert_source_dir(path, stype)
 
-    from auditor.config import set_active_config_path
+    from nytwatch.config import set_active_config_path
     set_active_config_path(config_path)
 
     logger.info("Project config created at: %s", config_path)
@@ -1018,7 +1018,7 @@ async def git_branches_api(request: Request):
     config = get_config(request)
     if not config.repo_path:
         return JSONResponse({"error": "No project configured"}, status_code=400)
-    from auditor.pipeline.git_ops import get_local_branches
+    from nytwatch.pipeline.git_ops import get_local_branches
     branches = get_local_branches(config.repo_path)
     if not branches:
         return JSONResponse({"error": "Could not list git branches — is this a git repo?"}, status_code=400)
@@ -1035,8 +1035,8 @@ async def set_branch_api(request: Request):
     with a clean slate.  The server does NOT checkout the branch — the user
     controls their working tree.
     """
-    from auditor.config import save_full_config
-    from auditor.pipeline.git_ops import get_local_branches
+    from nytwatch.config import save_full_config
+    from nytwatch.pipeline.git_ops import get_local_branches
 
     body = await request.json()
     branch = (body.get("branch") or "").strip()
@@ -1078,7 +1078,7 @@ async def set_branch_api(request: Request):
 
 @router.get("/api/detect-systems")
 async def detect_systems_api(request: Request, repo_path: str = ""):
-    from auditor.config import detect_systems_from_repo
+    from nytwatch.config import detect_systems_from_repo
     if not repo_path:
         config = get_config(request)
         repo_path = config.repo_path
@@ -1107,7 +1107,7 @@ async def find_uproject_api(request: Request, repo_path: str = ""):
 @router.get("/api/detect-source-dirs")
 async def detect_source_dirs_api(request: Request, repo_path: str = ""):
     """Return heuristically-classified source directories without touching the DB."""
-    from auditor.scanner.source_detector import _heuristic_classify
+    from nytwatch.scanner.source_detector import _heuristic_classify
     if not repo_path:
         config = get_config(request)
         repo_path = config.repo_path
@@ -1213,7 +1213,7 @@ async def suggest_systems_api(request: Request):
 
     try:
         import subprocess as _sp
-        from auditor.analysis.engine import call_claude, _extract_json
+        from nytwatch.analysis.engine import call_claude, _extract_json
         try:
             raw = call_claude(prompt, fast=False, timeout=90, repo_path=repo_path, use_tools=False)
         except _sp.CalledProcessError as cpe:
@@ -1328,7 +1328,7 @@ async def suggest_paths_api(request: Request):
     prompt = _build_suggest_paths_prompt(system_name, sd_root, subdirs)
     try:
         import subprocess as _sp
-        from auditor.analysis.engine import call_claude, _extract_json
+        from nytwatch.analysis.engine import call_claude, _extract_json
         try:
             raw = call_claude(prompt, fast=True, timeout=60, repo_path=repo_path, use_tools=False)
         except _sp.CalledProcessError as cpe:
@@ -1352,7 +1352,7 @@ async def suggest_paths_api(request: Request):
 
 @router.get("/api/config/status")
 async def config_status(request: Request):
-    from auditor.config import validate_config_errors, get_db_path, DEFAULT_CONFIG_PATH
+    from nytwatch.config import validate_config_errors, get_db_path, DEFAULT_CONFIG_PATH
     config = get_config(request)
     db = get_db(request)
 
@@ -1376,7 +1376,7 @@ async def config_status(request: Request):
 @router.post("/api/config/repair")
 async def repair_config(request: Request):
     """Re-save the active config with all Pydantic defaults filled in."""
-    from auditor.config import save_full_config, DEFAULT_CONFIG_PATH
+    from nytwatch.config import save_full_config, DEFAULT_CONFIG_PATH
     config = get_config(request)
     config_path = Path(getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH)))
     try:
@@ -1390,7 +1390,7 @@ async def repair_config(request: Request):
 @router.post("/api/config/update")
 async def update_config_api(request: Request):
     """Update build, schedule and quality settings in the active config file."""
-    from auditor.config import save_full_config, ScanSchedule, AuditorConfig
+    from nytwatch.config import save_full_config, ScanSchedule, AuditorConfig
 
     body = await request.json()
     config = get_config(request)
@@ -1464,12 +1464,12 @@ async def trigger_scan(request: Request):
             status_code=409,
         )
 
-    from auditor.scan_state import canceller
+    from nytwatch.scan_state import canceller
     canceller.reset()
 
     def _run():
-        from auditor.database import Database
-        from auditor.scanner.scheduler import run_scan
+        from nytwatch.database import Database
+        from nytwatch.scanner.scheduler import run_scan
         thread_db = Database(db_path)
         try:
             scan_id = run_scan(config, thread_db, scan_type=scan_type, system_name=system_name)
@@ -1499,19 +1499,19 @@ async def delete_scan(request: Request, scan_id: str):
 
 @router.post("/scans/cancel")
 async def cancel_scan(request: Request):
-    from auditor.scan_state import canceller
+    from nytwatch.scan_state import canceller
     db = get_db(request)
 
     if not canceller.is_cancelled:
         canceller.cancel()
         logger.info("Scan cancellation requested")
 
-    from auditor.ws_manager import manager as ws_manager
+    from nytwatch.ws_manager import manager as ws_manager
     running = db.get_running_scan()
     ws_manager.push_scan_status(running=running is not None, scan=running, cancelling=True)
 
     if running:
-        from auditor.models import ScanStatus, now_iso
+        from nytwatch.models import ScanStatus, now_iso
         db.update_scan(running["id"], status=ScanStatus.CANCELLED, completed_at=now_iso())
 
     return JSONResponse({"ok": True})
@@ -1521,7 +1521,7 @@ async def cancel_scan(request: Request):
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
-    from auditor.config import DEFAULT_CONFIG_PATH
+    from nytwatch.config import DEFAULT_CONFIG_PATH
     db = get_db(request)
     config = get_config(request)
     source_dirs = db.list_source_dirs()
@@ -1644,7 +1644,7 @@ async def apply_batch(request: Request):
     if not approved:
         return JSONResponse({"error": "No approved findings to apply"}, status_code=400)
 
-    from auditor.models import Batch, new_id
+    from nytwatch.models import Batch, new_id
     batch = Batch(
         id=new_id(),
         finding_ids=[f["id"] for f in approved],
@@ -1658,8 +1658,8 @@ async def apply_batch(request: Request):
     batch_id = batch.id
 
     def _run():
-        from auditor.database import Database
-        from auditor.pipeline.batch import run_batch_pipeline
+        from nytwatch.database import Database
+        from nytwatch.pipeline.batch import run_batch_pipeline
         thread_db = Database(db_path)
         try:
             run_batch_pipeline(config, thread_db, batch_id)
@@ -1685,8 +1685,8 @@ async def api_stats(request: Request):
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    from auditor.ws_manager import manager as ws_manager
-    from auditor.scan_state import canceller
+    from nytwatch.ws_manager import manager as ws_manager
+    from nytwatch.scan_state import canceller
 
     await ws_manager.connect(websocket)
     try:
@@ -1727,7 +1727,7 @@ async def api_findings_stream(request: Request, scan_id: str, offset: int = 0):
 
 @router.get("/api/scan-status")
 async def api_scan_status(request: Request):
-    from auditor.scan_state import canceller
+    from nytwatch.scan_state import canceller
     db = get_db(request)
     running = db.get_running_scan()
     return JSONResponse({
