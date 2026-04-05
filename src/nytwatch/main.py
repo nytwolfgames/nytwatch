@@ -28,6 +28,8 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
 
     app = FastAPI(title="Nytwatch", version="0.1.0")
 
+    app.state.tracking_active = False
+
     @app.on_event("startup")
     async def startup():
         ws_manager.set_loop(asyncio.get_event_loop())
@@ -63,6 +65,13 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     app.state.db = db
     app.state.config = config
     app.state.config_path = str(config_path) if config_path else ""
+
+    # Start filesystem watcher for the active project
+    from nytwatch.tracking.watcher import TrackingWatcher
+    watcher = TrackingWatcher(ws_manager, lambda: app.state.db)
+    app.state.watcher = watcher
+    if config.repo_path:
+        watcher.add_watch(config.repo_path)
 
     static_dir = Path(__file__).parent / "web" / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
@@ -114,6 +123,8 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
             canceller.cancel()
         if hasattr(app.state, "scheduler"):
             app.state.scheduler.shutdown()
+        if hasattr(app.state, "watcher"):
+            app.state.watcher.stop()
         active_db = app.state.db
         if active_db is not None:
             stale = active_db.fail_stale_scans()
@@ -139,6 +150,13 @@ def run():
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     serve_parser.add_argument("--port", type=int, default=8420, help="Port to bind to")
 
+    # install-plugin command
+    install_parser = subparsers.add_parser(
+        "install-plugin", help="Install the NytwatchAgent UE5 plugin into a game project"
+    )
+    install_parser.add_argument("--project", required=True, help="Path to the UE game project root")
+    install_parser.add_argument("--force", action="store_true", help="Reinstall even if already up to date")
+
     # scan command
     scan_parser = subparsers.add_parser("scan", help="Run a scan immediately")
     scan_parser.add_argument("--config", default=None, help="Config file path")
@@ -146,6 +164,10 @@ def run():
     scan_parser.add_argument("--system", default=None, help="System name for full scan")
 
     args = parser.parse_args()
+
+    if args.command == "install-plugin":
+        from nytwatch.tracking.plugin_installer import install_plugin
+        sys.exit(install_plugin(args.project, force=args.force))
 
     if args.command == "init":
         config_path = args.config

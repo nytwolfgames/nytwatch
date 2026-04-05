@@ -147,12 +147,18 @@ async def dashboard(request: Request):
 
     stats = db.get_stats()
     batches = db.list_batches(limit=5)
+    config_obj = get_config(request)
+    pie_state = False
+    watcher = getattr(request.app.state, "watcher", None)
+    if watcher is not None and config_obj.repo_path:
+        pie_state = watcher.get_pie_state(config_obj.repo_path)
     return templates.TemplateResponse(request, "dashboard.html", {
         "stats": stats,
         "batches": batches,
         "systems": systems,
         "grouped_systems": grouped_systems,
         "has_grouping": has_grouping,
+        "pie_state": pie_state,
     })
 
 
@@ -740,6 +746,8 @@ async def append_systems_api(request: Request):
             "min_confidence": s.get("min_confidence") or None,
             "file_extensions": s.get("file_extensions") or None,
             "claude_fast_mode": s.get("claude_fast_mode"),
+            "tracking_enabled": s.get("tracking_enabled", False),
+            "tracking_verbosity": s.get("tracking_verbosity", "Standard"),
         }
         for s in new_systems
         if s["name"].strip() not in existing_names
@@ -763,6 +771,14 @@ async def save_systems_api(request: Request):
             return JSONResponse({"error": "System name cannot be empty"}, status_code=400)
         if not s.get("paths"):
             return JSONResponse({"error": f"System '{s['name']}' has no paths"}, status_code=400)
+    # Build lookup of existing tracking config so it is preserved when not sent by caller
+    existing_tracking = {
+        s["name"]: {
+            "tracking_enabled": s.get("tracking_enabled", False),
+            "tracking_verbosity": s.get("tracking_verbosity", "Standard"),
+        }
+        for s in db.list_systems()
+    }
     clean = [
         {
             "name": s["name"].strip(),
@@ -771,6 +787,14 @@ async def save_systems_api(request: Request):
             "min_confidence": s.get("min_confidence") or None,
             "file_extensions": s.get("file_extensions") or None,
             "claude_fast_mode": s.get("claude_fast_mode"),
+            "tracking_enabled": s.get(
+                "tracking_enabled",
+                existing_tracking.get(s["name"].strip(), {}).get("tracking_enabled", False),
+            ),
+            "tracking_verbosity": s.get(
+                "tracking_verbosity",
+                existing_tracking.get(s["name"].strip(), {}).get("tracking_verbosity", "Standard"),
+            ),
         }
         for s in systems_data
     ]
@@ -834,9 +858,21 @@ async def switch_project(request: Request):
             len(new_config.systems), new_config.repo_path,
         )
 
+    old_config = request.app.state.config
+    old_repo = getattr(old_config, "repo_path", "") if old_config else ""
+
     request.app.state.config = new_config
     request.app.state.config_path = str(p)
     request.app.state.db = new_db
+    request.app.state.tracking_active = False
+
+    # Update filesystem watcher to the new project
+    watcher = getattr(request.app.state, "watcher", None)
+    if watcher is not None:
+        if old_repo:
+            watcher.remove_watch(old_repo)
+        if new_config.repo_path:
+            watcher.add_watch(new_config.repo_path)
 
     from nytwatch.config import set_active_config_path
     set_active_config_path(p)
@@ -1808,3 +1844,278 @@ async def api_scan_status(request: Request):
         "scan": running,
         "cancelling": canceller.is_cancelled,
     })
+
+
+# ── Gameplay Tracker — PIE state ─────────────────────────────────────────────
+
+@router.get("/api/nytwatch/pie-state")
+async def api_pie_state(request: Request):
+    config = get_config(request)
+    watcher = getattr(request.app.state, "watcher", None)
+    running = False
+    if watcher is not None and config.repo_path:
+        running = watcher.get_pie_state(config.repo_path)
+    return JSONResponse({"running": running})
+
+
+# ── Gameplay Tracker — Tracking start/stop ───────────────────────────────────
+
+@router.post("/api/nytwatch/tracking/start")
+async def api_tracking_start(request: Request):
+    db = get_db(request)
+    config = get_config(request)
+    if db is None or not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    from nytwatch.tracking.config_writer import write_config
+    request.app.state.tracking_active = True
+    write_config(config.repo_path, db, tracking_active=True)
+    return JSONResponse({"ok": True, "tracking_active": True})
+
+
+@router.post("/api/nytwatch/tracking/stop")
+async def api_tracking_stop(request: Request):
+    db = get_db(request)
+    config = get_config(request)
+    if db is None or not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    from nytwatch.tracking.config_writer import write_config
+    request.app.state.tracking_active = False
+    write_config(config.repo_path, db, tracking_active=False)
+    return JSONResponse({"ok": True, "tracking_active": False})
+
+
+# ── Gameplay Tracker — Arm configuration ─────────────────────────────────────
+
+@router.get("/api/nytwatch/arm")
+async def api_get_arm_config(request: Request):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    systems = db.list_systems()
+    tick_interval = float(db.get_config("tracking_tick_interval", "0.1"))
+    scan_cap = int(db.get_config("tracking_scan_cap", "2000"))
+    tracking_active = getattr(request.app.state, "tracking_active", False)
+    return JSONResponse({
+        "systems": systems,
+        "tick_interval_seconds": tick_interval,
+        "object_scan_cap": scan_cap,
+        "tracking_active": tracking_active,
+    })
+
+
+@router.post("/api/nytwatch/arm")
+async def api_post_arm_config(request: Request):
+    db = get_db(request)
+    config = get_config(request)
+    if db is None or not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    body = await request.json()
+
+    # Persist per-system tracking config
+    for s in body.get("systems", []):
+        name = s.get("name", "").strip()
+        if not name:
+            continue
+        enabled = bool(s.get("tracking_enabled", False))
+        verbosity = s.get("tracking_verbosity", "Standard")
+        db.set_system_tracking(name, enabled, verbosity)
+
+    # Persist global tracking settings
+    tick = body.get("tick_interval_seconds")
+    cap = body.get("object_scan_cap")
+    if tick is not None:
+        db.set_config("tracking_tick_interval", str(float(tick)))
+    if cap is not None:
+        db.set_config("tracking_scan_cap", str(int(cap)))
+
+    from nytwatch.tracking.config_writer import write_config
+    tracking_active = getattr(request.app.state, "tracking_active", False)
+    write_config(config.repo_path, db, tracking_active=tracking_active)
+
+    return JSONResponse({"ok": True})
+
+
+# ── Gameplay Tracker — Per-file verbosity ────────────────────────────────────
+
+@router.get("/api/nytwatch/systems/{system_name}/files")
+async def api_get_system_files(request: Request, system_name: str):
+    db = get_db(request)
+    config = get_config(request)
+    if db is None or not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+
+    system = next((s for s in db.list_systems() if s["name"] == system_name), None)
+    if system is None:
+        return JSONResponse({"error": "System not found"}, status_code=404)
+
+    overrides = {
+        o["file_path"]: o["verbosity"]
+        for o in db.get_file_verbosity_overrides(system_name)
+    }
+
+    repo = Path(config.repo_path)
+    files = []
+    for path_entry in system.get("paths", []):
+        abs_path = Path(path_entry) if Path(path_entry).is_absolute() else repo / path_entry
+        if abs_path.is_dir():
+            for h_file in sorted(abs_path.rglob("*.h")):
+                rel = str(h_file.relative_to(repo)).replace("\\", "/")
+                files.append({
+                    "file_path": rel,
+                    "verbosity_override": overrides.get(rel) or overrides.get(str(h_file)),
+                })
+        elif abs_path.is_file() and abs_path.suffix == ".h":
+            rel = str(abs_path.relative_to(repo)).replace("\\", "/")
+            files.append({
+                "file_path": rel,
+                "verbosity_override": overrides.get(rel) or overrides.get(str(abs_path)),
+            })
+
+    return JSONResponse({"files": files})
+
+
+@router.post("/api/nytwatch/systems/{system_name}/files/verbosity")
+async def api_set_file_verbosity(request: Request, system_name: str):
+    db = get_db(request)
+    config = get_config(request)
+    if db is None or not config.repo_path:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+
+    system = next((s for s in db.list_systems() if s["name"] == system_name), None)
+    if system is None:
+        return JSONResponse({"error": "System not found"}, status_code=404)
+
+    body = await request.json()
+    overrides = body.get("overrides", [])
+    valid_verbosities = {"Critical", "Standard", "Verbose", "Ignore"}
+    for o in overrides:
+        if o.get("verbosity") not in valid_verbosities:
+            return JSONResponse(
+                {"error": f"Invalid verbosity: {o.get('verbosity')}"},
+                status_code=400,
+            )
+
+    db.replace_file_verbosity_overrides(system_name, overrides)
+
+    from nytwatch.tracking.config_writer import write_config
+    tracking_active = getattr(request.app.state, "tracking_active", False)
+    write_config(config.repo_path, db, tracking_active=tracking_active)
+
+    return JSONResponse({"ok": True})
+
+
+# ── Gameplay Tracker — Sessions ───────────────────────────────────────────────
+
+@router.get("/sessions", response_class=HTMLResponse)
+async def sessions_page(request: Request):
+    db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
+    config = get_config(request)
+    sessions = db.list_sessions(project_dir=config.repo_path or None)
+    highlight = request.query_params.get("highlight")
+    return templates.TemplateResponse(request, "sessions.html", {
+        "sessions": sessions,
+        "highlight": highlight,
+    })
+
+
+@router.get("/api/sessions")
+async def api_list_sessions(
+    request: Request,
+    bookmarked_only: bool = False,
+    q: str = "",
+    limit: int = 100,
+):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"sessions": []})
+    config = get_config(request)
+    sessions = db.list_sessions(
+        project_dir=config.repo_path or None,
+        bookmarked_only=bookmarked_only,
+        name_filter=q,
+        limit=limit,
+    )
+    return JSONResponse({"sessions": sessions})
+
+
+@router.get("/api/sessions/{session_id}")
+async def api_get_session(request: Request, session_id: str):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    session = db.get_session(session_id)
+    if session is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return JSONResponse({"session": session})
+
+
+@router.get("/api/sessions/{session_id}/content")
+async def api_session_content(request: Request, session_id: str):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    session = db.get_session(session_id)
+    if session is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    file_path = session.get("file_path", "")
+    try:
+        content = Path(file_path).read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return JSONResponse({"error": f"Cannot read file: {e}"}, status_code=404)
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content)
+
+
+@router.post("/api/sessions/{session_id}/rename")
+async def api_rename_session(request: Request, session_id: str):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    session = db.get_session(session_id)
+    if session is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    body = await request.json()
+    new_name = (body.get("display_name") or "").strip()
+    if not new_name:
+        return JSONResponse({"error": "display_name cannot be empty"}, status_code=400)
+    from nytwatch.tracking.session_store import rename_session
+    rename_session(session_id, new_name, db)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/api/sessions/{session_id}/bookmark")
+async def api_bookmark_session(request: Request, session_id: str):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    session = db.get_session(session_id)
+    if session is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    body = await request.json()
+    bookmarked = bool(body.get("bookmarked", False))
+    from nytwatch.tracking.session_store import bookmark_session
+    bookmark_session(session_id, bookmarked, db)
+    return JSONResponse({"ok": True, "bookmarked": bookmarked})
+
+
+@router.delete("/api/sessions/{session_id}")
+async def api_delete_session(request: Request, session_id: str):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    session = db.get_session(session_id)
+    if session is None:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    if session.get("bookmarked"):
+        return JSONResponse(
+            {"error": "Cannot delete a bookmarked session. Unbookmark it first."},
+            status_code=400,
+        )
+    from nytwatch.tracking.session_store import delete_session as _delete_session
+    _delete_session(session_id, db)
+    watcher = getattr(request.app.state, "watcher", None)
+    if watcher is not None:
+        watcher._ws.push_session_deleted(session_id)
+    return JSONResponse({"ok": True})

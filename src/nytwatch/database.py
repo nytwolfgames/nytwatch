@@ -102,14 +102,43 @@ CREATE TABLE IF NOT EXISTS scan_logs (
 CREATE INDEX IF NOT EXISTS idx_scan_logs_scan ON scan_logs(scan_id);
 
 CREATE TABLE IF NOT EXISTS systems (
-    name              TEXT PRIMARY KEY,
-    source_dir        TEXT NOT NULL DEFAULT '',
-    paths             TEXT NOT NULL DEFAULT '[]',
-    min_confidence    TEXT,
-    file_extensions   TEXT,
-    claude_fast_mode  INTEGER,
-    sort_order        INTEGER NOT NULL DEFAULT 0
+    name               TEXT PRIMARY KEY,
+    source_dir         TEXT NOT NULL DEFAULT '',
+    paths              TEXT NOT NULL DEFAULT '[]',
+    min_confidence     TEXT,
+    file_extensions    TEXT,
+    claude_fast_mode   INTEGER,
+    sort_order         INTEGER NOT NULL DEFAULT 0,
+    tracking_enabled   INTEGER NOT NULL DEFAULT 0,
+    tracking_verbosity TEXT NOT NULL DEFAULT 'Standard'
 );
+
+CREATE TABLE IF NOT EXISTS system_file_verbosity (
+    system_name  TEXT NOT NULL,
+    file_path    TEXT NOT NULL,
+    verbosity    TEXT NOT NULL,
+    PRIMARY KEY (system_name, file_path)
+);
+
+CREATE TABLE IF NOT EXISTS nytwatch_sessions (
+    id              TEXT PRIMARY KEY,
+    file_path       TEXT NOT NULL UNIQUE,
+    project_dir     TEXT NOT NULL,
+    started_at      TEXT NOT NULL,
+    ended_at        TEXT,
+    duration_secs   INTEGER,
+    display_name    TEXT NOT NULL,
+    bookmarked      INTEGER NOT NULL DEFAULT 0,
+    plugin_version  TEXT NOT NULL DEFAULT '',
+    ue_project_name TEXT NOT NULL DEFAULT '',
+    systems_tracked TEXT NOT NULL DEFAULT '[]',
+    event_count     INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_nytwatch_sessions_project    ON nytwatch_sessions(project_dir);
+CREATE INDEX IF NOT EXISTS idx_nytwatch_sessions_bookmarked ON nytwatch_sessions(bookmarked);
+CREATE INDEX IF NOT EXISTS idx_nytwatch_sessions_started    ON nytwatch_sessions(started_at DESC);
 
 CREATE TABLE IF NOT EXISTS finding_chats (
     id          TEXT PRIMARY KEY,
@@ -156,6 +185,15 @@ class Database:
         if "source_dir" not in sys_cols:
             self.conn.execute(
                 "ALTER TABLE systems ADD COLUMN source_dir TEXT NOT NULL DEFAULT ''"
+            )
+
+        if "tracking_enabled" not in sys_cols:
+            self.conn.execute(
+                "ALTER TABLE systems ADD COLUMN tracking_enabled INTEGER NOT NULL DEFAULT 0"
+            )
+        if "tracking_verbosity" not in sys_cols:
+            self.conn.execute(
+                "ALTER TABLE systems ADD COLUMN tracking_verbosity TEXT NOT NULL DEFAULT 'Standard'"
             )
 
         finding_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(findings)").fetchall()}
@@ -665,7 +703,8 @@ class Database:
     def list_systems(self) -> list[dict]:
         """Return all systems ordered by source_dir then sort_order, as plain dicts."""
         rows = self.conn.execute(
-            "SELECT rowid AS id, name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode "
+            "SELECT rowid AS id, name, source_dir, paths, min_confidence, file_extensions, "
+            "claude_fast_mode, tracking_enabled, tracking_verbosity "
             "FROM systems ORDER BY source_dir, sort_order, name"
         ).fetchall()
         result = []
@@ -673,6 +712,7 @@ class Database:
             d = dict(r)
             d["paths"] = json.loads(d["paths"]) if d["paths"] else []
             d["file_extensions"] = json.loads(d["file_extensions"]) if d["file_extensions"] else None
+            d["tracking_enabled"] = bool(d["tracking_enabled"])
             result.append(d)
         return result
 
@@ -699,10 +739,13 @@ class Database:
             for i, s in enumerate(systems):
                 fe = s.get("file_extensions")
                 cfm = s.get("claude_fast_mode")
+                te = s.get("tracking_enabled", False)
+                tv = s.get("tracking_verbosity", "Standard")
                 self.conn.execute(
                     """INSERT OR REPLACE INTO systems
-                       (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order,
+                        tracking_enabled, tracking_verbosity)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         s["name"],
                         s.get("source_dir") or "",
@@ -711,6 +754,8 @@ class Database:
                         json.dumps(fe) if fe is not None else None,
                         int(cfm) if cfm is not None else None,
                         i,
+                        int(bool(te)),
+                        tv or "Standard",
                     ),
                 )
             self.conn.commit()
@@ -720,16 +765,27 @@ class Database:
         fe = system.get("file_extensions")
         cfm = system.get("claude_fast_mode")
         existing = self.conn.execute(
-            "SELECT sort_order FROM systems WHERE name = ?", (system["name"],)
+            "SELECT sort_order, tracking_enabled, tracking_verbosity FROM systems WHERE name = ?",
+            (system["name"],),
         ).fetchone()
         sort_order = existing["sort_order"] if existing else (
             self.conn.execute("SELECT COALESCE(MAX(sort_order)+1,0) FROM systems").fetchone()[0]
         )
+        # Preserve existing tracking fields if not explicitly provided
+        if existing and "tracking_enabled" not in system:
+            te = existing["tracking_enabled"]
+        else:
+            te = system.get("tracking_enabled", False)
+        if existing and "tracking_verbosity" not in system:
+            tv = existing["tracking_verbosity"]
+        else:
+            tv = system.get("tracking_verbosity", "Standard")
         with self._lock:
             self.conn.execute(
                 """INSERT OR REPLACE INTO systems
-                   (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order,
+                    tracking_enabled, tracking_verbosity)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     system["name"],
                     system.get("source_dir") or "",
@@ -738,6 +794,8 @@ class Database:
                     json.dumps(fe) if fe is not None else None,
                     int(cfm) if cfm is not None else None,
                     sort_order,
+                    int(bool(te)),
+                    tv or "Standard",
                 ),
             )
             self.conn.commit()
@@ -784,6 +842,167 @@ class Database:
         return [dict(r) for r in rows]
 
     # --- Stats ---
+
+    # --- Tracking: System configuration ---
+
+    def get_armed_systems(self) -> list[dict]:
+        """Return all systems with tracking_enabled = 1."""
+        rows = self.conn.execute(
+            "SELECT rowid AS id, name, source_dir, paths, min_confidence, file_extensions, "
+            "claude_fast_mode, tracking_enabled, tracking_verbosity "
+            "FROM systems WHERE tracking_enabled = 1 ORDER BY sort_order, name"
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["paths"] = json.loads(d["paths"]) if d["paths"] else []
+            d["tracking_enabled"] = bool(d["tracking_enabled"])
+            result.append(d)
+        return result
+
+    def set_system_tracking(self, name: str, enabled: bool, verbosity: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                "UPDATE systems SET tracking_enabled = ?, tracking_verbosity = ? WHERE name = ?",
+                (int(enabled), verbosity, name),
+            )
+            self.conn.commit()
+
+    # --- Tracking: Per-file verbosity overrides ---
+
+    def get_file_verbosity_overrides(self, system_name: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT file_path, verbosity FROM system_file_verbosity WHERE system_name = ?",
+            (system_name,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_file_verbosity_override(self, system_name: str, file_path: str, verbosity: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO system_file_verbosity (system_name, file_path, verbosity) "
+                "VALUES (?, ?, ?)",
+                (system_name, file_path, verbosity),
+            )
+            self.conn.commit()
+
+    def delete_file_verbosity_override(self, system_name: str, file_path: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                "DELETE FROM system_file_verbosity WHERE system_name = ? AND file_path = ?",
+                (system_name, file_path),
+            )
+            self.conn.commit()
+
+    def replace_file_verbosity_overrides(self, system_name: str, overrides: list[dict]) -> None:
+        """Atomically replace all per-file overrides for a system."""
+        with self._lock:
+            self.conn.execute(
+                "DELETE FROM system_file_verbosity WHERE system_name = ?", (system_name,)
+            )
+            for o in overrides:
+                self.conn.execute(
+                    "INSERT INTO system_file_verbosity (system_name, file_path, verbosity) "
+                    "VALUES (?, ?, ?)",
+                    (system_name, o["file_path"], o["verbosity"]),
+                )
+            self.conn.commit()
+
+    # --- Tracking: Sessions ---
+
+    def insert_session(self, session: dict) -> None:
+        with self._lock:
+            self.conn.execute(
+                """INSERT OR IGNORE INTO nytwatch_sessions
+                   (id, file_path, project_dir, started_at, ended_at, duration_secs,
+                    display_name, bookmarked, plugin_version, ue_project_name,
+                    systems_tracked, event_count, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    session["id"],
+                    session["file_path"],
+                    session["project_dir"],
+                    session["started_at"],
+                    session.get("ended_at"),
+                    session.get("duration_secs"),
+                    session.get("display_name") or session["id"],
+                    int(session.get("bookmarked", False)),
+                    session.get("plugin_version", ""),
+                    session.get("ue_project_name", ""),
+                    json.dumps(session.get("systems_tracked", [])),
+                    session.get("event_count", 0),
+                    session.get("created_at") or now_iso(),
+                ),
+            )
+            self.conn.commit()
+
+    def get_session(self, session_id: str) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT * FROM nytwatch_sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["systems_tracked"] = json.loads(d["systems_tracked"]) if d["systems_tracked"] else []
+        d["bookmarked"] = bool(d["bookmarked"])
+        return d
+
+    def list_sessions(
+        self,
+        project_dir: Optional[str] = None,
+        bookmarked_only: bool = False,
+        name_filter: str = "",
+        limit: int = 100,
+    ) -> list[dict]:
+        where = []
+        params: list = []
+        if project_dir:
+            where.append("project_dir = ?")
+            params.append(project_dir)
+        if bookmarked_only:
+            where.append("bookmarked = 1")
+        if name_filter:
+            where.append("display_name LIKE ?")
+            params.append(f"%{name_filter}%")
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        params.append(limit)
+        rows = self.conn.execute(
+            f"SELECT * FROM nytwatch_sessions {clause} "
+            f"ORDER BY bookmarked DESC, started_at DESC LIMIT ?",
+            params,
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["systems_tracked"] = json.loads(d["systems_tracked"]) if d["systems_tracked"] else []
+            d["bookmarked"] = bool(d["bookmarked"])
+            result.append(d)
+        return result
+
+    def update_session(self, session_id: str, **kwargs) -> None:
+        if not kwargs:
+            return
+        sets = ", ".join(f"{k} = ?" for k in kwargs)
+        vals = [int(v) if isinstance(v, bool) else v for v in kwargs.values()]
+        vals.append(session_id)
+        with self._lock:
+            self.conn.execute(
+                f"UPDATE nytwatch_sessions SET {sets} WHERE id = ?", vals
+            )
+            self.conn.commit()
+
+    def delete_session(self, session_id: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                "DELETE FROM nytwatch_sessions WHERE id = ?", (session_id,)
+            )
+            self.conn.commit()
+
+    def session_exists_for_file(self, file_path: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM nytwatch_sessions WHERE file_path = ? LIMIT 1", (file_path,)
+        ).fetchone()
+        return row is not None
 
     def get_stats(self) -> dict:
         status_counts = self.count_by_status()

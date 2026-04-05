@@ -79,6 +79,35 @@ class ConnectionManager:
             "reason": reason,
         })
 
+    def push_pie_state(
+        self,
+        project_dir: str,
+        running: bool,
+        armed_systems: list,
+        event_count: Optional[int],
+        started_at: Optional[str],
+    ) -> None:
+        self.broadcast_from_thread({
+            "type": "pie_state",
+            "project_dir": project_dir,
+            "running": running,
+            "armed_systems": armed_systems,
+            "event_count": event_count,
+            "started_at": started_at,
+        })
+
+    def push_session_imported(self, session: dict) -> None:
+        self.broadcast_from_thread({
+            "type": "session_imported",
+            "session": session,
+        })
+
+    def push_session_deleted(self, session_id: str) -> None:
+        self.broadcast_from_thread({
+            "type": "session_deleted",
+            "session_id": session_id,
+        })
+
     def push_findings_update(
         self,
         scan_id: str,

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Sessions — Nytwatch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Sessions</h1>
+</div>
+
+<div id="sessions-app"
+     data-highlight="{{ highlight or '' }}"
+     data-sessions="{{ sessions | tojson | e }}">
+  <p class="muted">Loading sessions…</p>
+</div>
+{% endblock %}
