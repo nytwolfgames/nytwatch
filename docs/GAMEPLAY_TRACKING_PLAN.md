@@ -393,22 +393,47 @@ If the UI sets `APlayerCharacter.h` → `Critical` override: `CurrentVelocity` (
 
 API:
 - `void SnapshotObject(UObject* Obj, const FNytwatchSystemConfig& System)` — initial snapshot, no events emitted
-- `void PollObject(UObject* Obj, const FNytwatchSystemConfig& System, float PIETimeSeconds, TArray<FNytwatchEvent>& OutEvents)` — diff current vs snapshot, emit events for changed properties, update snapshot
-- `FNytwatchEvent` struct: `{ FString SystemName; FString ObjectName; FString ClassName; FString PropertyName; FString OldValue; FString NewValue; float TimeSeconds; }`
+- `void PollObject(UObject* Obj, const FNytwatchSystemConfig& System, float PIETimeSeconds, TArray<FNytwatchEvent>& OutEvents)` — diff current vs snapshot, emit events for changed properties, update snapshot; sets `bIsNumeric` on each event via `Property->IsA<FNumericProperty>()`
+- `FNytwatchEvent` struct:
+```cpp
+struct FNytwatchEvent
+{
+    FName   SystemName;      // FName — interned, no per-event allocation
+    FString ObjectName;      // FString — unique per instance, must stay FString
+    FName   ClassName;       // FName — interned
+    FName   PropertyName;    // FName — interned
+    FString OldValue;        // serialised via FProperty::ExportText_Direct()
+    FString NewValue;        // serialised via FProperty::ExportText_Direct()
+    float   TimeSeconds;
+    bool    bIsNumeric;      // true if Property->IsA<FNumericProperty>()
+};
+```
+`SystemName`, `ClassName`, and `PropertyName` use `FName` for automatic string interning — identical strings share one allocation regardless of how many events reference them. `ObjectName` stays `FString` as instance names are unique per object.
 
 ### 5e. `NytwatchSessionWriter.h / .cpp`
 
-Responsibility: Buffer events during PIE and flush to a uniquely-identified `.md` file when PIE ends.
+Responsibility: Buffer events during PIE, flush periodically to disk, and finalise the session file when PIE ends.
 
 Key design:
-- Holds in-memory `TArray<FNytwatchEvent>` buffer
+- Holds in-memory `TArray<FNytwatchEvent>` buffer for the current flush window
+- **Event cap**: configurable max total events per session (default 50,000). When reached, recording stops and `FNotificationManager` shows an in-editor warning: `"Nytwatch: event buffer limit reached — recording paused for this session."` The partial session is still written normally at `Close()`.
+- **Periodic flush**: every 10,000 events, the current buffer is serialised and appended to the session `.md` file on disk, then the buffer is cleared. Peak in-memory footprint is bounded to ~10,000 events (~3–4 MB) regardless of session length. Also means partial data is recoverable if the editor crashes mid-session.
 - Session ID generated at `Open()` time as a UUID4 string via `FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens)`
-- `void Open(const FNytwatchConfig& Config, const FString& ProjectDir)` — generates session ID, records start time, creates `Saved/Nytwatch/` and `Saved/Nytwatch/Sessions/` if absent (this is the authoritative creator of the `Saved/Nytwatch/` directory — the watcher only begins watching after this directory exists)
-- `void AppendEvent(const FNytwatchEvent& Event)` — appends to buffer
-- `void Close(const FString& ProjectDir)` — serialises buffer to markdown format, writes with `FFileHelper::SaveStringToFile`, then deletes `nytwatch.lock`
+- `void Open(const FNytwatchConfig& Config, const FString& ProjectDir)` — generates session ID, records start time, writes the markdown header block and Claude legend to the file, creates `Saved/Nytwatch/` and `Saved/Nytwatch/Sessions/` if absent (this is the authoritative creator of the `Saved/Nytwatch/` directory)
+- `void AppendEvent(const FNytwatchEvent& Event)` — appends to buffer; triggers a flush if buffer reaches the flush threshold (10,000); no-ops if event cap already reached
+- `void FlushBuffer()` — serialises the current buffer (one line per object, delta encoding for numerics, transition chains for non-numerics) and appends to the session file using `FFileHelper::SaveStringToFile` with append flag; clears buffer; updates running event total
+- `void Close(const FString& ProjectDir)` — calls `FlushBuffer()` for any remaining events, writes closing metadata if needed, then deletes `nytwatch.lock`
 - File naming: `<session_id>.md` (UUID4) — guarantees uniqueness, no collision window
-- The session ID is also embedded in the markdown header for cross-referencing
-- If `Close()` is called with zero events, still writes a valid minimal session file
+- The session ID is embedded in the markdown header for cross-referencing
+- If `Close()` is called with zero total events, still writes a valid minimal session file
+
+**Memory profile:**
+
+| Scenario | Peak in-memory events | Peak RAM |
+|---|---|---|
+| Any session length | ≤ 10,000 (flush threshold) | ~3–4 MB |
+| Event cap hit | ≤ 10,000 | ~3–4 MB |
+| Editor crash | Events since last flush lost; prior flushes on disk | — |
 
 ### 5f. `NytwatchSubsystem.h / .cpp`
 
@@ -428,13 +453,14 @@ Key design:
 
 `Tick(float DeltaTime)`:
 1. Accumulate `PIEElapsedSeconds`
-2. Iterate all UObjects via `TObjectIterator<UObject>`, determine which armed system (if any) owns each object by checking absolute paths against the object's class source path
-3. Call `NytwatchPropertyTracker.PollObject()` for each matching object
-4. Append emitted events to `NytwatchSessionWriter`
+2. If `NytwatchSessionWriter` has hit the event cap, skip polling entirely
+3. Iterate all UObjects via `TObjectIterator<UObject>`, determine which armed system (if any) owns each object by checking absolute paths against the object's class source path
+4. Call `NytwatchPropertyTracker.PollObject()` for each matching object
+5. Append emitted events to `NytwatchSessionWriter` (writer handles flush threshold and cap internally)
 
 `OnEndPIE(bool bIsSimulating)`:
 1. Unregister tick delegate
-2. Call `NytwatchSessionWriter.Close()` — writes file, removes `nytwatch.lock`
+2. Call `NytwatchSessionWriter.Close()` — flushes remaining buffer, writes file, removes `nytwatch.lock`
 3. Set `bTrackingActive = false`
 4. Log: `[NytwatchAgent] Session closed. X events written to <session_id>.md`
 
@@ -649,28 +675,34 @@ systems_tracked: ["Combat", "AI"]
 event_count: 87
 ---
 
-# Nytwatch Session — DragonRacer — 2026-04-04 14:15:23
+> This is a Nytwatch gameplay session log from Unreal Engine 5. It records UObject property changes captured during a Play-In-Editor session.
+> Format: one line per object. Properties separated by `|`. Numeric properties use delta encoding: `PropName:InitialValue +N@t -N@t` where `t` is seconds from session start. Non-numeric properties (enum, string, bool, vector) use transition chains: `PropName:From→To@t`. Booleans abbreviated as T/F. UE class prefixes (A/U) are stripped from object names. Objects with no recorded changes are omitted.
+
+# DragonRacer — 2026-04-04 14:15:23 (142s)
 
 ## Combat
 
-[00:03.42] ASpearEnemy::CurrentHealth  100.000000 → 75.000000
-[00:03.42] ASpearEnemy::bIsStaggered  False → True
-[00:07.18] ASpearEnemy::CurrentHealth  75.000000 → 0.000000
+SpearEnemy_0    | CurrentHealth:100 -25@3.42 -75@7.18 | bIsStaggered:F→T@3.42
+SpearEnemy_1    | CurrentHealth:100 -18@4.10
 
 ## AI
 
-[00:03.50] UDragonAIController::CurrentState  Patrol → Combat
-[00:03.51] UDragonAIController::TargetActor  None → BP_Player_C_0
+DragonAICtrl_0  | CurrentState:Patrol→Combat@3.50 | TargetActor:None→Player_0@3.51
 ```
 
 Format rules:
 - Header is a line-by-line `key: value` block between `---` fences — no full YAML parser required to read
 - `session_id` in the header matches the filename (without `.md` extension)
+- A single `>` blockquote immediately after the header provides a format legend for Claude — written verbatim, not generated per-session
 - Events are grouped by system under `## SystemName` headings
-- Event lines begin with `[MM:SS.mm]` where `mm` is centiseconds (2 digits); timestamps are relative to PIE start
-- Values use `FProperty::ExportText_Direct()` output verbatim
+- **One line per object.** Properties separated by ` | `
+- **Numeric properties** (int, float): `PropName:InitialValue` followed by `+N@t` or `-N@t` per change. Initial value stated once; subsequent entries are signed deltas. Values trimmed of trailing zeros (e.g. `100` not `100.000000`)
+- **Non-numeric properties** (enum, FName, FString, bool, FVector, FRotator): `PropName:V0→V1@t→V2@t` transition chain. Full values used — no delta encoding
+- **Booleans:** `T` / `F` shorthand
+- **Timestamps:** seconds from PIE start as a float (e.g. `@3.42`), not `[MM:SS.mm]`
+- **Object names:** UE class prefix (`A`, `U`) stripped. Multiple instances disambiguated by `_N` suffix (e.g. `SpearEnemy_0`, `SpearEnemy_1`)
+- Objects with no recorded changes are omitted entirely
 - Systems with zero events have their `##` heading omitted entirely
-- The `OldValue → NewValue` separator uses Unicode right arrow `→` (U+2192)
 - The `display_name` (user-set friendly label) lives only in the database — it is not written back to the file
 
 ### 8d. Plugin `VERSION` file
