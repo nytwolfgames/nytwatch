@@ -66,7 +66,16 @@ if (Test-Path $LEGACY_DIR) {
         }
     }
 
-    # Copy project database directories. Rename auditor.db -> nytwatch.db so the new CLI finds it.
+    # Copy root-level database (default layout: ~/.code-auditor/auditor.db)
+    $rootDb     = Join-Path $LEGACY_DIR "auditor.db"
+    $rootDbDest = Join-Path $NYTWATCH_DIR "nytwatch.db"
+    if ((Test-Path $rootDb) -and -not (Test-Path $rootDbDest)) {
+        Copy-Item $rootDb $rootDbDest
+        Write-OK "Copied and renamed auditor.db -> nytwatch.db"
+    }
+
+    # Copy project database subdirectories (alternate layout with per-project subfolders).
+    # Rename auditor.db -> nytwatch.db so the new CLI finds it.
     $subDirs = Get-ChildItem -Path $LEGACY_DIR -Directory -ErrorAction SilentlyContinue
     foreach ($d in $subDirs) {
         $destDir = Join-Path $NYTWATCH_DIR $d.Name

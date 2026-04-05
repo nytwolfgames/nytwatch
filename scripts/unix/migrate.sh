@@ -70,7 +70,13 @@ if [ -d "$LEGACY_DIR" ]; then
         fi
     done
 
-    # Copy project database subdirectories.
+    # Copy root-level database (default layout: ~/.code-auditor/auditor.db)
+    if [ -f "$LEGACY_DIR/auditor.db" ] && [ ! -f "$NYTWATCH_DIR/nytwatch.db" ]; then
+        cp "$LEGACY_DIR/auditor.db" "$NYTWATCH_DIR/nytwatch.db"
+        ok "Copied and renamed auditor.db -> nytwatch.db"
+    fi
+
+    # Copy project database subdirectories (alternate layout with per-project subfolders).
     # Rename auditor.db -> nytwatch.db during copy so the new CLI finds it.
     for d in "$LEGACY_DIR"/*/; do
         [ -d "$d" ] || continue
