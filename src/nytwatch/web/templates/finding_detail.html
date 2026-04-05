@@ -186,7 +186,7 @@ async function recheckFinding() {
     actionBtns.forEach(b => b.disabled = true);
     if (icon) icon.style.animation = 'spin 1s linear infinite';
     try {
-        const res = await fetch('/findings/{{ finding.id }}/recheck', { method: 'POST' });
+        const res = await fetch(`/findings/${_findingId}/recheck`, { method: 'POST' });
         const data = await res.json();
         if (data.error) {
             alert('Recheck failed: ' + data.error);
@@ -209,7 +209,7 @@ async function recheckFinding() {
 async function toggleIncludeTest(checkbox) {
     checkbox.disabled = true;
     try {
-        const res = await fetch('/findings/{{ finding.id }}/toggle-test', { method: 'POST' });
+        const res = await fetch(`/findings/${_findingId}/toggle-test`, { method: 'POST' });
         const data = await res.json();
         if (!data.ok) checkbox.checked = !checkbox.checked;
     } catch (e) {
