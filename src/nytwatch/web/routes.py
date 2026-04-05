@@ -1194,17 +1194,21 @@ async def suggest_systems_api(request: Request):
             return JSONResponse({"error": "Claude CLI not found — ensure 'claude' is on PATH"}, status_code=500)
         data = _extract_json(raw)
         systems = data.get("systems", [])
-        active_dir_paths = {d["path"] for d in active_dirs}
+        # Normalize all source dir paths to have trailing slashes for safe prefix matching
+        active_dir_paths = {d["path"].replace("\\", "/").rstrip("/") + "/" for d in active_dirs}
+        # Sorted longest-first so the most specific dir wins prefix matching
+        active_dir_paths_sorted = sorted(active_dir_paths, key=len, reverse=True)
         valid = []
         for s in systems:
             name = (s.get("name") or "").strip()
-            source_dir = (s.get("source_dir") or "").strip()
+            source_dir = (s.get("source_dir") or "").replace("\\", "/").rstrip("/") + "/"
             paths = [p for p in (s.get("paths") or []) if isinstance(p, str) and p.strip()]
             if name and paths:
                 # If Claude returned an unknown source_dir, infer from the first path
                 if source_dir not in active_dir_paths:
+                    first = paths[0].replace("\\", "/")
                     source_dir = next(
-                        (d for d in active_dir_paths if paths[0].startswith(d)), ""
+                        (d for d in active_dir_paths_sorted if first.startswith(d)), ""
                     )
                 valid.append({"name": name, "source_dir": source_dir, "paths": paths})
         return JSONResponse({"systems": valid})
@@ -1213,31 +1217,22 @@ async def suggest_systems_api(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-def _build_suggest_paths_prompt(system_name: str, source_dir: str, subdirs: list[dict]) -> str:
-    lines = []
-    for d in subdirs:
-        lines.append(f"  {d['path']}")
-        for c in d["children"][:12]:
-            lines.append(f"    {c}")
-    listing = "\n".join(lines) or f"  (no subdirectories — source dir is a leaf)"
+def _build_suggest_paths_prompt(system_name: str, source_dir: str, repo_path: str) -> str:
     sd_root = source_dir.rstrip("/") + "/"
     return f"""\
 You are configuring a code analysis tool for an Unreal Engine C++ project.
 
+Repo root: {repo_path}
 System name: "{system_name}"
-Source directory: "{source_dir}"
+Source directory: "{sd_root}"
 
-Subdirectories of "{source_dir}":
-{listing}
-
-Which paths should the system "{system_name}" scan? Choose directories whose names suggest they \
-are related to the system name. When in doubt, prefer fewer, broader paths.
+Explore the directory structure under "{sd_root}" using your tools, then decide which paths this system should scan. Choose directories whose names and contents are related to the system name. When in doubt, prefer fewer, broader paths.
 
 Rules:
-- Return only paths that appear in the listing above
+- Only return paths that actually exist under "{sd_root}"
 - If no subdirectory is clearly related, return the entire source dir: "{sd_root}"
-- All paths must have a trailing slash
-- Do not invent paths that are not listed
+- All paths must use forward slashes with a trailing slash
+- Do not invent paths
 
 Return ONLY valid JSON (no fences, no commentary):
 {{"paths": ["{sd_root}"]}}"""
@@ -1261,44 +1256,20 @@ async def suggest_paths_api(request: Request):
         return JSONResponse({"error": "No repo path configured"}, status_code=400)
 
     repo = Path(repo_path).expanduser().resolve()
-    sd_norm  = source_dir.replace("\\", "/").rstrip("/")
-    sd_path  = (repo / sd_norm).resolve()
-    sd_root  = sd_norm + "/"
+    sd_norm = source_dir.replace("\\", "/").rstrip("/")
+    sd_path = (repo / sd_norm).resolve()
+    sd_root = sd_norm + "/"
 
     if not sd_path.exists() or not sd_path.is_dir():
         return JSONResponse({"error": f"Source directory not found: {source_dir}"}, status_code=400)
 
-    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", ".git", ".vs", ".idea"}
-
-    # Build one-level-deep listing with immediate children for context
-    subdirs: list[dict] = []
-    try:
-        for entry in sorted(sd_path.iterdir(), key=lambda e: e.name.lower()):
-            if entry.name in _skip or entry.name.startswith(".") or not entry.is_dir():
-                continue
-            rel = str(entry.relative_to(repo)).replace("\\", "/").rstrip("/") + "/"
-            children: list[str] = []
-            try:
-                for child in sorted(entry.iterdir(), key=lambda e: e.name.lower()):
-                    if child.name in _skip or child.name.startswith(".") or not child.is_dir():
-                        continue
-                    children.append(str(child.relative_to(repo)).replace("\\", "/").rstrip("/") + "/")
-            except (PermissionError, OSError):
-                pass
-            subdirs.append({"path": rel, "children": children})
-    except (PermissionError, OSError) as exc:
-        return JSONResponse({"error": f"Cannot read source directory: {exc}"}, status_code=500)
-
-    # No subdirs → the whole source_dir is the only sensible path
-    if not subdirs:
-        return JSONResponse({"paths": [sd_root]})
-
-    prompt = _build_suggest_paths_prompt(system_name, sd_root, subdirs)
+    prompt = _build_suggest_paths_prompt(system_name, sd_root, str(repo))
     try:
         import subprocess as _sp
         from nytwatch.analysis.engine import call_claude, _extract_json
         try:
-            raw = call_claude(prompt, fast=True, timeout=60, repo_path=repo_path, use_tools=False)
+            # Agent mode: Claude explores the source dir with its own tools
+            raw = call_claude(prompt, fast=False, timeout=300, repo_path=str(repo), use_tools=True)
         except _sp.CalledProcessError as cpe:
             stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()
             return JSONResponse({"error": f"Claude CLI error: {stderr_detail or cpe.returncode}"}, status_code=500)

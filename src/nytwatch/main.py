@@ -66,8 +66,8 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
 
     app.include_router(router)
 
-    # Set up scheduled scan notifications if configured
-    if config.scan_schedule.incremental_interval_hours > 0:
+    # Set up scheduled scan notifications if a project is configured
+    if config.repo_path and config.scan_schedule.incremental_interval_hours > 0:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
 
