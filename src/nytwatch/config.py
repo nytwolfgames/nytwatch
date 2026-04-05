@@ -258,8 +258,27 @@ def get_data_dir(config: AuditorConfig) -> Path:
     return data_dir
 
 
-def get_db_path(config: AuditorConfig) -> Path:
-    return get_data_dir(config) / "nytwatch.db"
+def get_db_path(config: AuditorConfig, config_path: Optional[Path] = None) -> Path:
+    """Return the DB path for this project.
+
+    When config_path is provided the DB is named after the config file stem
+    (e.g. ~/.nytwatch/greenleaf.yaml → ~/.nytwatch/greenleaf.db).
+    On first use the legacy nytwatch.db is renamed automatically so existing
+    users don't lose their data.
+    Falls back to nytwatch.db when no config_path is known.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    data_dir = get_data_dir(config)
+    if config_path:
+        stem = Path(config_path).expanduser().stem
+        db_path = data_dir / f"{stem}.db"
+        legacy = data_dir / "nytwatch.db"
+        if not db_path.exists() and legacy.exists():
+            legacy.rename(db_path)
+            _log.info("Migrated legacy nytwatch.db → %s", db_path.name)
+        return db_path
+    return data_dir / "nytwatch.db"
 
 
 def init_config(repo_path: str, config_path: Optional[Path] = None) -> Path:

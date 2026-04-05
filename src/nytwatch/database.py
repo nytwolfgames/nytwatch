@@ -684,14 +684,23 @@ class Database:
         return grouped
 
     def replace_systems(self, systems: list[dict]) -> None:
-        """Replace ALL systems with the given list (atomic)."""
+        """Replace ALL systems with the given list (atomic).
+
+        Duplicate names are silently deduplicated — last entry wins.
+        """
+        # Deduplicate by name, preserving last-seen order
+        seen: dict[str, dict] = {}
+        for s in systems:
+            seen[s["name"]] = s
+        systems = list(seen.values())
+
         with self._lock:
             self.conn.execute("DELETE FROM systems")
             for i, s in enumerate(systems):
                 fe = s.get("file_extensions")
                 cfm = s.get("claude_fast_mode")
                 self.conn.execute(
-                    """INSERT INTO systems
+                    """INSERT OR REPLACE INTO systems
                        (name, source_dir, paths, min_confidence, file_extensions, claude_fast_mode, sort_order)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (

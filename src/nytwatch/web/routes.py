@@ -46,7 +46,7 @@ templates.env.globals["active_config_path"] = _active_config_path
 templates.env.globals["active_repo_path"] = _active_repo_path
 
 
-def get_db(request: Request) -> Database:
+def get_db(request: Request) -> Optional[Database]:
     return request.app.state.db
 
 
@@ -679,14 +679,14 @@ async def open_folder(request: Request):
 @router.get("/api/systems")
 async def get_systems_api(request: Request):
     db = get_db(request)
-    return JSONResponse({"systems": db.list_systems()})
+    return JSONResponse({"systems": db.list_systems() if db else []})
 
 
 @router.get("/api/source-dirs")
 async def get_source_dirs_api(request: Request):
     """Return active (non-ignored) source directories from the DB."""
     db = get_db(request)
-    dirs = db.list_source_dirs()
+    dirs = db.list_source_dirs() if db else []
     active = [d for d in dirs if d["source_type"] != "ignored"]
     return JSONResponse({"source_dirs": active})
 
@@ -695,7 +695,7 @@ async def get_source_dirs_api(request: Request):
 async def get_all_source_dirs_api(request: Request):
     """Return all source directories (active + ignored) from the DB."""
     db = get_db(request)
-    return JSONResponse({"source_dirs": db.list_source_dirs()})
+    return JSONResponse({"source_dirs": db.list_source_dirs() if db else []})
 
 
 @router.post("/api/systems/append")
@@ -724,6 +724,9 @@ async def append_systems_api(request: Request):
         for s in new_systems
         if s["name"].strip() not in existing_names
     ]
+    errs = _validate_systems(combined)
+    if errs:
+        return JSONResponse({"error": errs[0], "errors": errs}, status_code=400)
     db.replace_systems(combined)
     return JSONResponse({"ok": True})
 
@@ -738,7 +741,7 @@ async def save_systems_api(request: Request):
             return JSONResponse({"error": "System name cannot be empty"}, status_code=400)
         if not s.get("paths"):
             return JSONResponse({"error": f"System '{s['name']}' has no paths"}, status_code=400)
-    db.replace_systems([
+    clean = [
         {
             "name": s["name"].strip(),
             "source_dir": s.get("source_dir") or "",
@@ -748,7 +751,11 @@ async def save_systems_api(request: Request):
             "claude_fast_mode": s.get("claude_fast_mode"),
         }
         for s in systems_data
-    ])
+    ]
+    errs = _validate_systems(clean)
+    if errs:
+        return JSONResponse({"error": errs[0], "errors": errs}, status_code=400)
+    db.replace_systems(clean)
     return JSONResponse({"ok": True})
 
 
@@ -779,10 +786,11 @@ async def switch_project(request: Request):
 
     # Switch in-memory config and database
     from nytwatch.database import Database
-    old_db: Database = request.app.state.db
-    old_db.close()
+    old_db = request.app.state.db
+    if old_db is not None:
+        old_db.close()
 
-    new_db = Database(get_db_path(new_config))
+    new_db = Database(get_db_path(new_config, p))
     new_db.init_schema()
 
     # Migrate systems from YAML if the new config carries them (legacy) and
@@ -842,7 +850,7 @@ async def delete_project(request: Request):
     try:
         from nytwatch.config import load_config
         target_config = load_config(target)
-        target_db_path = get_db_path(target_config)
+        target_db_path = get_db_path(target_config, target)
     except Exception:
         target_db_path = None
 
@@ -881,7 +889,7 @@ async def delete_project(request: Request):
         if remaining:
             try:
                 new_config = load_config(Path(remaining[0]["path"]))
-                new_db_path = get_db_path(new_config)
+                new_db_path = get_db_path(new_config, Path(remaining[0]["path"]))
                 from nytwatch.database import Database
                 new_db = Database(new_db_path)
                 new_db.init_schema()
@@ -894,19 +902,45 @@ async def delete_project(request: Request):
             except Exception as e:
                 logger.warning("Could not switch to remaining project after delete: %s", e)
 
-        # No remaining projects — go blank
-        from nytwatch.database import Database
-        blank_config = AuditorConfig()
-        blank_db = Database(get_db_path(blank_config))
-        blank_db.init_schema()
-        request.app.state.config = blank_config
+        # No remaining projects — go blank (no DB)
+        request.app.state.config = AuditorConfig()
         request.app.state.config_path = ""
-        request.app.state.db = blank_db
+        request.app.state.db = None
         logger.info("Deleted last project, server is now unconfigured")
         return JSONResponse({"ok": True, "switched_to": None})
 
     logger.info("Deleted project config: %s", config_path_str)
     return JSONResponse({"ok": True})
+
+
+def _validate_systems(systems: list[dict]) -> list[str]:
+    """Return error strings for duplicate system names or duplicate paths across systems."""
+    errors: list[str] = []
+    seen_names: dict[str, bool] = {}
+    seen_paths: dict[str, str] = {}
+    for s in systems:
+        name = (s.get("name") or "").strip()
+        if not name:
+            continue
+        if name in seen_names:
+            msg = f'Duplicate system name: "{name}"'
+            if msg not in errors:
+                errors.append(msg)
+        else:
+            seen_names[name] = True
+        for p in s.get("paths", []):
+            if not p:
+                continue
+            norm = p.replace("\\", "/").rstrip("/") + "/"
+            if norm in seen_paths:
+                owner = seen_paths[norm]
+                if owner != name:
+                    msg = f'Duplicate path: "{p}" is used by both "{owner}" and "{name}"'
+                    if msg not in errors:
+                        errors.append(msg)
+            else:
+                seen_paths[norm] = name
+    return errors
 
 
 def _make_build_config(build_data: dict):
@@ -990,10 +1024,21 @@ async def init_project(request: Request):
     except Exception as e:
         return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
 
-    # Save systems and source dir classifications into the DB
+    # Ensure a DB exists for this project — create it now if this is the first project
     db = get_db(request)
+    if db is None:
+        from nytwatch.database import Database as _Database
+        new_db_path = get_db_path(config, config_path)
+        db = _Database(new_db_path)
+        db.init_schema()
+        request.app.state.db = db
+        request.app.state.config = config
+        request.app.state.config_path = str(config_path)
 
     if clean_systems:
+        errs = _validate_systems(clean_systems)
+        if errs:
+            return JSONResponse({"error": errs[0], "errors": errs}, status_code=400)
         db.replace_systems(clean_systems)
 
     source_dirs = body.get("source_dirs", [])
@@ -1106,6 +1151,21 @@ async def find_uproject_api(request: Request, repo_path: str = ""):
     return JSONResponse({"uproject": str(matches[0]).replace("\\", "/")})
 
 
+@router.get("/api/validate-repo")
+async def validate_repo_api(request: Request, repo_path: str = ""):
+    """Lightweight repo validation — checks path exists and is a git repo. No filesystem scanning."""
+    if not repo_path:
+        return JSONResponse({"error": "repo_path is required"}, status_code=400)
+    rp = Path(repo_path).expanduser()
+    if not rp.exists():
+        return JSONResponse({"error": f"Path does not exist: {repo_path}"}, status_code=400)
+    if not rp.is_dir():
+        return JSONResponse({"error": f"Not a directory: {repo_path}"}, status_code=400)
+    if not (rp / ".git").exists():
+        return JSONResponse({"error": f"Not a git repository (no .git folder): {repo_path}"}, status_code=400)
+    return JSONResponse({"ok": True, "message": "Git repository found"})
+
+
 @router.get("/api/detect-source-dirs")
 async def detect_source_dirs_api(request: Request, repo_path: str = ""):
     """Return heuristically-classified source directories without touching the DB."""
@@ -1145,6 +1205,10 @@ Rules:
 - System names should be short and descriptive (use the feature folder name)
 - "source_dir" must exactly match one of the active source directory paths listed above (with trailing slash)
 - All paths must use forward slashes with a trailing slash
+- UE module Public/Private rule: a UE module directory contains both a Public/ and a Private/ subfolder. There are two valid cases:
+  1. If you want the entire module → use the module root path (e.g. "Module/") which covers all code inside it
+  2. If you are splitting by feature folder inside the module → return BOTH sides explicitly, e.g. ["Module/Public/Combat/", "Module/Private/Combat/"]
+  Never return a bare "Module/Public/" or "Module/Private/" without a feature subfolder — use the module root instead.
 
 Return a JSON object — no markdown fences, no commentary:
 
@@ -1184,7 +1248,7 @@ async def suggest_systems_api(request: Request):
         from nytwatch.analysis.engine import call_claude, _extract_json
         try:
             # Agent mode: Claude explores the repo with its own tools
-            raw = call_claude(prompt, fast=False, timeout=300, repo_path=str(repo), use_tools=True)
+            raw = call_claude(prompt, fast=True, timeout=300, repo_path=str(repo), use_tools=True)
         except _sp.CalledProcessError as cpe:
             stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()
             error_msg = stderr_detail or f"Claude CLI exited with code {cpe.returncode}"
@@ -1232,6 +1296,10 @@ Rules:
 - If no subdirectory is clearly related, return the entire source dir: "{sd_root}"
 - All paths must use forward slashes with a trailing slash
 - Do not invent paths
+- UE module Public/Private rule: a UE module directory contains both a Public/ and a Private/ subfolder. There are two valid cases:
+  1. If this system covers the entire module → use the module root path (e.g. "Module/") which covers all code inside it
+  2. If this system covers a specific feature inside the module → return BOTH sides explicitly, e.g. ["Module/Public/Combat/", "Module/Private/Combat/"]
+  Never return a bare "Module/Public/" or "Module/Private/" without a feature subfolder — use the module root instead.
 
 Return ONLY valid JSON (no fences, no commentary):
 {{"paths": ["{sd_root}"]}}"""
@@ -1268,7 +1336,7 @@ async def suggest_paths_api(request: Request):
         from nytwatch.analysis.engine import call_claude, _extract_json
         try:
             # Agent mode: Claude explores the source dir with its own tools
-            raw = call_claude(prompt, fast=False, timeout=300, repo_path=str(repo), use_tools=True)
+            raw = call_claude(prompt, fast=True, timeout=300, repo_path=str(repo), use_tools=True)
         except _sp.CalledProcessError as cpe:
             stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()
             return JSONResponse({"error": f"Claude CLI error: {stderr_detail or cpe.returncode}"}, status_code=500)
@@ -1294,10 +1362,12 @@ async def config_status(request: Request):
     config = get_config(request)
     db = get_db(request)
 
-    errors = validate_config_errors(config, systems=db.list_systems())
-    db_path = get_db_path(config)
-    db_size = db_path.stat().st_size if db_path.exists() else 0
-    last_commit = db.get_config("last_scan_commit", "")
+    systems = db.list_systems() if db else []
+    errors = validate_config_errors(config, systems=systems)
+    config_path = getattr(request.app.state, "config_path", "")
+    db_path = get_db_path(config, Path(config_path) if config_path else None) if db else None
+    db_size = db_path.stat().st_size if db_path and db_path.exists() else 0
+    last_commit = db.get_config("last_scan_commit", "") if db else ""
 
     repo = Path(config.repo_path).expanduser()
     config_path = getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH))
@@ -1314,14 +1384,21 @@ async def config_status(request: Request):
 @router.post("/api/config/repair")
 async def repair_config(request: Request):
     """Re-save the active config with all Pydantic defaults filled in."""
-    from nytwatch.config import save_full_config, DEFAULT_CONFIG_PATH
+    from nytwatch.config import save_full_config
     config = get_config(request)
-    config_path = Path(getattr(request.app.state, "config_path", str(DEFAULT_CONFIG_PATH)))
+    config_path_raw = getattr(request.app.state, "config_path", "")
+    if not config_path_raw:
+        return JSONResponse(
+            {"error": "No config file loaded — create a project first"},
+            status_code=400,
+        )
+    config_path = Path(config_path_raw)
     try:
         save_full_config(config, config_path)
         logger.info("Config repaired at: %s", config_path)
         return JSONResponse({"ok": True})
     except Exception as e:
+        logger.exception("Config repair failed")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -1462,12 +1539,12 @@ async def settings_page(request: Request):
     from nytwatch.config import DEFAULT_CONFIG_PATH
     db = get_db(request)
     config = get_config(request)
-    source_dirs = db.list_source_dirs()
+    source_dirs = db.list_source_dirs() if db else []
     active_dirs = [d for d in source_dirs if d["source_type"] != "ignored"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
 
     # Count systems per source_dir for display
-    all_systems = db.list_systems()
+    all_systems = db.list_systems() if db else []
     sys_count: dict[str, int] = {}
     for s in all_systems:
         sd = (s.get("source_dir") or "").strip()

@@ -268,16 +268,17 @@ The wizard runs entirely in the browser — no manual YAML editing required.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| Project name | Yes | Used as the config filename: `~/.nytwatch/<name>.yaml` |
+| Project name | Yes | Used as the config filename: `~/.nytwatch/<slug>.yaml` (e.g. "Green Leaf" → `green-leaf.yaml`) |
 | Repository path | Yes | Absolute path to your game repo root. Use the **Browse…** button to navigate the filesystem. |
 | UE installation directory | No | UE root folder (e.g. `C:\Epic Games\UE_5.4`). Use **Browse…**. `UnrealEditor-Cmd` is located automatically inside `Engine/Binaries/`. |
 
-Clicking **Next** validates the repository path and auto-detects source directories.
+The **Next** button is disabled until both Project name and Repository path are filled. Clicking it calls `/api/validate-repo` to confirm the path exists and contains a `.git` directory (lightweight check — no filesystem scanning). Auto-detection of source directories runs after validation passes.
 
 **Step 2 — Sources**
 
 These are the top-level source folders in your repository, auto-detected from `.uplugin` files and `*.Build.cs` modules.
 Mark each directory as **Active** (contains C++ code to scan) or **Ignored** (skip entirely — no findings generated).
+Use the **All Active / All Ignored** bulk toggle to set every directory at once. The bulk toggle is hidden while detection is in progress.
 Only Active directories will proceed to the next step.
 Click **Re-detect** to refresh if you've changed the repo structure.
 
@@ -285,7 +286,9 @@ Click **Re-detect** to refresh if you've changed the repo structure.
 
 Systems categorize gameplay modules within each active source directory. Each system groups related sub-paths that Claude analyses together in one pass — this keeps context focused and Claude's output high-quality.
 
-The view is grouped by active source directory. Each directory has its own **+ Add System** button. Click **✨ Suggest with Claude** to auto-generate systems for all active directories at once.
+The view is grouped by active source directory. Each directory has its own **+ Add System** button. Click **✨ Suggest with Claude** to auto-generate systems for all active directories at once. Suggestion runs in agent mode — Claude explores the repo using its own tools with no pre-built directory listing sent in the prompt, and handles UE Public/Private module structure correctly (returns module root paths or explicit `Public/Feature/` + `Private/Feature/` pairs rather than bare `Public/` or `Private/`).
+
+The **folder picker** (path selector) within each system has full UE module awareness: Public/Private banners, auto-promotion of bare `Public/` or `Private/` to the module root, auto-mirroring of feature folders, and root clamping to the source directory.
 
 System names should reflect logical gameplay areas (e.g. "Combat", "AI", "Character"). A system must have at least one path. Path overlaps across systems in the same directory are flagged as warnings.
 
@@ -341,7 +344,7 @@ repo_path: /Users/hari/Projects/DragonRacer
 # systems — stored in the database, not in this YAML
 # Use the Setup Wizard or the Systems section on the Settings page to
 # manage systems. They are organized under their parent Active source
-# directory and stored in ~/.nytwatch/<project>/nytwatch.db.
+# directory and stored in ~/.nytwatch/<slug>.db (e.g. dragon-racer.db).
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
@@ -446,7 +449,7 @@ Systems are the core organizational unit. Each system should represent a logical
 
 **Where to manage systems**
 
-Systems are managed in the dashboard (**Settings page > Systems section**) or through the Setup Wizard (Step 3). They are not written to the YAML config — they live in the project database (`~/.nytwatch/<project>/nytwatch.db`).
+Systems are managed in the dashboard (**Settings page > Systems section**) or through the Setup Wizard (Step 3). They are not written to the YAML config — they live in the project database (`~/.nytwatch/<slug>.db`, e.g. `~/.nytwatch/greenleaf.db`).
 
 **Two-level hierarchy**
 
@@ -499,14 +502,35 @@ MyGame/
           Public/
 ```
 
-If your project uses a flat `Private/` + `Public/` structure (no subdirectories per system), create systems based on filename prefixes or related functionality:
+**UE Public/Private module structure**
+
+When your module uses `Public/` and `Private/` subdirectories, prefer the module root path over splitting into two paths:
+
+```
+# Preferred — module root covers both Public/ and Private/:
+Source/MyGame/Combat/
+
+# Use feature splits only when breaking the module into logical sub-areas:
+Source/MyGame/Combat/Public/Weapons/
+Source/MyGame/Combat/Private/Weapons/
+```
+
+Rules:
+- Never configure a bare `Source/MyGame/Public/` or `Source/MyGame/Private/` path without a feature subfolder.
+- If splitting by feature, always include both `Public/Feature/` and `Private/Feature/` so neither is missed.
+- Auto-promote bare `Public/` or `Private/` to the module root when no feature split is needed.
 
 ```yaml
-systems:
-  - name: "Character"
-    paths:
-      - "Source/MyGame/Public/Character"
-      - "Source/MyGame/Private/Character"
+# Correct — flat module with Public/Private:
+- name: "Character"
+  paths:
+    - "Source/MyGame/Character/"      # covers both Public/ and Private/ inside
+
+# Correct — feature split:
+- name: "Character-Weapons"
+  paths:
+    - "Source/MyGame/Character/Public/Weapons/"
+    - "Source/MyGame/Character/Private/Weapons/"
 ```
 
 ### How to find the correct UE editor command path
@@ -561,13 +585,15 @@ Use the full absolute path in `config.yaml`.
 nytwatch serve
 ```
 
-**Expected log output:**
+**Expected log output (with a configured project):**
 
 ```
 2026-04-02 10:00:00 [INFO] auditor: Scheduled incremental scans every 4 hours
 2026-04-02 10:00:00 [INFO] auditor: Starting Nytwatch on http://127.0.0.1:8420
 INFO:     Uvicorn running on http://127.0.0.1:8420 (Press CTRL+C to quit)
 ```
+
+If no project is configured yet, the scheduler lines are absent and you are redirected to the setup wizard.
 
 ### Verify it is running
 
@@ -818,7 +844,7 @@ The sidebar on every page shows the active project name. When no project is conf
 Displays:
 - Whether the repo path and system paths exist on disk
 - Any configuration errors (missing paths, empty system names, path overlaps)
-- Database size
+- Database size (the active project's own `.db` file, e.g. `greenleaf.db`)
 - Last scanned commit hash
 
 Use **Repair Config** to re-save the active config with all Pydantic defaults filled in (useful after manual YAML edits that leave optional fields missing).
@@ -869,10 +895,12 @@ Click **"+ Setup New Project"** to open the wizard and configure an additional p
 
 ### How automatic scans work
 
-When the server starts (`nytwatch serve`), it configures APScheduler with background jobs:
+When the server starts (`nytwatch serve`) with a configured project (`repo_path` non-empty), it sets up APScheduler with background jobs:
 
 1. **Incremental scan**: Runs every `incremental_interval_hours` (default: 4). Only analyzes files changed since the last scan via `git diff`.
 2. **Rotation scan** (optional): Runs every `rotation_interval_hours` (default: 24). Cycles through game systems in order, doing a full scan of one system per interval.
+
+The scheduler is not started when no project is configured (wizard-only mode). No "scan ready" notifications are sent until a project is set up.
 
 The scheduler runs as a background thread inside the server process.
 
@@ -1125,7 +1153,7 @@ Start the web dashboard and scheduled scan server.
 | `--host` | `127.0.0.1` | Host to bind to. Use `0.0.0.0` for network access. |
 | `--port` | `8420` | Port to bind to |
 
-**Creates:** SQLite database at `~/.nytwatch/nytwatch.db` (if it does not exist). Static files directory at `src/nytwatch/web/static/` (if it does not exist).
+**Creates:** SQLite database at `~/.nytwatch/<slug>.db` for the active project (only when a project is configured — no DB is created when running in wizard-only mode). Static files directory at `src/nytwatch/web/static/` (if it does not exist).
 
 **Blocks:** The command runs until interrupted (Ctrl+C).
 
@@ -1300,25 +1328,25 @@ ls -lt ~/.nytwatch/logs/*_response.txt | head -1
 
 ### How to reset the database
 
-Delete the SQLite database. It will be recreated on next server start.
+Each project has its own database named after its config file slug (e.g. `greenleaf.yaml` → `greenleaf.db`). Delete the project's DB file to reset it. It will be recreated when the project is next used.
 
 ```bash
-rm ~/.nytwatch/nytwatch.db
+rm ~/.nytwatch/greenleaf.db
 ```
 
-This removes ALL findings, scans, batches, source classifications, and the last-scan-commit reference. The next incremental scan will use `HEAD~20` as baseline.
+This removes ALL findings, scans, batches, source classifications, and the last-scan-commit reference for that project. The next incremental scan will use `HEAD~20` as baseline.
 
 To reset only the source directory classifications (forcing re-detection):
 
 ```bash
-sqlite3 ~/.nytwatch/nytwatch.db "DELETE FROM source_dirs;"
+sqlite3 ~/.nytwatch/greenleaf.db "DELETE FROM source_dirs;"
 ```
 
 ### How to re-run source detection
 
 Source detection runs automatically at the start of every scan. To force it:
 
-1. Clear existing classifications: `sqlite3 ~/.nytwatch/nytwatch.db "DELETE FROM source_dirs;"`
+1. Clear existing classifications: `sqlite3 ~/.nytwatch/greenleaf.db "DELETE FROM source_dirs;"`
 2. Run any scan: `nytwatch scan --type incremental`
 3. Check the Settings page to verify classifications
 
@@ -1576,27 +1604,35 @@ fi
 echo ""
 echo "=== Step 8: Verification ==="
 
-[ -f "$DATA_DIR/nytwatch.db" ] && log "Database exists at $DATA_DIR/nytwatch.db" || warn "Database not created"
+# Each project has its own slug-named DB (e.g. dragon-racer.db).
+# The DB is only created after the project is configured via the wizard.
+DB_FILE=$(ls "$DATA_DIR"/*.db 2>/dev/null | head -1)
+if [ -n "$DB_FILE" ]; then
+    log "Database exists at $DB_FILE"
+else
+    warn "No project database found yet -- run the setup wizard in the dashboard to create a project"
+    DB_FILE=""
+fi
 
-FINDING_COUNT=$(python3 -c "
+if [ -n "$DB_FILE" ]; then
+    FINDING_COUNT=$(python3 -c "
 import sqlite3
-conn = sqlite3.connect('$DATA_DIR/nytwatch.db')
+conn = sqlite3.connect('$DB_FILE')
 row = conn.execute('SELECT COUNT(*) FROM findings').fetchone()
 print(row[0])
 conn.close()
 " 2>/dev/null || echo "0")
+    log "Total findings in database: $FINDING_COUNT"
 
-log "Total findings in database: $FINDING_COUNT"
-
-SCAN_COUNT=$(python3 -c "
+    SCAN_COUNT=$(python3 -c "
 import sqlite3
-conn = sqlite3.connect('$DATA_DIR/nytwatch.db')
+conn = sqlite3.connect('$DB_FILE')
 row = conn.execute('SELECT COUNT(*) FROM scans').fetchone()
 print(row[0])
 conn.close()
 " 2>/dev/null || echo "0")
-
-log "Total scans in database: $SCAN_COUNT"
+    log "Total scans in database: $SCAN_COUNT"
+fi
 
 echo ""
 echo "=== Setup complete ==="

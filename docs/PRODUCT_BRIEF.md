@@ -200,10 +200,9 @@ Useful for sharing with team leads, sending to publishers, or archiving audit re
 ### Setup (one-time, ~10 minutes)
 
 1. **Install**: `pip install -e .` in the nytwatch directory
-2. **Initialize config**: `nytwatch init /path/to/game/repo`
-3. **Define game systems**: Edit `~/.nytwatch/config.yaml` to map directory paths to logical game systems (Combat, Character, AI, etc.)
-4. **Point to UE**: Set `ue_editor_cmd` and `project_file` in the build config
-5. **Start dashboard**: `nytwatch serve`
+2. **Start dashboard**: `nytwatch serve` — if no project is configured you are redirected to the setup wizard automatically
+3. **Run the wizard** (6 steps): enter project name + repo path → classify source directories → define game systems (or click "Suggest with Claude") → set UE paths → configure schedule → review and create
+4. The config is saved as `~/.nytwatch/<slug>.yaml` and the database as `~/.nytwatch/<slug>.db`
 
 ### Daily Use
 
@@ -266,7 +265,7 @@ Morning: Open http://127.0.0.1:8420
 
 1. **Scheduler** triggers scans on a timer or via dashboard/CLI
 2. **Scanner** collects files by system, chunks large systems, and passes code to the analysis engine
-3. **Analysis Engine** calls Claude Code CLI (`claude -p --output-format json`), validates responses against Pydantic schemas, retries on validation failure
+3. **Analysis Engine** calls Claude Code CLI in agent mode (`claude -p --output-format json --dangerouslySkipPermissions`), validates responses against Pydantic schemas, retries on validation failure. All scan, recheck, chat, patch-generation, and system-suggestion calls run in agent mode; only the source directory classification uses prompt mode.
 4. **Findings** are stored in SQLite with deduplication by fingerprint
 5. **Dashboard** presents findings for human review
 6. **Apply Pipeline** collects approved findings, generates a unified patch, applies it to a branch, runs build, runs tests, commits, creates PR
@@ -274,8 +273,9 @@ Morning: Open http://127.0.0.1:8420
 
 **Key architectural properties:**
 
-- All state is in a single SQLite database (`~/.nytwatch/nytwatch.db`) with WAL mode for concurrent reads
+- Each project has its own SQLite database named after the config slug (`~/.nytwatch/<slug>.db`), created on first project setup. A legacy `nytwatch.db` is auto-migrated on first use. When no project is configured the server runs in wizard-only mode with no database.
 - The dashboard and pipeline run in the same process; batch pipelines execute on background threads
+- The scheduler only starts when a project is configured (`repo_path` non-empty) — no "scan ready" notifications in wizard-only mode
 - Claude CLI calls are logged to `~/.nytwatch/logs/` (prompts and responses) for debugging
 - No external services required beyond Claude CLI and GitHub CLI
 
@@ -298,7 +298,7 @@ Morning: Open http://127.0.0.1:8420
 | **Version control** | Git + GitHub CLI (`gh`) | Branch management, patch application, PR creation |
 | **Export** | openpyxl | Excel generation with formatting, color-coded severity cells |
 | **Packaging** | Hatchling | Modern Python build system, `pip install -e .` for development |
-| **Platform support** | macOS, Linux, Windows | Cross-platform with automatic path normalization (`auditor.paths`). All internal paths use POSIX forward slashes regardless of host OS. |
+| **Platform support** | macOS, Linux, Windows | Cross-platform with automatic path normalization (`nytwatch.paths`). All internal paths use POSIX forward slashes regardless of host OS. |
 
 ---
 
@@ -349,7 +349,7 @@ The only variable is how many Claude CLI calls per scan. An incremental scan of 
 - [ ] **Blueprint integration** -- scan Blueprint-exposed C++ interfaces for common misuse patterns
 - [ ] **Custom rules** -- user-defined patterns to flag project-specific anti-patterns
 - [ ] **Finding comments** -- add notes to findings before approving/rejecting
-- [ ] **Multi-project support** -- manage multiple game projects from one dashboard
+- [x] **Multi-project support** -- manage multiple game projects from one dashboard (each with its own YAML config and slug-named database)
 - [ ] **Diff preview improvements** -- syntax-highlighted side-by-side diff in the dashboard
 
 ### Phase 3: Full System
@@ -393,11 +393,9 @@ Clang-Tidy catches some C++ issues and can auto-fix a narrow set of patterns. It
 
 ```yaml
 repo_path: /path/to/game/repo
-systems:
-  - name: "Combat"
-    paths: ["Source/MyGame/Weapons/", "Source/MyGame/Damage/"]
-  - name: "Character"
-    paths: ["Source/MyGame/Character/", "Source/MyGame/Animation/"]
+
+# Systems are stored in the database — use the wizard or Settings page to manage them.
+
 build:
   ue_editor_cmd: "/path/to/UnrealEditor-Cmd"
   project_file: "/path/to/MyGame.uproject"
@@ -414,7 +412,7 @@ min_confidence: "medium"
 file_extensions: [".h", ".cpp"]
 ```
 
-Config file location: `~/.nytwatch/config.yaml`
-Database location: `~/.nytwatch/nytwatch.db`
+Config file location: `~/.nytwatch/<slug>.yaml` (e.g. `~/.nytwatch/my-game.yaml`)
+Database location: `~/.nytwatch/<slug>.db` (e.g. `~/.nytwatch/my-game.db`) — created on first project setup
 Log files: `~/.nytwatch/logs/`
 Dashboard: `http://127.0.0.1:8420`

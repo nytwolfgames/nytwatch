@@ -32,33 +32,37 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     async def startup():
         ws_manager.set_loop(asyncio.get_event_loop())
 
-    db = Database(get_db_path(config))
-    db.init_schema()
+    if config.repo_path:
+        db = Database(get_db_path(config, config_path))
+        db.init_schema()
 
-    # One-time migration: if YAML config has systems and the DB has none, copy them.
-    if config.systems and not db.list_systems():
-        logger.info(
-            "Migrating %d system(s) from YAML config to database", len(config.systems)
-        )
-        db.replace_systems([
-            {
-                "name": s.name,
-                "source_dir": s.source_dir,  # "" for legacy YAML systems
-                "paths": list(s.paths),
-                "min_confidence": s.min_confidence,
-                "file_extensions": list(s.file_extensions) if s.file_extensions else None,
-                "claude_fast_mode": s.claude_fast_mode,
-            }
-            for s in config.systems
-        ])
+        # One-time migration: if YAML config has systems and the DB has none, copy them.
+        if config.systems and not db.list_systems():
+            logger.info(
+                "Migrating %d system(s) from YAML config to database", len(config.systems)
+            )
+            db.replace_systems([
+                {
+                    "name": s.name,
+                    "source_dir": s.source_dir,
+                    "paths": list(s.paths),
+                    "min_confidence": s.min_confidence,
+                    "file_extensions": list(s.file_extensions) if s.file_extensions else None,
+                    "claude_fast_mode": s.claude_fast_mode,
+                }
+                for s in config.systems
+            ])
+
+        stale = db.fail_stale_scans()
+        if stale:
+            logger.warning("Marked %d stale running scan(s) as failed on startup", stale)
+    else:
+        db = None
+        logger.info("No project configured — starting in wizard-only mode (no DB)")
 
     app.state.db = db
     app.state.config = config
     app.state.config_path = str(config_path) if config_path else ""
-
-    stale = db.fail_stale_scans()
-    if stale:
-        logger.warning("Marked %d stale running scan(s) as failed on startup", stale)
 
     static_dir = Path(__file__).parent / "web" / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
@@ -107,14 +111,15 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     def shutdown():
         from nytwatch.scan_state import canceller
         if not canceller.is_cancelled:
-            # Kill any active Claude subprocess and signal scan threads to stop
             canceller.cancel()
-        stale = db.fail_stale_scans()
-        if stale:
-            logger.warning("Shutdown: marked %d running scan(s) as failed", stale)
         if hasattr(app.state, "scheduler"):
             app.state.scheduler.shutdown()
-        db.close()
+        active_db = app.state.db
+        if active_db is not None:
+            stale = active_db.fail_stale_scans()
+            if stale:
+                logger.warning("Shutdown: marked %d running scan(s) as failed", stale)
+            active_db.close()
 
     return app
 
@@ -150,8 +155,9 @@ def run():
         return
 
     if args.command == "scan":
-        config = load_config(Path(args.config) if args.config else None)
-        db = Database(get_db_path(config))
+        scan_config_path = Path(args.config) if args.config else None
+        config = load_config(scan_config_path)
+        db = Database(get_db_path(config, scan_config_path))
         db.init_schema()
         from nytwatch.scanner.scheduler import run_scan
         scan_id = run_scan(config, db, scan_type=args.type, system_name=args.system)

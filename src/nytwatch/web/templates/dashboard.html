@@ -284,9 +284,9 @@
             </details>
         </div>
     </div>
-    <div style="padding:14px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+    <div style="padding:14px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;">
         <button id="drawer-delete-btn" onclick="deleteCurrentSystem()" class="btn btn-sm btn-danger scan-safe">Delete</button>
-        <span style="flex:1;"></span>
+        <span id="drawer-err" style="flex:1;min-width:0;color:#ef4444;font-size:0.78rem;line-height:1.3;"></span>
         <button onclick="closeDrawer()" class="btn btn-sm scan-safe">Cancel</button>
         <button onclick="saveDrawer()" class="btn btn-sm btn-primary scan-safe">Save</button>
     </div>
@@ -410,9 +410,11 @@ async function openDrawer(idOrNull) {
             ? '' : String(sys.claude_fast_mode);
         if (extEl) extEl.value = sys.file_extensions ? sys.file_extensions.join(', ') : '';
 
-        // Reset suggest status
+        // Reset suggest status and error
         const suggestStatus = document.getElementById('drawer-suggest-status');
         if (suggestStatus) { suggestStatus.textContent = ''; suggestStatus.style.display = 'none'; }
+        const drawerErr = document.getElementById('drawer-err');
+        if (drawerErr) drawerErr.textContent = '';
 
         document.getElementById('drawer-backdrop').style.display = '';
         document.getElementById('system-drawer').style.display = 'flex';
@@ -787,21 +789,30 @@ function closeMoveMenu() {
 
 // ── Save / Delete ─────────────────────────────────────────────────────────────
 async function saveDrawer() {
+    const errEl = document.getElementById('drawer-err');
+    if (errEl) errEl.textContent = '';
+
     const name = document.getElementById('drawer-name').value.trim();
-    if (!name) { alert('System name is required.'); return; }
+    if (!name) { _drawerError('System name is required.'); return; }
     const srcDir = document.getElementById('drawer-source-dir')?.value || '';
     // For new systems, a source directory must be chosen (select is editable only for new)
     const sdSel = document.getElementById('drawer-source-dir');
     if (sdSel && !sdSel.disabled && _srcDirs.length && !srcDir) {
-        alert('Please select a source directory for this system.');
+        _drawerError('Please select a source directory for this system.');
         sdSel.focus();
         return;
     }
     const paths = (_sys[_editIdx]?.paths || []).filter(p => p.trim());
-    if (!paths.length) { alert('Add at least one path.'); return; }
+    if (!paths.length) { _drawerError('Add at least one path.'); return; }
+
+    // Apply edits to staged list before validating
     _sys[_editIdx].name = name;
     _sys[_editIdx].paths = paths;
     _sys[_editIdx].source_dir = srcDir;
+
+    const sysErrors = _validateSystems(_sys);
+    if (sysErrors.length) { _drawerError(sysErrors[0]); return; }
+
     _origSys = null;
     closeDrawer();
     await commitSystems();
@@ -846,6 +857,41 @@ function popup(el, anchor, display) {
 
 function escH(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── System validation ─────────────────────────────────────────────────────────
+function _validateSystems(systems) {
+    const errors = [];
+    const seenNames = Object.create(null);
+    const seenPaths = Object.create(null);
+    for (const s of systems) {
+        const name = (s.name || '').trim();
+        if (!name) continue;
+        if (seenNames[name]) {
+            const msg = `Duplicate system name: "${name}"`;
+            if (!errors.includes(msg)) errors.push(msg);
+        } else {
+            seenNames[name] = true;
+        }
+        for (const p of (s.paths || [])) {
+            if (!p.trim()) continue;
+            const norm = p.replace(/\\/g, '/').replace(/\/?$/, '/');
+            const owner = seenPaths[norm];
+            if (owner && owner !== name) {
+                const msg = `Duplicate path: "${p}" is used by both "${owner}" and "${name}"`;
+                if (!errors.includes(msg)) errors.push(msg);
+            } else if (!owner) {
+                seenPaths[norm] = name;
+            }
+        }
+    }
+    return errors;
+}
+
+function _drawerError(msg) {
+    const el = document.getElementById('drawer-err');
+    if (el) el.textContent = msg;
+    else alert(msg);
 }
 
 // Close popups on outside click

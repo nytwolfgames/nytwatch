@@ -442,6 +442,36 @@ function escH(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── System validation ─────────────────────────────────────────────────────────
+// Returns an array of human-readable error strings (duplicate names / paths).
+function _sysValidationErrors(systems) {
+    const errors = [];
+    const seenNames = Object.create(null);
+    const seenPaths = Object.create(null);
+    for (const s of systems) {
+        const name = (s.name || '').trim();
+        if (!name) continue;
+        if (seenNames[name]) {
+            const msg = `Duplicate system name: "${name}"`;
+            if (!errors.includes(msg)) errors.push(msg);
+        } else {
+            seenNames[name] = true;
+        }
+        for (const p of (s.paths || [])) {
+            if (!p.trim()) continue;
+            const norm = p.replace(/\\/g, '/').replace(/\/?$/, '/');
+            const owner = seenPaths[norm];
+            if (owner && owner !== name) {
+                const msg = `Duplicate path: "${p}" is used by both "${owner}" and "${name}"`;
+                if (!errors.includes(msg)) errors.push(msg);
+            } else if (!owner) {
+                seenPaths[norm] = name;
+            }
+        }
+    }
+    return errors;
+}
+
 // ── Source dir classification (existing) ──────────────────────────────────────
 async function moveDir(path, newType) {
     try {
@@ -695,29 +725,15 @@ function closeCfgSystems() {
 
 function _cfgSysRender() {
     wzRenderSysList(document.getElementById('cfg-sys-list'));
-    // wzCheckOverlaps targets #wz-overlaps which doesn't exist here — replicate inline
     const el = document.getElementById('cfg-sys-overlaps');
     if (!el) return;
-    const all = [];
-    for (const s of _wz.systems) {
-        for (const p of s.paths) {
-            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/, '/')});
-        }
-    }
-    const warns = [];
-    for (let i = 0; i < all.length; i++) {
-        for (let j = i + 1; j < all.length; j++) {
-            if (all[i].path === all[j].path) {
-                const msg = `Duplicate path: "${all[i].path}" is used by both "${all[i].sys}" and "${all[j].sys}"`;
-                if (!warns.includes(msg)) warns.push(msg);
-            }
-        }
-    }
-    el.innerHTML = warns.map(w =>
+    const errors = _sysValidationErrors(_wz.systems);
+    el.innerHTML = errors.map(e =>
         `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
-                     background:rgba(245,158,11,.1);border-radius:6px;margin-top:6px;">
-            <span style="color:#f59e0b;flex-shrink:0;">⚠</span>
-            <span class="body-sm">${escH(w)}</span>
+                     background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);
+                     border-radius:6px;margin-top:6px;">
+            <span style="color:#ef4444;flex-shrink:0;">✕</span>
+            <span class="body-sm" style="color:#ef4444;">${escH(e)}</span>
         </div>`
     ).join('');
 }
@@ -773,6 +789,13 @@ async function saveCfgSystems() {
     const valid = _wz.systems.filter(s => s.name.trim() && s.paths.filter(p => p.trim()).length);
     if (!valid.length) {
         errEl.textContent = 'Add at least one system with a name and at least one path';
+        btn.disabled = false;
+        btn.textContent = 'Save Systems';
+        return;
+    }
+    const sysErrors = _sysValidationErrors(valid);
+    if (sysErrors.length) {
+        errEl.textContent = sysErrors[0];
         btn.disabled = false;
         btn.textContent = 'Save Systems';
         return;
@@ -1079,6 +1102,13 @@ function wzRenderIndicator() {
     '</div>';
 }
 
+function wzCheckSetupReady() {
+    const name = (document.getElementById('wz-proj-name')?.value || '').trim();
+    const repo = (document.getElementById('wz-repo')?.value || '').trim();
+    const btn  = document.getElementById('wz-next-btn');
+    if (btn) btn.disabled = !(name && repo);
+}
+
 function wzRender() {
     wzRenderIndicator();
     document.getElementById('wz-back-btn').style.display = _wz.step > 0 ? '' : 'none';
@@ -1102,7 +1132,7 @@ function wzRender() {
                     <input id="wz-proj-name" type="text" class="input" style="width:100%;"
                         value="${escH(_wz.project_name)}"
                         placeholder="MyGame"
-                        oninput="_wz.project_name = this.value.trim()">
+                        oninput="_wz.project_name = this.value.trim(); wzCheckSetupReady()">
                     <div class="body-sm text-variant mt-1">Used as the config filename: <span class="mono">~/.nytwatch/&lt;name&gt;.yaml</span></div>
                 </div>
 
@@ -1112,7 +1142,7 @@ function wzRender() {
                         <input id="wz-repo" type="text" class="input" style="flex:1;"
                             value="${escH(_wz.repo_path)}"
                             placeholder="E:\\Projects\\MyGame"
-                            oninput="_wz.repo_path = this.value.trim()">
+                            oninput="_wz.repo_path = this.value.trim(); wzCheckSetupReady()">
                         <button onclick="spOpen({inputId:'wz-repo',abs:true},this)" class="btn btn-sm scan-safe"
                                 style="white-space:nowrap;">Browse…</button>
                     </div>
@@ -1140,6 +1170,7 @@ function wzRender() {
             <div id="wz-setup-status" class="body-sm mt-4" style="min-height:18px;"></div>
         `;
         document.getElementById('wz-repo').focus();
+        wzCheckSetupReady();
 
     } else if (step === 'systems') {
         wzRenderSystems(el);
@@ -1232,11 +1263,15 @@ function wzRender() {
 }
 
 // ── Step 2: Sources ───────────────────────────────────────────────────────────
+function wzSetAllSourceType(type) {
+    _wz.source_dirs = _wz.source_dirs.map(d => ({...d, source_type: type}));
+    wzRenderSourceList();
+}
+
 function wzRenderSources(el) {
     el.innerHTML = `
         <div class="flex items-center gap-2 mb-3">
             <div class="label-lg" style="flex:1;">Source Directories</div>
-            <button onclick="wzDetectSources(this)" class="btn btn-sm scan-safe" id="wz-src-detect-btn">Re-detect</button>
         </div>
         <p class="body-sm text-variant mb-4">
             These are the top-level source folders in your repository.
@@ -1244,6 +1279,13 @@ function wzRenderSources(el) {
             <strong>Ignored</strong> (skip completely — no findings generated).
             Only Active directories will be scanned in the next step.
         </p>
+        <div style="display:flex;margin:5px;justify-content:flex-end;gap:5px;">
+            <button onclick="wzDetectSources(this)" class="btn btn-sm scan-safe" id="wz-src-detect-btn">Re-detect</button>
+            <div id="wz-src-toggle-all" class="type-toggle">
+                <button onclick="wzSetAllSourceType('active')"  class="tgl-active">All Active</button>
+                <button onclick="wzSetAllSourceType('ignored')" class="tgl-ignored">All Ignored</button>
+            </div>
+        </div>
         <div id="wz-src-list">
             <div class="body-sm text-variant" style="padding:18px 0;text-align:center;">Detecting…</div>
         </div>`;
@@ -1259,8 +1301,10 @@ function wzRenderSources(el) {
 async function wzDetectSources(btn) {
     const listEl = document.getElementById('wz-src-list');
     const detectBtn = document.getElementById('wz-src-detect-btn');
+    const toggleAllDiv = document.getElementById('wz-src-toggle-all');
     const nextBtn = document.getElementById('wz-next-btn');
     if (detectBtn) { detectBtn.disabled = true; detectBtn.textContent = 'Detecting…'; }
+    if (toggleAllDiv) { toggleAllDiv.style.display = 'none'; }
     if (nextBtn) nextBtn.disabled = true;
 
     try {
@@ -1285,6 +1329,7 @@ async function wzDetectSources(btn) {
              <p class="body-sm text-variant mt-2">You can continue and add systems manually in the next step.</p>`;
     } finally {
         if (detectBtn) { detectBtn.disabled = false; detectBtn.textContent = 'Re-detect'; }
+        if (toggleAllDiv) { toggleAllDiv.style.display = ''; }
         if (nextBtn) nextBtn.disabled = false;
     }
 }
@@ -1314,6 +1359,7 @@ function wzRenderSourceList() {
             </div>
         </div>`;
     }).join('');
+    
     el.innerHTML = rows;
 }
 
@@ -1508,34 +1554,20 @@ function wzRemovePath(si, pi) {
     wzRerender();
 }
 
+// Returns true if there are blocking errors (duplicate names or paths).
 function wzCheckOverlaps() {
     const el = document.getElementById('wz-overlaps');
-    if (!el) return;
-    const all = [];
-    for (const s of _wz.systems) {
-        for (const p of s.paths) {
-            if (p) all.push({sys: s.name || '(unnamed)', path: p.replace(/\\/g,'/').replace(/\/?$/, '/')});
-        }
-    }
-    const warns = [];
-    for (let i = 0; i < all.length; i++) {
-        for (let j = i + 1; j < all.length; j++) {
-            const a = all[i], b = all[j];
-            // Only flag exact duplicates — parent/child paths are valid under
-            // longest-prefix ownership (the more specific path always wins).
-            if (a.path === b.path) {
-                const msg = `Duplicate path: "${a.path}" is used by both "${a.sys}" and "${b.sys}"`;
-                if (!warns.includes(msg)) warns.push(msg);
-            }
-        }
-    }
-    el.innerHTML = warns.map(w =>
+    if (!el) return false;
+    const errors = _sysValidationErrors(_wz.systems);
+    el.innerHTML = errors.map(e =>
         `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
-                     background:rgba(245,158,11,.1);border-radius:6px;margin-top:6px;">
-            <span style="color:#f59e0b;flex-shrink:0;">⚠</span>
-            <span class="body-sm">${escH(w)}</span>
+                     background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);
+                     border-radius:6px;margin-top:6px;">
+            <span style="color:#ef4444;flex-shrink:0;">✕</span>
+            <span class="body-sm" style="color:#ef4444;">${escH(e)}</span>
         </div>`
     ).join('');
+    return errors.length > 0;
 }
 
 // ── Step 4: Build ────────────────────────────────────────────────────────────
@@ -1668,16 +1700,14 @@ async function wzNext() {
         statusEl.textContent = 'Validating…';
         btn.textContent = 'Validating…';
         try {
-            const r = await fetch('/api/browse-abs?path=' + encodeURIComponent(repo));
-            if (!r.ok) {
-                _fail('Repository path not found: ' + repo);
+            const r = await fetch('/api/validate-repo?repo_path=' + encodeURIComponent(repo));
+            const d = await r.json();
+            if (!r.ok || d.error) {
+                _fail(d.error || 'Repository path not found');
                 statusEl.textContent = '';
                 return;
             }
-            const gitCheck = await fetch('/api/detect-source-dirs?repo_path=' + encodeURIComponent(repo));
-            const gd = await gitCheck.json();
-            if (gd.error) { _fail(gd.error); statusEl.textContent = ''; return; }
-            statusEl.innerHTML = `<span style="color:#22c55e;">✓ Repository found — ${gd.dirs.length} source director${gd.dirs.length !== 1 ? 'ies' : 'y'} detected</span>`;
+            statusEl.innerHTML = `<span style="color:#22c55e;">✓ ${escH(d.message)}</span>`;
         } catch (e) {
             _fail('Could not validate repository path: ' + e.message);
             statusEl.textContent = '';
@@ -1706,6 +1736,12 @@ async function wzNext() {
             return;
         }
         _wz.systems = valid.map(s => ({...s, paths: s.paths.filter(p => p.trim())}));
+        const sysErrors = _sysValidationErrors(_wz.systems);
+        if (sysErrors.length) {
+            _fail(sysErrors[0]);
+            wzCheckOverlaps();
+            return;
+        }
 
     } else if (step === 'review') {
         await wzCreate();
@@ -1772,6 +1808,16 @@ async function wzCreate() {
 let _spCtx = null;
 let _spCurrent = '';
 
+// Return the Public↔Private mirror of a path that is INSIDE a Public/Private subtree,
+// or null if the path ends AT /Public or /Private (no subfolder after it).
+function _spPubPrivMirror(path) {
+    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    const m = norm.match(/^(.+\/)(Public|Private)(\/(.+))$/i);
+    if (!m) return null;
+    const opposite = m[2].toLowerCase() === 'public' ? 'Private' : 'Public';
+    return m[1] + opposite + m[3];
+}
+
 async function spOpen(ctx, anchorEl) {
     _spCtx = ctx;
     let startPath = '';
@@ -1808,8 +1854,13 @@ function spPosition(picker, anchorEl) {
 }
 
 async function spNavigate(path) {
-    _spCurrent = path.replace(/\\/g, '/');
-    // Trim trailing slash for display, but keep for abs root detection
+    path = (path || '').replace(/\\/g, '/');
+    // Clamp to srcDir — prevent navigating above the source directory root
+    if (!_spCtx?.abs && _spCtx?.srcDir) {
+        const root = _spCtx.srcDir.replace(/\/?$/, '');
+        if (root && !path.startsWith(root)) path = root;
+    }
+    _spCurrent = path;
     const el = document.getElementById('sp-entries');
     el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
     try {
@@ -1849,10 +1900,15 @@ function spRender(data) {
             }
         }
     } else {
+        const srcDir = (_spCtx?.srcDir || '').replace(/\/?$/, '');
         const curPath = (_spCurrent || '').replace(/\/?$/, '');
-        crumb = `<span onclick="spNavigate('')" style="cursor:pointer;color:var(--primary);">repo</span>`;
-        const parts = curPath ? curPath.split('/').filter(Boolean) : [];
-        let cum = '';
+        // Root label: last segment of srcDir, or "repo" if no srcDir
+        const rootLabel = srcDir ? srcDir.split('/').filter(Boolean).pop() : 'repo';
+        crumb = `<span onclick="spNavigate('${srcDir}')" title="${escH(srcDir || 'repo root')}"
+                       style="cursor:pointer;color:var(--primary);">${escH(rootLabel)}</span>`;
+        const relPath = srcDir ? curPath.slice(srcDir.length).replace(/^\//, '') : curPath;
+        const parts = relPath ? relPath.split('/').filter(Boolean) : [];
+        let cum = srcDir;
         for (const p of parts) {
             cum += (cum ? '/' : '') + p;
             const cp = cum;
@@ -1866,13 +1922,48 @@ function spRender(data) {
     const fileFilter = _spCtx?.fileFilter || '';
     const dirs  = (data.entries || []).filter(e => !e.is_file);
     const files = (data.entries || []).filter(e =>  e.is_file);
-    const hasContent = dirs.length || files.length;
 
+    // ── UE module detection (repo-relative mode only) ─────────────────────────
+    let bannerHtml = '';
+    if (!_spCtx?.abs) {
+        const entryNames = dirs.map(e => e.name.toLowerCase());
+        const isModuleRoot = entryNames.includes('public') && entryNames.includes('private');
+        const curLower = (_spCurrent || '').toLowerCase().replace(/\/?$/, '');
+        const isAtPubPrivLevel    = curLower.endsWith('/public') || curLower.endsWith('/private')
+                                 || curLower === 'public' || curLower === 'private';
+        const isDeepInsidePubPriv = !isAtPubPrivLevel && /\/(?:public|private)\//i.test(_spCurrent);
+        const mirrorSide  = isDeepInsidePubPriv ? (/\/Public\//i.test(_spCurrent) ? 'Private' : 'Public') : null;
+        const moduleRoot  = (isAtPubPrivLevel || isDeepInsidePubPriv)
+            ? _spCurrent.replace(/\/?$/, '').replace(/\/(?:Public|Private)(\/.*)?$/i, '') : null;
+
+        if (isAtPubPrivLevel && moduleRoot != null) {
+            bannerHtml = `<div style="padding:7px 14px;background:rgba(180,83,9,0.1);border-bottom:1px solid rgba(180,83,9,0.2);
+                                      font-size:0.78rem;color:var(--severity-medium,#b45309);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>⚠ Selecting here only covers this subfolder.</span>
+                <span onclick="spNavigate('${moduleRoot}')"
+                      style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Go to module root</span>
+            </div>`;
+        } else if (isDeepInsidePubPriv && moduleRoot != null) {
+            bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
+                                      font-size:0.78rem;color:var(--primary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="flex:1;">📂 Mirrored — selecting also adds the <strong>${mirrorSide}</strong> counterpart automatically.</span>
+                <span onclick="spNavigate('${moduleRoot}')"
+                      style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Module root</span>
+            </div>`;
+        } else if (isModuleRoot) {
+            bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
+                                      font-size:0.78rem;color:var(--primary);display:flex;align-items:center;gap:6px;">
+                <span>✓ Module root — selecting covers both <strong>Public</strong> &amp; <strong>Private</strong>.</span>
+            </div>`;
+        }
+    }
+
+    const hasContent = dirs.length || files.length;
     if (!hasContent) {
         const emptyMsg = fileFilter
             ? `No ${escH(fileFilter)} files or subdirectories here`
             : 'No subdirectories';
-        el.innerHTML = `<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">${emptyMsg}</div>`;
+        el.innerHTML = bannerHtml + `<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">${emptyMsg}</div>`;
     } else {
         const dirRows = dirs.map(e => {
             const pathEsc = e.path.replace(/\\/g, '/').replace(/'/g, "\\'");
@@ -1898,7 +1989,7 @@ function spRender(data) {
                 <span style="font-size:0.7rem;color:var(--on-surface-variant);margin-left:6px;white-space:nowrap;">click to select</span>
             </div>`;
         });
-        el.innerHTML = dirRows.concat(fileRows).join('');
+        el.innerHTML = bannerHtml + dirRows.concat(fileRows).join('');
     }
 
     // ── Select-current button — hidden in file-picker mode (select via file row) ─
@@ -1909,7 +2000,15 @@ function spRender(data) {
     } else {
         selectBtn.style.display = '';
         const label = curPath.replace(/\/$/, '').split('/').pop() || curPath;
-        selectBtn.textContent = `Select "${label}"`;
+        if (!_spCtx?.abs) {
+            const entryNames = dirs.map(e => e.name.toLowerCase());
+            const isModuleRoot = entryNames.includes('public') && entryNames.includes('private');
+            selectBtn.textContent = isModuleRoot
+                ? `Select module "${label}/" (Public + Private)`
+                : `Select "${label}"`;
+        } else {
+            selectBtn.textContent = `Select "${label}"`;
+        }
     }
 }
 
@@ -1937,9 +2036,26 @@ function spSelect(path) {
         }
     } else if (ctx?.si != null) {
         // Repo-relative → store in wizard system path (keep trailing slash)
-        const relNorm = norm.endsWith('/') ? norm : norm + '/';
+        let relNorm = norm.endsWith('/') ? norm : norm + '/';
+
+        // Option A: selecting bare /Public or /Private → auto-promote to module root
+        const trimmed = relNorm.replace(/\/$/, '').toLowerCase();
+        if (trimmed.endsWith('/public') || trimmed.endsWith('/private')) {
+            relNorm = relNorm.replace(/[^/]+\/$/, '');
+        }
+
         if (_wz.systems[ctx.si]) {
             _wz.systems[ctx.si].paths[ctx.pi] = relNorm;
+
+            // Option B: selecting inside Public/… or Private/… → also add mirror path
+            const mirror = _spPubPrivMirror(relNorm);
+            if (mirror && mirror !== relNorm) {
+                const normMirror = mirror.replace(/\\/g, '/').replace(/\/?$/, '/');
+                const alreadyHas = _wz.systems[ctx.si].paths.some(
+                    ep => ep.replace(/\\/g, '/').replace(/\/?$/, '/') === normMirror
+                );
+                if (!alreadyHas) _wz.systems[ctx.si].paths.push(mirror);
+            }
             wzRerender();
         }
     }

@@ -154,11 +154,11 @@
 
 ## 2. Module Reference
 
-### 2.1 `auditor/main.py` -- Entry Point
+### 2.1 `nytwatch/main.py` -- Entry Point
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `create_app` | `(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI` | Creates the FastAPI application. Initializes database, mounts static files, includes router, stores `config_path` in `app.state` (empty string if `None`), sets up APScheduler for incremental/rotation scans, registers shutdown handler. Auto-scan on startup is skipped if `repo_path` is empty. |
+| `create_app` | `(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI` | Creates the FastAPI application. Initializes database (only when a project is configured — `repo_path` non-empty), mounts static files, includes router, stores `config_path` in `app.state` (empty string if `None`), sets up APScheduler for incremental/rotation scans only when `config.repo_path` is non-empty, registers shutdown handler. Auto-scan on startup is skipped if `repo_path` is empty. When all projects are deleted the app runs in wizard-only mode with no DB and no scheduler. |
 | `run` | `() -> None` | CLI entry point. Parses `init`, `serve`, `scan` subcommands. On `serve` with no `--config` flag, calls `get_active_config_path()` to find the active project; falls back to `DEFAULT_CONFIG_PATH` only if it exists; starts with a blank `AuditorConfig()` if nothing is found — the wizard handles first-run configuration. |
 
 **CLI Commands:**
@@ -186,7 +186,7 @@
 
 ---
 
-### 2.2 `auditor/config.py` -- Configuration
+### 2.2 `nytwatch/config.py` -- Configuration
 
 **Pydantic Config Models:**
 
@@ -217,12 +217,12 @@
 | `validate_config_errors` | `(config: AuditorConfig, systems: Optional[list] = None) -> list[str]` | Returns human-readable validation problems. Pass the `systems` list (from the database) to include system-level checks (missing paths, duplicate prefixes, empty names). |
 | `detect_systems_from_repo` | `(repo_path: str) -> list[dict]` | Auto-detects systems from repo structure using UE heuristics: `.uplugin` files → plugin systems (hint=`"plugin"`), `Source/**/*.Build.cs` → game module systems (hint=`"module"`). Returns `[{name, paths, hint}]`. Skips `Binaries/`, `Intermediate/`, `Saved/`, etc. |
 | `get_data_dir` | `(config: AuditorConfig) -> Path` | Returns expanded data directory, creating it if needed. |
-| `get_db_path` | `(config: AuditorConfig) -> Path` | Returns `{data_dir}/nytwatch.db`. |
+| `get_db_path` | `(config: AuditorConfig, config_path: Optional[Path] = None) -> Path` | Returns `{data_dir}/{slug}.db` where `slug` is the stem of the active config YAML (e.g. `~/.nytwatch/greenleaf.yaml` → `~/.nytwatch/greenleaf.db`). If a legacy `nytwatch.db` exists at the data dir root it is auto-migrated (renamed) to the slug-named path on first call. Returns `None` if no config path is known (wizard-only mode, no DB). |
 | `init_config` | `(repo_path: str, config_path: Optional[Path] = None) -> Path` | Writes a default config YAML template. Returns the path written. |
 
 ---
 
-### 2.3 `auditor/models.py` -- Domain Models
+### 2.3 `nytwatch/models.py` -- Domain Models
 
 **Utility Functions:**
 
@@ -305,7 +305,7 @@
 
 ---
 
-### 2.4 `auditor/database.py` -- Persistence Layer
+### 2.4 `nytwatch/database.py` -- Persistence Layer
 
 **Class: `Database`**
 
@@ -357,7 +357,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 ---
 
-### 2.5 `auditor/analysis/schemas.py` -- Analysis Output Schemas
+### 2.5 `nytwatch/analysis/schemas.py` -- Analysis Output Schemas
 
 | Model | Fields | Description |
 |-------|--------|-------------|
@@ -367,7 +367,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 ---
 
-### 2.6 `auditor/analysis/prompts.py` -- Prompt Construction
+### 2.6 `nytwatch/analysis/prompts.py` -- Prompt Construction
 
 **Module Constants:**
 
@@ -386,7 +386,7 @@ Creates parent directories. Lazy-initializes SQLite connection with WAL journal 
 
 ---
 
-### 2.7 `auditor/analysis/engine.py` -- Claude CLI Integration
+### 2.7 `nytwatch/analysis/engine.py` -- Claude CLI Integration
 
 **CLI command used:**
 
@@ -404,12 +404,17 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 | `_strip_markdown_fences` | `(text: str) -> str` | Removes markdown code fences (handles both closed and unclosed fences). |
 | `_extract_json` | `(raw: str) -> dict` | Unwraps the Claude CLI JSON envelope (`{"type":"result","result":"..."}`) and parses the inner JSON. Handles nested string-encoded JSON with optional markdown fences. |
 | `parse_and_validate` | `(raw: str, schema_class) -> Optional[T]` | Extracts JSON from raw response, validates against a Pydantic model class via `model_validate()`. Returns None on parse or validation failure. |
-| `analyze_system` | `(system_name: str, file_paths: list[str], repo_path: str, fast: bool = True, max_retries: int = 2) -> Optional[ScanResult]` | Builds a scan prompt (paths only), calls Claude as an agent with `cwd=repo_path` so it can read files itself. Retries up to `max_retries` on failure or validation error. Returns `ScanResult` or None. |
-| `generate_batch_patch` | `(findings: list[dict], file_contents: dict[str, str], max_retries: int = 2) -> Optional[BatchApplyResult]` | Builds a batch apply prompt (content-embedded), calls Claude (with `fast=False`), parses/validates. Returns `BatchApplyResult` or None. |
+| `analyze_system` | `(system_name: str, file_paths: list[str], repo_path: str, fast: bool = True, max_retries: int = 2) -> Optional[ScanResult]` | Agent mode, fast model (user-configurable). Builds a scan prompt (paths only), calls Claude as an agent with `cwd=repo_path` so it can read files itself. Retries up to `max_retries` on failure or validation error. Returns `ScanResult` or None. |
+| `run_finding_recheck` | `(finding: dict, repo_path: str) -> Optional[dict]` | Agent mode, full model. Re-analyses a single finding against current code to verify it is still valid. |
+| `run_finding_chat` | `(finding: dict, message: str, history: list, repo_path: str) -> str` | Agent mode, full model. Conversational follow-up on a finding. |
+| `generate_batch_patch` | `(findings: list[dict], file_contents: dict[str, str], max_retries: int = 2) -> Optional[BatchApplyResult]` | Agent mode, full model. Builds a batch apply prompt (content-embedded), calls Claude, parses/validates. Returns `BatchApplyResult` or None. |
+| `suggest_systems` | `(repo_path: str, source_dirs: list[str]) -> list[dict]` | Agent mode, fast model. Claude explores the repo using its own tools (no pre-built directory listing sent in the prompt) and returns suggested system definitions. Handles UE Public/Private module structure: if a directory contains both `Public/` and `Private/`, Claude uses the module root path (or returns both `Public/Feature/` and `Private/Feature/` if splitting by feature). Never returns bare `Public/` or `Private/` without a feature subfolder. |
+| `suggest_paths` | `(source_dir: str, repo_path: str) -> list[str]` | Agent mode, fast model. Claude explores the source directory to suggest sub-paths for a system. Same UE Public/Private rules as `suggest_systems`. |
+| `_ai_classify` | `(dirs: list[str], repo_path: str) -> dict[str, str]` | Prompt mode (not agent mode), fast model. Simple classification task: sends directory listings to Claude and returns `"active"` or `"ignored"` per dir. Falls back to `"active"` on failure. |
 
 ---
 
-### 2.8 `auditor/scanner/chunker.py` -- File Collection and Chunking
+### 2.8 `nytwatch/scanner/chunker.py` -- File Collection and Chunking
 
 **Module Constants:**
 
@@ -440,7 +445,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.9 `auditor/scanner/incremental.py` -- Incremental Scanning
+### 2.9 `nytwatch/scanner/incremental.py` -- Incremental Scanning
 
 **Functions:**
 
@@ -456,7 +461,9 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.10 `auditor/scanner/scheduler.py` -- Scan Orchestration
+### 2.10 `nytwatch/scanner/scheduler.py` -- Scan Orchestration
+
+The APScheduler instance is only created and started when `config.repo_path` is non-empty. When no project is configured the scheduler is not initialized and no "scan ready" notifications are sent.
 
 **Functions:**
 
@@ -467,7 +474,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.11 `auditor/scanner/source_detector.py` -- Source Directory Classification
+### 2.11 `nytwatch/scanner/source_detector.py` -- Source Directory Classification
 
 **Functions:**
 
@@ -475,7 +482,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 |----------|-----------|-------------|
 | `detect_source_dirs` | `(repo_path: str, db: Database) -> None` | Two-layer classification: (1) deterministic UE heuristics, (2) Claude AI fallback for ambiguous dirs. Never overwrites existing DB classifications (preserves user overrides). |
 | `_heuristic_classify` | `(repo: Path) -> tuple[dict[str, str], list[str]]` | Deterministic rules: classifies dirs as `"active"` (C++ source to scan) or `"ignored"` (skip). `.uplugin` presence, project-name match under `Source/`, and `ThirdParty` dirs are all classified as `"active"`; generated dirs go to `"ignored"`. Normalizes all `relative_to()` outputs via `normalize_path()`. Returns `(classified, unclassified)`. |
-| `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Returns `"active"` or `"ignored"` per dir. Falls back to `"active"` on failure. |
+| `_ai_classify` | `(repo: Path, dirs: list[str]) -> dict[str, str]` | Prompt mode (not agent mode), fast model. Sends ambiguous directory listings (capped at 30 entries each) to Claude for classification. Returns `"active"` or `"ignored"` per dir. Falls back to `"active"` on failure. |
 | `_build_classify_prompt` | `(dir_listings: dict[str, list[str]]) -> str` | Builds the classification prompt. Asks Claude to return `{"classifications": {"path": "active"|"ignored"}}`. |
 
 **Heuristic Rules (in order):**
@@ -490,7 +497,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.12 `auditor/paths.py` -- Path Normalization
+### 2.12 `nytwatch/paths.py` -- Path Normalization
 
 **Purpose:** Cross-platform path handling. Ensures all internal paths use POSIX-style forward slashes regardless of host OS.
 
@@ -500,13 +507,13 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 |----------|-----------|-------------|
 | `normalize_path` | `(p: str) -> str` | Replaces all backslashes with forward slashes. Called by `chunker.collect_system_files`, `incremental.map_files_to_systems`, `source_detector._heuristic_classify`. Also used inline in `database.classify_path`. |
 
-**Consumers:** `scanner/chunker.py`, `scanner/incremental.py`, `scanner/source_detector.py`, `database.py`
+**Consumers:** `nytwatch/scanner/chunker.py`, `nytwatch/scanner/incremental.py`, `nytwatch/scanner/source_detector.py`, `nytwatch/database.py`
 
 **Rationale:** `pathlib.Path.relative_to()` produces backslash-separated paths on Windows. Git output uses forward slashes on all platforms. This mismatch breaks path prefix matching (system mapping, source classification). The normalizer ensures consistent forward-slash paths at every storage and comparison boundary.
 
 ---
 
-### 2.13 `auditor/pipeline/batch.py` -- Batch Pipeline Orchestrator
+### 2.13 `nytwatch/pipeline/batch.py` -- Batch Pipeline Orchestrator
 
 **Functions:**
 
@@ -517,7 +524,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.13 `auditor/pipeline/applicator.py` -- Fix Application
+### 2.14 `nytwatch/pipeline/applicator.py` -- Fix Application
 
 **Functions:**
 
@@ -527,7 +534,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.14 `auditor/pipeline/builder.py` -- UE Build Execution
+### 2.15 `nytwatch/pipeline/builder.py` -- UE Build Execution
 
 **Functions:**
 
@@ -538,7 +545,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.15 `auditor/pipeline/test_writer.py` -- Test File Generation
+### 2.16 `nytwatch/pipeline/test_writer.py` -- Test File Generation
 
 **Functions:**
 
@@ -550,7 +557,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.16 `auditor/pipeline/test_runner.py` -- UE Test Execution
+### 2.17 `nytwatch/pipeline/test_runner.py` -- UE Test Execution
 
 **Functions:**
 
@@ -561,7 +568,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.17 `auditor/pipeline/git_ops.py` -- Git Operations
+### 2.18 `nytwatch/pipeline/git_ops.py` -- Git Operations
 
 **Functions:**
 
@@ -580,7 +587,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.18 `auditor/pipeline/notifier.py` -- Notifications
+### 2.19 `nytwatch/pipeline/notifier.py` -- Notifications
 
 **Functions:**
 
@@ -594,7 +601,7 @@ Run with `cwd=repo_path` so Claude's file-reading tools resolve paths relative t
 
 ---
 
-### 2.19 `auditor/web/routes.py` -- HTTP Routes
+### 2.20 `nytwatch/web/routes.py` -- HTTP Routes
 
 See [Section 5: API and HTTP Endpoints](#5-api-and-http-endpoints) for the full endpoint reference.
 
@@ -621,7 +628,7 @@ Used in `base.html` to render the sidebar project pill and browser tab title suf
 
 ## 3. Database Schema
 
-SQLite database stored at `{data_dir}/nytwatch.db`. Uses WAL journal mode and enforces foreign keys.
+Each project has its own SQLite database named after the config file slug: `{data_dir}/{slug}.db` (e.g. `~/.nytwatch/greenleaf.db` for `~/.nytwatch/greenleaf.yaml`). The database is created when a project is first configured, not on server startup. A legacy `nytwatch.db` is auto-migrated on first use. When no project is configured the server runs without a database (wizard-only mode). Uses WAL journal mode and enforces foreign keys.
 
 ### Tables
 
@@ -819,13 +826,14 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 | GET | `/api/findings/stream` | `api_findings_stream` | -- | `{"findings": [...], "total": int}` | Findings for a scan starting from `offset`. Used for live-streaming findings during a scan. |
 | GET | `/api/systems` | `get_systems_api` | -- | `{"systems": [{name, paths, min_confidence?, file_extensions?, claude_fast_mode?}]}` | Returns current system definitions including per-system overrides. |
 | POST | `/api/systems` | `save_systems_api` | `{"systems": [{name, paths, ...}]}` | `{"ok": true}` | Validates and saves system definitions. Hot-reloads `app.state.config`. |
+| GET | `/api/validate-repo` | `validate_repo` | -- | `{"ok": bool, "error": str\|null}` | Lightweight repo validation used by the wizard Step 1. Checks that the path exists on disk and contains a `.git` directory. No filesystem scanning. Used to enable/disable the **Next** button before the project is created. |
 | GET | `/api/browse` | `browse_directory` | -- | `{"path": str, "entries": [...], "parent": str\|null}` | Browse subdirectories within the repo. `path` query param is repo-relative. Optional `base` param overrides the root directory (used by setup wizard before a project is active). |
 | GET | `/api/browse-abs` | `browse_absolute` | -- | `{"path": str, "entries": [...], "parent": str\|null}` | Browse the local filesystem by absolute path. On Windows with empty `path`, returns available drive letters (`C:/`, `D:/`, …). Skips system/hidden directories. |
 | GET | `/api/projects` | `list_projects` | -- | `{"projects": [{path, repo_path, name}], "current": str}` | Lists all `*.yaml` files in `~/.nytwatch/` that have a non-empty `repo_path`. Excludes blank/unconfigured YAMLs. |
 | POST | `/api/projects/switch` | `switch_project` | `{"path": str}` | `{"ok": true, "repo_path": str}` | Loads a different project config, swaps `app.state.config` and `app.state.db`, writes the new path to `~/.nytwatch/.active`. |
 | POST | `/api/projects/init` | `init_project` | `{"project_name", "repo_path", "systems", "build", "scan_schedule", "claude_fast_mode", "min_confidence", "config_path", "source_dirs"}` | `{"ok": true, "config_path": str}` | Creates a new project config YAML (path derived from `project_name` slug if `config_path` not provided), upserts `source_dirs` into the DB, writes `.active` pointer. |
 | GET | `/api/detect-systems` | `detect_systems_api` | -- | `{"systems": [{name, paths, hint}]}` | Detects systems from `repo_path` query param using `detect_systems_from_repo()`. Falls back to active config's repo_path if query param is empty. |
-| GET | `/api/config/status` | `config_status` | -- | `{"config_path", "repo_path", "repo_exists", "errors", "last_commit", "db_size_bytes", "systems": [{name, paths_exist}]}` | Full config health check for the active project. |
+| GET | `/api/config/status` | `config_status` | -- | `{"config_path", "repo_path", "repo_exists", "errors", "last_commit", "db_size_bytes", "systems": [{name, paths_exist}]}` | Full config health check for the active project. `db_size_bytes` is the size of the active project's slug-named DB file (e.g. `greenleaf.db`), not a shared file. |
 | POST | `/api/config/repair` | `repair_config` | -- | `{"ok": true}` | Re-saves the active config with all Pydantic defaults filled in. |
 | POST | `/settings/source-dirs` | `update_source_dir` | `{"path": str, "source_type": str}` | `{"ok": true, "path": str, "source_type": str}` | Upsert source directory classification. `source_type` must be `"active"` or `"ignored"`. |
 | DELETE | `/settings/source-dirs` | `delete_source_dir` | `{"path": str}` | `{"ok": true, "path": str}` | Delete a source directory classification. |
@@ -861,7 +869,7 @@ Jinja2 templates at `src/nytwatch/web/templates/`:
 
 ## 6. Configuration YAML Schema
 
-Default location: `~/.nytwatch/config.yaml`
+Location: `~/.nytwatch/<project-name>.yaml` (slug derived from project name, e.g. "Green Leaf" → `greenleaf.yaml`). A legacy `~/.nytwatch/config.yaml` is still supported as a fallback when no active pointer exists.
 
 ```yaml
 # Absolute path to the game repository (required for scanning)
@@ -943,7 +951,7 @@ Injected into every scan prompt as domain context. Covers 8 topic areas:
 
 ### 7.2 Scan Prompt Structure
 
-Built by `build_scan_prompt(system_name, file_contents)`:
+Built by `build_scan_prompt(system_name, file_paths)`. Passes file paths only — Claude reads files autonomously via its tools.
 
 ```
 1. Role assignment: "senior Unreal Engine C++ analyst"
@@ -954,7 +962,7 @@ Built by `build_scan_prompt(system_name, file_contents)`:
    - UE Anti-patterns (missing UPROPERTY, raw new, ConstructorHelpers)
    - Memory (leaks, dangling ptrs, missing cleanup, circular refs)
    - Modern C++ (raw owning ptrs, C-style casts, missing constexpr)
-4. Code block: each file as ### FILE: {path} with cpp code fence
+4. File path list (bullets only — Claude reads files itself via Read/Glob/Grep)
 5. Output format: JSON matching ScanResult schema
 6. FindingOutput JSON Schema (auto-generated from Pydantic)
 7. Field rules (enum values, line ranges, diff format)
@@ -983,31 +991,57 @@ Built by `build_batch_apply_prompt(findings, file_contents)`:
 6. Instruction: "Return ONLY the JSON object"
 ```
 
-### 7.4 Source Classification Prompt
+### 7.4 Suggest Systems / Suggest Paths Prompt Rules
 
-Built by `_build_classify_prompt(dir_listings)`:
+Both `suggest_systems` and `suggest_paths` run in agent mode. Claude explores the repo (or source directory) using its own tools. No pre-built directory listing is sent in the prompt.
+
+The prompts include explicit UE Public/Private rules:
+
+- If a directory contains both `Public/` and `Private/` subdirectories → use the **module root** path (e.g. `Source/MyGame/Combat/`) OR return both `Public/Feature/` and `Private/Feature/` explicitly if splitting by feature subfolder
+- Never return bare `Public/` or `Private/` without a feature subfolder
+- Auto-promote bare `Public/` or `Private/` to the module root when no feature split is warranted
+- Mirror feature folders symmetrically: if `Public/Weapons/` is returned, also include `Private/Weapons/`
+
+### 7.5 Source Classification Prompt
+
+Built by `_build_classify_prompt(dir_listings)`. Runs in prompt mode (not agent mode), fast model.
 
 ```
 1. Context: "analyzing an Unreal Engine project's directory structure"
-2. Classification task: "project" (first-party) or "plugin" (third-party)
+2. Classification task: "active" (C++ to scan) or "ignored" (skip)
 3. Signals to consider:
    - Plugin-like naming (vendor names, generic utilities)
    - Game-specific names (game modes, character systems)
    - Plugin structure (Public/Private with generic module names)
 4. Directory listings as JSON (max 30 entries per dir)
-5. Output format: {"classifications": {"path": "project"|"plugin"}}
+5. Output format: {"classifications": {"path": "active"|"ignored"}}
 ```
 
 ### 7.5 Claude CLI Invocation
 
+All calls use:
+
 ```
-claude -p - --output-format json
+claude -p - --output-format json --dangerouslySkipPermissions
 ```
 
 - Input: prompt via stdin (`-p -`)
 - Output: JSON envelope `{"type": "result", "result": "<escaped JSON string>"}`
-- Timeout: 600s for scans, 60s for source classification
 - Logs: `~/.nytwatch/logs/{call_id}_prompt.txt` and `{call_id}_response.txt`
+
+**Call classification:**
+
+| Function | Mode | Model | Notes |
+|----------|------|-------|-------|
+| `analyze_system` | Agent | Fast (user-configurable) | `cwd=repo_path`; Claude reads files autonomously |
+| `run_finding_recheck` | Agent | Full | Re-checks a finding against current code |
+| `run_finding_chat` | Agent | Full | Conversational follow-up on a finding |
+| `generate_batch_patch` | Agent | Full | Generates unified patch for batch fixes |
+| `suggest_systems` | Agent | Fast | Explores repo with tools; no pre-built directory listing |
+| `suggest_paths` | Agent | Fast | Explores a source directory with tools |
+| `_ai_classify` | Prompt | Fast | Simple classification task; not agent mode |
+
+Timeout: 600 s for agent calls, 60 s for `_ai_classify`.
 
 ---
 

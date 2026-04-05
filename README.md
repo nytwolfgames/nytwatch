@@ -35,7 +35,7 @@ A proactive code analysis agent for Unreal Engine C++ game projects. It scans yo
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.11+
 - Claude Code CLI (`claude`) installed and authenticated with a Claude Max subscription
 - Git
 - GitHub CLI (`gh`) for PR creation
@@ -64,9 +64,9 @@ Click **"+ Setup New Project"** on the Settings page (or follow the first-run re
 
 | Step | What you configure |
 |------|--------------------|
-| **1 — Setup** | Project name, repository path, UE installation directory (all with folder browsers) |
-| **2 — Sources** | Top-level source directories auto-detected from the repo — mark each as **Active** (C++ to scan) or **Ignored** (skip entirely). Only Active directories proceed to the next step. |
-| **3 — Systems** | Gameplay module systems, grouped under each active source directory. Each system groups related sub-paths that Claude analyses together. Click **✨ Suggest with Claude** to auto-generate systems from your source structure. |
+| **1 — Setup** | Project name, repository path, UE installation directory (all with folder browsers). The **Next** button is disabled until both Project name and Repository path are filled. Path validation calls `/api/validate-repo` (checks that the path exists and contains `.git`) — no filesystem scanning at this step. |
+| **2 — Sources** | Top-level source directories auto-detected from the repo — mark each as **Active** (C++ to scan) or **Ignored** (skip entirely). Use the **All Active / All Ignored** bulk toggle to set all at once. Only Active directories proceed to the next step. |
+| **3 — Systems** | Gameplay module systems, grouped under each active source directory. Each system groups related sub-paths that Claude analyses together. Click **✨ Suggest with Claude** to auto-generate systems — Claude runs in agent mode and explores the repo using its own tools (no pre-built directory listing is sent in the prompt). Handles UE Public/Private module structure correctly. |
 | **4 — Build** | `.uproject` file path and timeout overrides |
 | **5 — Schedule** | Incremental scan interval and rotation schedule |
 | **6 — Review** | Grouped systems summary and config file path (auto-named `~/.nytwatch/<project-name>.yaml`) |
@@ -90,7 +90,9 @@ Nytwatch supports multiple projects. Each project is stored as its own YAML file
 ```
 ~/.nytwatch/
   my-game.yaml          # project "MyGame"
+  my-game.db            # project database (named after config slug)
   rts-prototype.yaml    # project "RTS Prototype"
+  rts-prototype.db      # project database
   .active               # pointer to the currently active project config
 ```
 
@@ -99,6 +101,7 @@ The **Active Project** card on the Settings page shows the current project and l
 ### Config YAML structure
 
 ```yaml
+project_name: "My Game"
 repo_path: /path/to/your/game/repo
 
 build:
@@ -123,7 +126,7 @@ min_confidence: "medium"
 file_extensions: [".h", ".cpp"]
 ```
 
-> **Systems are stored in the database** — source directory classifications and gameplay module systems are managed through the web dashboard or setup wizard and stored in `~/.nytwatch/<project>/nytwatch.db`. They are not written to the YAML config.
+> **Systems are stored in the database** — source directory classifications and gameplay module systems are managed through the web dashboard or setup wizard and stored in `~/.nytwatch/<project-slug>.db`. They are not written to the YAML config.
 
 ## Usage
 
@@ -206,9 +209,11 @@ Scan Scheduler --> Analysis Engine --> Findings Store (SQLite)
 
 - **System-based scanning**: Code is split by game system (Combat, Character, AI, etc.), not by finding category. One comprehensive prompt per system finds all issue types in a single pass. Fewer CLI calls, better contextual understanding.
 
-- **Agent mode scanning**: Claude runs as an autonomous agent (`claude -p - --output-format json --dangerouslySkipPermissions`) with `cwd` set to the repo root. The prompt gives Claude a list of file paths; Claude reads them itself using the `Read`, `Glob`, and `Grep` tools. This avoids embedding file contents in the prompt, keeping prompts small and giving Claude the freedom to explore related files.
+- **Agent mode scanning**: Claude runs as an autonomous agent (`claude -p - --output-format json --dangerouslySkipPermissions`) with `cwd` set to the repo root. The prompt gives Claude a list of file paths; Claude reads them itself using the `Read`, `Glob`, and `Grep` tools. This avoids embedding file contents in the prompt, keeping prompts small and giving Claude the freedom to explore related files. The same agent approach applies to `suggest_systems` (explores the repo) and `suggest_paths` (explores a source directory), and to `run_finding_recheck`, `run_finding_chat`, and `generate_batch_patch`.
 
-- **Claude Code CLI**: Uses `claude -p` via subprocess. No separate API key needed — runs on your existing Claude Max subscription at no extra cost.
+- **Claude Code CLI**: Uses `claude -p` via subprocess. No separate API key needed — runs on your existing Claude Max subscription at no extra cost. All calls run in agent mode (`--dangerouslySkipPermissions`). `_ai_classify` (source directory classification) is the only call that uses prompt mode and the fast model.
+
+- **Scheduler only starts when a project is configured**: APScheduler is not initialized until `config.repo_path` is non-empty. No "scan ready" notifications are sent when no project is set up.
 
 - **Pydantic validation**: Every Claude response is validated against a strict schema. Failed validations trigger automatic retries (max 2).
 
@@ -250,17 +255,19 @@ src/nytwatch/
 
 ### Data storage
 
-Each project has its own SQLite database derived from the active config path:
+Each project has its own SQLite database named after the config file slug:
 
 ```
 ~/.nytwatch/
   my-game.yaml           # project config
-  my-game/nytwatch.db     # project database
+  my-game.db             # project database (slug-named, created on first project setup)
   rts-prototype.yaml
-  rts-prototype/nytwatch.db
+  rts-prototype.db
   .active                # active project pointer
   logs/                  # Claude call logs
 ```
+
+The database is created when a project is first configured, not on server startup. If a legacy `nytwatch.db` exists, it is automatically migrated to the slug-named file on first use. When all projects are deleted the server runs in wizard-only mode with no database.
 
 The database has five main tables:
 
