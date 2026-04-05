@@ -346,11 +346,9 @@
         </table>
         <div id="vd-empty" style="display:none;padding:32px;text-align:center;color:var(--on-surface-variant);font-size:0.85rem;">No header files found for this system.</div>
     </div>
-    <div style="padding:12px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+    <div style="padding:8px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;">
         <button onclick="vdClearAll()" class="btn btn-sm scan-safe">Clear All</button>
         <span id="vd-status" style="flex:1;font-size:0.8rem;color:var(--on-surface-variant);"></span>
-        <button onclick="closeVerbosityDrawer()" class="btn btn-sm scan-safe">Cancel</button>
-        <button onclick="vdSave()" class="btn btn-sm btn-primary scan-safe" id="vd-save-btn">Save</button>
     </div>
 </aside>
 
@@ -880,6 +878,7 @@ function vdToggleTrack(cb) {
         row.classList.toggle('has-override', hasOv);
         row.querySelector('.vd-clear-btn').style.visibility = hasOv ? 'visible' : 'hidden';
     }
+    vdScheduleSave();
 }
 
 function vdMarkDirty(sel) {
@@ -887,6 +886,7 @@ function vdMarkDirty(sel) {
     const hasOv = sel.value !== '';
     row.classList.toggle('has-override', hasOv);
     row.querySelector('.vd-clear-btn').style.visibility = hasOv ? 'visible' : 'hidden';
+    vdScheduleSave();
 }
 
 function vdClearRow(btn) {
@@ -897,6 +897,7 @@ function vdClearRow(btn) {
     row.classList.remove('has-override');
     row.style.opacity = '';
     btn.style.visibility = 'hidden';
+    vdScheduleSave();
 }
 
 function vdClearAll() {
@@ -908,6 +909,7 @@ function vdClearAll() {
         r.style.opacity = '';
         r.querySelector('.vd-clear-btn').style.visibility = 'hidden';
     });
+    vdScheduleSave();
 }
 
 function vdFilter(text) {
@@ -922,12 +924,16 @@ function vdFilter(text) {
     });
 }
 
-async function vdSave() {
-    const btn    = document.getElementById('vd-save-btn');
+let _vdSaveTimer = null;
+function vdScheduleSave() {
     const status = document.getElementById('vd-status');
-    btn.disabled = true;
-    status.textContent = 'Saving…';
-    status.style.color = 'var(--on-surface-variant)';
+    clearTimeout(_vdSaveTimer);
+    status.textContent = '';
+    _vdSaveTimer = setTimeout(vdSave, 400);
+}
+
+async function vdSave() {
+    const status = document.getElementById('vd-status');
 
     // Only send rows whose effective verbosity changed from what was loaded from DB.
     // This prevents accidental deletion of valid overrides for untouched rows.
@@ -942,6 +948,8 @@ async function vdSave() {
             overrides.push({ file_path: row.dataset.path, verbosity: current });
         }
     });
+
+    if (!overrides.length) return;
 
     try {
         const r = await fetch(`/api/nytwatch/systems/${encodeURIComponent(_vdSystem)}/files/verbosity`, {
@@ -960,7 +968,7 @@ async function vdSave() {
                 row.dataset.originalVerbosity = current;
             });
             const n = overrides.length;
-            status.textContent = n ? `✓ Saved ${n} change${n !== 1 ? 's' : ''}` : '✓ No changes';
+            status.textContent = `✓ Saved ${n} change${n !== 1 ? 's' : ''}`;
             status.style.color = 'var(--status-verified-fg)';
             setTimeout(() => { status.textContent = ''; }, 2500);
         } else {
@@ -970,12 +978,11 @@ async function vdSave() {
     } catch (e) {
         status.textContent = 'Save failed';
         status.style.color = '#ef4444';
-    } finally {
-        btn.disabled = false;
     }
 }
 
 function closeVerbosityDrawer() {
+    clearTimeout(_vdSaveTimer);
     document.getElementById('verbosity-backdrop').style.display = 'none';
     document.getElementById('verbosity-drawer').style.display = 'none';
     document.body.style.overflow = '';
