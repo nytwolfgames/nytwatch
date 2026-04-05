@@ -946,7 +946,7 @@ Injected into every scan prompt as domain context. Covers 8 topic areas:
 Built by `build_scan_prompt(system_name, file_contents)`:
 
 ```
-1. Role assignment: "senior Unreal Engine C++ code auditor"
+1. Role assignment: "senior Unreal Engine C++ analyst"
 2. UE Reference Sheet (full text)
 3. Issue categories to check:
    - Bugs (logic errors, null deref, race conditions, use-after-free)
@@ -959,7 +959,7 @@ Built by `build_scan_prompt(system_name, file_contents)`:
 6. FindingOutput JSON Schema (auto-generated from Pydantic)
 7. Field rules (enum values, line ranges, diff format)
 8. Test case template: UE Automation Test with IMPLEMENT_SIMPLE_AUTOMATION_TEST
-   - Test path: "CodeAuditor.{system_name}.<Category>.<ShortTitle>"
+   - Test path: "Nytwatch.{system_name}.<Category>.<ShortTitle>"
 9. Instruction: "Return ONLY the JSON object"
 ```
 
@@ -968,7 +968,7 @@ Built by `build_scan_prompt(system_name, file_contents)`:
 Built by `build_batch_apply_prompt(findings, file_contents)`:
 
 ```
-1. Role: "Unreal Engine C++ code auditor applying approved fixes"
+1. Role: "Unreal Engine C++ analyst applying approved fixes"
 2. Approved findings as JSON array
 3. Current source files (same format as scan prompt)
 4. Instructions:

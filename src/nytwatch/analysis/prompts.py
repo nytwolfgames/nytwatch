@@ -95,7 +95,7 @@ def build_scan_prompt(system_name: str, file_paths: list[str]) -> str:
     paths_block = "\n".join(f"- {p}" for p in file_paths)
 
     return f"""\
-You are a senior Unreal Engine C++ code auditor. Analyze the "{system_name}" system and find ALL issues.
+You are a senior Unreal Engine C++ analyst for Nytwatch. Analyze the "{system_name}" system and find ALL issues.
 
 Use the Read tool to read each file listed below. You may also use Grep to search for related patterns and Glob to discover related headers. Read whatever additional context you need to make accurate findings.
 
@@ -158,7 +158,7 @@ bool F<TestName>::RunTest(const FString& Parameters)
 }}
 ```
 
-Test path format: "CodeAuditor.{system_name}.<Category>.<ShortTitle>"
+Test path format: "Nytwatch.{system_name}.<Category>.<ShortTitle>"
 
 Return ONLY the JSON object. No markdown fences, no commentary outside the JSON.\
 """
@@ -195,7 +195,7 @@ def build_recheck_prompt(finding: dict) -> str:
         )
 
     return f"""\
-You are a code auditor verifying whether a previously-identified issue is still present.
+You are a Nytwatch analyst verifying whether a previously-identified issue is still present.
 
 ## Finding
 Title:    {finding['title']}
@@ -317,7 +317,7 @@ def build_batch_apply_prompt(
     findings_json = json.dumps(findings, indent=2)
 
     return f"""\
-You are an Unreal Engine C++ code auditor applying approved fixes.
+You are an Unreal Engine C++ analyst applying approved fixes.
 
 Use the Read tool to read the current contents of each file listed below, then produce a single unified diff that applies ALL findings together.
 

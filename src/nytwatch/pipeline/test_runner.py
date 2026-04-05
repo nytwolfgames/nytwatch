@@ -51,22 +51,22 @@ def _parse_test_output(output: str) -> dict[str, bool]:
     results: dict[str, bool] = {}
 
     for line in output.splitlines():
-        pass_match = re.search(r"Test Completed\.\s+(CodeAuditor\.\S+)\s+Success", line)
+        pass_match = re.search(r"Test Completed\.\s+(Nytwatch\.\S+)\s+Success", line)
         if pass_match:
             results[pass_match.group(1)] = True
             continue
 
-        fail_match = re.search(r"Test Completed\.\s+(CodeAuditor\.\S+)\s+Fail", line)
+        fail_match = re.search(r"Test Completed\.\s+(Nytwatch\.\S+)\s+Fail", line)
         if fail_match:
             results[fail_match.group(1)] = False
             continue
 
-        success_match = re.search(r"\[Passed\]\s+(CodeAuditor\.\S+)", line)
+        success_match = re.search(r"\[Passed\]\s+(Nytwatch\.\S+)", line)
         if success_match:
             results[success_match.group(1)] = True
             continue
 
-        failure_match = re.search(r"\[Failed\]\s+(CodeAuditor\.\S+)", line)
+        failure_match = re.search(r"\[Failed\]\s+(Nytwatch\.\S+)", line)
         if failure_match:
             results[failure_match.group(1)] = False
 

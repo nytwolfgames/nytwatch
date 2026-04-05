@@ -280,7 +280,7 @@ async def findings_export(
 
     ws_overview.merge_cells("A1:C1")
     cell_title = ws_overview["A1"]
-    cell_title.value = "Code Auditor Report"
+    cell_title.value = "Nytwatch Report"
     cell_title.font = bold
 
     project_name = Path(config.repo_path).name or config.repo_path
@@ -388,7 +388,7 @@ async def findings_export(
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=code_auditor_findings.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=nytwatch_findings.xlsx"},
     )
 
 
@@ -975,13 +975,15 @@ async def init_project(request: Request):
     )
 
     config_path_str = body.get("config_path", "").strip()
+    project_name = body.get("project_name", "").strip()
     if not config_path_str:
         # Derive from project_name if provided
-        project_name = body.get("project_name", "").strip()
         if project_name:
             slug = re.sub(r"[^a-z0-9_-]+", "-", project_name.lower()).strip("-")
             config_path_str = f"~/.nytwatch/{slug}.yaml"
     config_path = Path(config_path_str).expanduser() if config_path_str else DEFAULT_CONFIG_PATH
+
+    config.project_name = project_name
 
     try:
         save_full_config(config, config_path)
@@ -1123,47 +1125,42 @@ async def detect_source_dirs_api(request: Request, repo_path: str = ""):
     return JSONResponse({"dirs": dirs})
 
 
-def _build_suggest_systems_prompt(dir_info: dict) -> str:
-    import json
-    listing = json.dumps(dir_info, indent=2)
+def _build_suggest_systems_prompt(repo_path: str, active_dirs: list[dict]) -> str:
+    dir_list = "\n".join(f"- {d['path']} (type: {d.get('source_type', 'project')})" for d in active_dirs)
     return f"""\
 You are helping configure a code analysis tool for an Unreal Engine C++ project.
 
-Below is the structure of each active source directory with its immediate subdirectories and key files.
+Repo root: {repo_path}
 
-Your task: for each active source directory, suggest logical "systems" — named groups of sub-paths that Claude should analyse together. Each system belongs to exactly one parent source directory.
+Active source directories to analyse:
+{dir_list}
+
+Your task: explore the directory structure under each active source directory using your tools (LS, Glob, etc.), then suggest logical "systems" — named groups of sub-paths that should be analysed together. Each system belongs to exactly one parent source directory.
 
 Rules:
-- Each system MUST include a "source_dir" field matching exactly one of the top-level keys in the listing
-- System "paths" must be sub-paths of their parent "source_dir" (or equal to source_dir if no further split is needed)
-- Split large source directories by gameplay feature area (Combat, AI, Inventory, UI, etc.)
-- Small or plugin directories with few subdirs → one system whose path equals the source_dir
-- Use directory paths exactly as shown (with trailing slash)
-- System names should be short and descriptive
+- Explore freely — go as deep as needed to find the right split point
+- Feature folders (Combat, AI, Inventory, UI, etc.) at any depth → one system each
+- A UE module wrapper folder (same name as the project/plugin) is not itself a split point — look inside it
+- Small/leaf directories with no meaningful subdirs → one system at that path
+- System names should be short and descriptive (use the feature folder name)
+- "source_dir" must exactly match one of the active source directory paths listed above (with trailing slash)
+- All paths must use forward slashes with a trailing slash
 
-## Source directory structure
+Return a JSON object — no markdown fences, no commentary:
 
-{listing}
-
-## Output Format
-
-```json
 {{
   "systems": [
-    {{"name": "Combat",   "source_dir": "Source/Game/", "paths": ["Source/Game/Combat/"]}},
-    {{"name": "AI",       "source_dir": "Source/Game/", "paths": ["Source/Game/AI/"]}},
+    {{"name": "Combat",   "source_dir": "Source/Game/", "paths": ["Source/Game/ProjectName/Combat/"]}},
+    {{"name": "AI",       "source_dir": "Source/Game/", "paths": ["Source/Game/ProjectName/AI/"]}},
     {{"name": "MyPlugin", "source_dir": "Plugins/MyPlugin/", "paths": ["Plugins/MyPlugin/Source/"]}}
   ]
-}}
-```
-
-Return ONLY the JSON object. No markdown fences, no commentary.\
+}}\
 """
 
 
 @router.post("/api/suggest-systems")
 async def suggest_systems_api(request: Request):
-    """Ask Claude to suggest logical scanning systems based on classified source dirs."""
+    """Ask Claude to suggest logical scanning systems by exploring the repo with tools."""
     body = await request.json()
     repo_path = body.get("repo_path", "")
     source_dirs = body.get("source_dirs", [])  # [{path, source_type}]
@@ -1180,44 +1177,15 @@ async def suggest_systems_api(request: Request):
     if not active_dirs:
         return JSONResponse({"error": "No non-ignored source directories to analyse"}, status_code=400)
 
-    # Build a lightweight directory listing to give Claude context
-    _skip = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", "__pycache__", ".git", ".vs", ".idea"}
-    _key_exts = {".h", ".cpp", ".cs", ".uplugin", ".uproject"}
-    dir_info: dict = {}
-    for entry in active_dirs:
-        p = entry["path"]
-        full = repo / p
-        if not full.exists():
-            continue
-        try:
-            subdirs = sorted(
-                item.name for item in full.iterdir()
-                if item.is_dir() and item.name not in _skip and not item.name.startswith(".")
-            )[:20]
-            files = sorted(
-                item.name for item in full.iterdir()
-                if item.is_file() and item.suffix in _key_exts
-            )[:10]
-            dir_info[p] = {
-                "type": entry.get("source_type", "project"),
-                "subdirs": subdirs,
-                "files": files,
-            }
-        except OSError:
-            dir_info[p] = {"type": entry.get("source_type", "project"), "subdirs": [], "files": []}
-
-    if not dir_info:
-        return JSONResponse({"error": "Could not read source directories"}, status_code=400)
-
-    prompt = _build_suggest_systems_prompt(dir_info)
+    prompt = _build_suggest_systems_prompt(str(repo), active_dirs)
 
     try:
         import subprocess as _sp
         from nytwatch.analysis.engine import call_claude, _extract_json
         try:
-            raw = call_claude(prompt, fast=False, timeout=90, repo_path=repo_path, use_tools=False)
+            # Agent mode: Claude explores the repo with its own tools
+            raw = call_claude(prompt, fast=False, timeout=300, repo_path=str(repo), use_tools=True)
         except _sp.CalledProcessError as cpe:
-            # Surface Claude's stderr so the user can diagnose the failure
             stderr_detail = (cpe.stderr or "").strip() or (cpe.stdout or "").strip()
             error_msg = stderr_detail or f"Claude CLI exited with code {cpe.returncode}"
             logger.error("suggest-systems: Claude CLI error (code %d): %s", cpe.returncode, error_msg)

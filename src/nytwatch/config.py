@@ -39,6 +39,7 @@ class NotificationConfig(BaseModel):
 
 
 class AuditorConfig(BaseModel):
+    project_name: str = ""
     repo_path: str = ""
     systems: list[SystemDef] = Field(default_factory=list)
     scan_schedule: ScanSchedule = Field(default_factory=ScanSchedule)
@@ -101,6 +102,7 @@ def save_full_config(config: AuditorConfig, path: Optional[Path] = None) -> None
     config_path = Path(path or DEFAULT_CONFIG_PATH).expanduser()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     raw: dict = {
+        "project_name": config.project_name,
         "repo_path": config.repo_path,
         "scan_schedule": {
             "incremental_interval_hours": config.scan_schedule.incremental_interval_hours,
@@ -145,10 +147,12 @@ def list_project_configs() -> list[dict]:
             # Skip blank/unconfigured yamls (e.g. legacy empty config.yaml)
             if not repo:
                 continue
+            project_name = raw.get("project_name", "").strip()
+            display_name = project_name or (Path(repo).name if repo else yaml_path.stem)
             results.append({
                 "path": str(yaml_path).replace("\\", "/"),
                 "repo_path": repo,
-                "name": Path(repo).name if repo else yaml_path.stem,
+                "name": display_name,
             })
         except Exception:
             pass

@@ -1019,7 +1019,7 @@ http://127.0.0.1:8420/findings/export?severity=high&status=pending
 **Via curl:**
 
 ```bash
-curl -o code_auditor_findings.xlsx "http://127.0.0.1:8420/findings/export"
+curl -o nytwatch_findings.xlsx "http://127.0.0.1:8420/findings/export"
 ```
 
 ### What the export contains

@@ -156,7 +156,7 @@ Every finding includes a generated UE Automation Test at scan time (visible duri
 - Tests use the standard `IMPLEMENT_SIMPLE_AUTOMATION_TEST` macro
 - Follow Arrange/Act/Assert structure
 - Written to `Source/{ProjectName}/Tests/Auditor/` during the batch pipeline
-- Test path convention: `CodeAuditor.{SystemName}.{Category}.{ShortTitle}`
+- Test path convention: `Nytwatch.{SystemName}.{Category}.{ShortTitle}`
 - Executed via `UnrealEditor-Cmd -ExecCmds=Automation RunTests Auditor`
 - Test results are parsed and stored with the batch
 - Test files are cleaned up on failure

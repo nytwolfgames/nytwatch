@@ -69,4 +69,4 @@ In this system, light is the architect. We move away from the "shadow-heavy" loo
 | Follow the **0.25rem (4px) grid** strictly for all internal spacing. | Don't use "eye-balled" spacing or odd-numbered pixel values. |
 
 ## 7. Signature Interaction: The "Pulse"
-When the Code Auditor Agent is "thinking" or "scanning," do not use a standard circular loader. Instead, use a linear, shimmering gradient (using `primary-fixed` and `primary-fixed-dim`) that moves across the top of the `surface-container-lowest` content area. This reinforces the "Clinical Precision" vibe—a silent, efficient scan.
+When the Nytwatch is "thinking" or "scanning," do not use a standard circular loader. Instead, use a linear, shimmering gradient (using `primary-fixed` and `primary-fixed-dim`) that moves across the top of the `surface-container-lowest` content area. This reinforces the "Clinical Precision" vibe—a silent, efficient scan.

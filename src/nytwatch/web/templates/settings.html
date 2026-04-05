@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Settings - Code Auditor{% endblock %}
+{% block title %}Settings - Nytwatch{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
@@ -1103,7 +1103,7 @@ function wzRender() {
                         value="${escH(_wz.project_name)}"
                         placeholder="MyGame"
                         oninput="_wz.project_name = this.value.trim()">
-                    <div class="body-sm text-variant mt-1">Used as the config filename: <span class="mono">~/.code-auditor/&lt;name&gt;.yaml</span></div>
+                    <div class="body-sm text-variant mt-1">Used as the config filename: <span class="mono">~/.nytwatch/&lt;name&gt;.yaml</span></div>
                 </div>
 
                 <div>
@@ -1622,9 +1622,9 @@ function wzRenderReview(el) {
             <input id="wz-cfgpath" type="text" class="input" style="width:100%;"
                 value="${escH(_wz.config_path)}"
                 oninput="_wz.config_path=this.value.trim()"
-                placeholder="~/.code-auditor/my-project.yaml">
+                placeholder="~/.nytwatch/my-project.yaml">
             <div class="body-sm text-variant mt-1">
-                Each project gets its own <span class="mono">.yaml</span> file in <span class="mono">~/.code-auditor/</span>.
+                Each project gets its own <span class="mono">.yaml</span> file in <span class="mono">~/.nytwatch/</span>.
             </div>
         </div>
         <div id="wz-result" style="margin-top:14px;"></div>
@@ -1662,7 +1662,7 @@ async function wzNext() {
 
         // Derive config path from project name (slugify)
         const slug = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
-        _wz.config_path = `~/.code-auditor/${slug}.yaml`;
+        _wz.config_path = `~/.nytwatch/${slug}.yaml`;
 
         const statusEl = document.getElementById('wz-setup-status');
         statusEl.textContent = 'Validating…';
