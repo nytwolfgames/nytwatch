@@ -13,17 +13,24 @@ function Write-OK($msg)   { Write-Host "   OK   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   WARN $msg" -ForegroundColor Yellow }
 function Write-Fail($msg) { Write-Host "`n   ERROR $msg" -ForegroundColor Red; exit 1 }
 
+function Get-PipVersion($packageName) {
+    $packages = & python -m pip list --format=json | ConvertFrom-Json
+    $pkg = $packages | Where-Object { $_.name -ieq $packageName }
+    if ($pkg) { return $pkg.version }
+    return ""
+}
+
 # ---------------------------------------------------------------------------
 # 1. Check nytwatch is installed
 # ---------------------------------------------------------------------------
 Write-Step "Checking installation..."
 
-$installed = & python -m pip show $PACKAGE_NAME 2>&1 | Select-String "^Name:"
-if (-not $installed) {
-    Write-Warn "nytwatch does not appear to be installed via pip. Nothing to uninstall."
+$installedVer = Get-PipVersion $PACKAGE_NAME
+if (-not $installedVer) {
+    Write-Warn "nytwatch does not appear to be installed. Nothing to uninstall."
     exit 0
 }
-Write-OK "Found: nytwatch"
+Write-OK "Found: nytwatch $installedVer"
 
 # ---------------------------------------------------------------------------
 # 2. Uninstall the package

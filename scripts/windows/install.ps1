@@ -14,6 +14,16 @@ function Write-OK($msg)   { Write-Host "   OK   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   WARN $msg" -ForegroundColor Yellow }
 function Write-Fail($msg) { Write-Host "`n   ERROR $msg" -ForegroundColor Red; exit 1 }
 
+# pip list --format=json never writes to stderr and always exits 0.
+# Use this instead of pip show, which writes a warning to stderr for missing
+# packages and triggers NativeCommandError under $ErrorActionPreference=Stop.
+function Get-PipVersion($packageName) {
+    $packages = & python -m pip list --format=json | ConvertFrom-Json
+    $pkg = $packages | Where-Object { $_.name -ieq $packageName }
+    if ($pkg) { return $pkg.version }
+    return ""
+}
+
 # ---------------------------------------------------------------------------
 # 1. Check Python version
 # ---------------------------------------------------------------------------
@@ -37,7 +47,7 @@ if ($pyVer -match "Python (\d+\.\d+)") {
 # ---------------------------------------------------------------------------
 Write-Step "Checking for existing installation..."
 
-$existingVer = (& python -m pip show $PACKAGE_NAME 2>&1 | Select-String "^Version:") -replace "Version:\s*", ""
+$existingVer = Get-PipVersion $PACKAGE_NAME
 if ($existingVer) {
     Write-Warn "Nytwatch $existingVer already installed - upgrading if needed."
 }
@@ -103,7 +113,7 @@ if (-not (Test-Path $CONFIG_DIR)) {
 # ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
-$installedVersion = (& python -m pip show $PACKAGE_NAME 2>&1 | Select-String "^Version:") -replace "Version:\s*", ""
+$installedVersion = Get-PipVersion $PACKAGE_NAME
 
 Write-Host ""
 Write-Host "Nytwatch installed successfully." -ForegroundColor Green

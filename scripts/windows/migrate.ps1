@@ -15,21 +15,28 @@ function Write-OK($msg)   { Write-Host "   OK   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   WARN $msg" -ForegroundColor Yellow }
 function Write-Fail($msg) { Write-Host "`n   ERROR $msg" -ForegroundColor Red; exit 1 }
 
+function Get-PipVersion($packageName) {
+    $packages = & python -m pip list --format=json | ConvertFrom-Json
+    $pkg = $packages | Where-Object { $_.name -ieq $packageName }
+    if ($pkg) { return $pkg.version }
+    return ""
+}
+
 # ---------------------------------------------------------------------------
 # 1. Confirm a legacy installation exists
 # ---------------------------------------------------------------------------
 Write-Step "Checking for legacy code-auditor installation..."
 
-$legacyPip = & python -m pip show $LEGACY_NAME 2>&1 | Select-String "^Name:"
+$legacyVer = Get-PipVersion $LEGACY_NAME
 $legacyDir = Test-Path $LEGACY_DIR
 
-if (-not $legacyPip -and -not $legacyDir) {
+if (-not $legacyVer -and -not $legacyDir) {
     Write-Warn "No legacy code-auditor installation or data directory found."
     Write-Host "   If you are doing a fresh install, run 'scripts\windows\install.ps1' instead." -ForegroundColor Yellow
     exit 0
 }
 
-if ($legacyPip) { Write-OK "Found: code-auditor (pip)" }
+if ($legacyVer) { Write-OK "Found: code-auditor $legacyVer (pip)" }
 if ($legacyDir) { Write-OK "Found: legacy data at $LEGACY_DIR" }
 
 # ---------------------------------------------------------------------------
@@ -59,8 +66,7 @@ if (Test-Path $LEGACY_DIR) {
         }
     }
 
-    # Copy project database directories (each project has its own subdir with auditor.db)
-    # Rename auditor.db -> nytwatch.db during copy so the new CLI finds it.
+    # Copy project database directories. Rename auditor.db -> nytwatch.db so the new CLI finds it.
     $subDirs = Get-ChildItem -Path $LEGACY_DIR -Directory -ErrorAction SilentlyContinue
     foreach ($d in $subDirs) {
         $destDir = Join-Path $NYTWATCH_DIR $d.Name
@@ -97,7 +103,7 @@ if (Test-Path $LEGACY_DIR) {
 # ---------------------------------------------------------------------------
 Write-Step "Uninstalling code-auditor..."
 
-if ($legacyPip) {
+if ($legacyVer) {
     & python -m pip uninstall $LEGACY_NAME -y --quiet
     if ($LASTEXITCODE -ne 0) { Write-Fail "pip uninstall code-auditor failed." }
     Write-OK "code-auditor uninstalled."
