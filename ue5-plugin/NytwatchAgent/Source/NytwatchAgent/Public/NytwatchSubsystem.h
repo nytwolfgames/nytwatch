@@ -64,6 +64,12 @@ private:
     void OnBeginPIE(bool bIsSimulating);
     void OnEndPIE(bool bIsSimulating);
 
+    // ── Crash / hard-close handler ───────────────────────────────────────────
+    // Bound to FCoreDelegates::OnHandleSystemError.  Performs a best-effort
+    // emergency session close so the session file is not left with unfilled
+    // header placeholders after a PIE crash.
+    void OnCrash();
+
     // ── Tick ─────────────────────────────────────────────────────────────────
     // Returns true to keep ticking.
     bool OnTick(float DeltaTime);
@@ -88,6 +94,7 @@ private:
     FNytwatchSessionWriter   Writer;
 
     FTSTicker::FDelegateHandle TickHandle;
+    FDelegateHandle            CrashDelegateHandle;
     float PIEElapsedSeconds     = 0.f;
     float TimeSinceConfigReload = 0.f;
     bool  bTrackingActive       = false;

@@ -47,6 +47,14 @@ public:
     // the lock file.
     void Close(const FString& ProjectDir);
 
+    // Best-effort close for crash / hard-stop scenarios (called from the
+    // system-error handler).  Signals the writer thread to stop, then
+    // immediately backfills the header with crash metadata without waiting
+    // for the thread — the thread only appends to the end of the file, so
+    // there is no race with the header region.  The lock file is intentionally
+    // left on disk so external tools can detect the abnormal exit.
+    void EmergencyClose(const FString& ProjectDir);
+
     bool    IsCapReached()       const { return bCapReached;        }
     bool    IsOpen()             const { return bIsOpen;            }
     FString GetSessionId()       const { return SessionId;          }

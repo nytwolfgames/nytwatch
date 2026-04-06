@@ -94,6 +94,7 @@ void FNytwatchSessionWriter::Open(const FNytwatchConfig& Config, const FString& 
         TEXT("started_at: %s\n")
         TEXT("ended_at: __ENDED_AT__\n")
         TEXT("duration_seconds: __DURATION__\n")
+        TEXT("end_reason: __END_REASON__\n")
         TEXT("systems_tracked: %s\n")
         TEXT("event_count: __EVENT_COUNT__\n")
         TEXT("---\n")
@@ -256,6 +257,7 @@ void FNytwatchSessionWriter::Close(const FString& ProjectDir)
     {
         Content.ReplaceInline(TEXT("__ENDED_AT__"),    *EndedAtStr,                       ESearchCase::CaseSensitive);
         Content.ReplaceInline(TEXT("__DURATION__"),    *FString::FromInt(DurationS),       ESearchCase::CaseSensitive);
+        Content.ReplaceInline(TEXT("__END_REASON__"),  TEXT("normal"),                     ESearchCase::CaseSensitive);
         Content.ReplaceInline(TEXT("__EVENT_COUNT__"), *FString::FromInt(TotalEventCount), ESearchCase::CaseSensitive);
 
         FFileHelper::SaveStringToFile(Content, *SessionFilePath,
@@ -276,6 +278,48 @@ void FNytwatchSessionWriter::Close(const FString& ProjectDir)
     UE_LOG(LogNytwatchWriter, Log,
         TEXT("[NytwatchAgent] Session closed — %d events written to %s"),
         TotalEventCount, *FPaths::GetCleanFilename(SessionFilePath));
+
+    bIsOpen = false;
+}
+
+// ---------------------------------------------------------------------------
+// EmergencyClose  (crash-handler context)
+// ---------------------------------------------------------------------------
+
+void FNytwatchSessionWriter::EmergencyClose(const FString& ProjectDir)
+{
+    if (!bIsOpen) return;
+
+    // Signal the writer thread to stop.  We do NOT wait for it — in a crash
+    // context, blocking is unsafe and the thread may already be in a bad
+    // state.  The writer thread only ever appends to the end of the file, so
+    // backfilling the header region here is race-free.
+    bStopRequested.AtomicSet(true);
+    if (WorkSignal) WorkSignal->Trigger();
+
+    // Backfill header placeholders with crash metadata.
+    const FDateTime EndedAtDT  = FDateTime::UtcNow();
+    const FString   EndedAtStr = EndedAtDT.ToString(TEXT("%Y-%m-%dT%H:%M:%SZ"));
+    const int32     DurationS  = (int32)(EndedAtDT - StartedAtDT).GetTotalSeconds();
+
+    FString Content;
+    if (FFileHelper::LoadFileToString(Content, *SessionFilePath))
+    {
+        Content.ReplaceInline(TEXT("__ENDED_AT__"),    *EndedAtStr,                       ESearchCase::CaseSensitive);
+        Content.ReplaceInline(TEXT("__DURATION__"),    *FString::FromInt(DurationS),       ESearchCase::CaseSensitive);
+        Content.ReplaceInline(TEXT("__END_REASON__"),  TEXT("crash"),                      ESearchCase::CaseSensitive);
+        Content.ReplaceInline(TEXT("__EVENT_COUNT__"), *FString::FromInt(TotalEventCount), ESearchCase::CaseSensitive);
+
+        FFileHelper::SaveStringToFile(Content, *SessionFilePath,
+            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    }
+
+    // Intentionally leave the lock file on disk — its presence after process
+    // exit is how external tools detect that the session ended abnormally.
+
+    UE_LOG(LogNytwatchWriter, Warning,
+        TEXT("[NytwatchAgent] Emergency close — session file marked as crashed: %s"),
+        *FPaths::GetCleanFilename(SessionFilePath));
 
     bIsOpen = false;
 }

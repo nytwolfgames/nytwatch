@@ -4,6 +4,7 @@
 #include "UObject/ObjectPtr.h"
 #include "Misc/Paths.h"
 #include "SourceCodeNavigation.h"  // FSourceCodeNavigation (UnrealEd)
+#include "Misc/PackageName.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogNytwatchTracker, Log, All);
 
@@ -133,7 +134,17 @@ FString FNytwatchPropertyTracker::GetOrCacheHeaderPath(UClass* Class)
 
     FString HeaderPath;
 #if WITH_EDITOR
-    FSourceCodeNavigation::FindClassHeaderPath(Class, HeaderPath);
+    if (!FSourceCodeNavigation::FindClassHeaderPath(Class, HeaderPath) || HeaderPath.IsEmpty())
+    {
+        // FindClassHeaderPath relies on an async database that may not be ready yet.
+        // Fall back to deriving the path from the class package name — always synchronous.
+        const FString PackageName = Class->GetOutermost()->GetName();
+        if (FPackageName::IsValidLongPackageName(PackageName))
+        {
+            FPackageName::TryConvertLongPackageNameToFilename(PackageName, HeaderPath, TEXT(".h"));
+            HeaderPath = FPaths::ConvertRelativePathToFull(HeaderPath);
+        }
+    }
     FPaths::NormalizeFilename(HeaderPath);
 #endif
 

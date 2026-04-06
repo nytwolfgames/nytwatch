@@ -6,7 +6,9 @@
 #include "Misc/DateTime.h"
 #include "Misc/App.h"
 #include "HAL/PlatformProcess.h"
+#include "Misc/CoreDelegates.h"
 #include "SourceCodeNavigation.h"
+#include "Misc/PackageName.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogNytwatchSubsystem, Log, All);
 
@@ -33,6 +35,8 @@ void UNytwatchSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
     FEditorDelegates::BeginPIE.AddUObject(this, &UNytwatchSubsystem::OnBeginPIE);
     FEditorDelegates::EndPIE.AddUObject(this, &UNytwatchSubsystem::OnEndPIE);
+    CrashDelegateHandle = FCoreDelegates::OnHandleSystemError.AddUObject(
+        this, &UNytwatchSubsystem::OnCrash);
 
     UE_LOG(LogNytwatchSubsystem, Log,
         TEXT("[NytwatchAgent] Subsystem initialised."));
@@ -42,6 +46,7 @@ void UNytwatchSubsystem::Deinitialize()
 {
     FEditorDelegates::BeginPIE.RemoveAll(this);
     FEditorDelegates::EndPIE.RemoveAll(this);
+    FCoreDelegates::OnHandleSystemError.Remove(CrashDelegateHandle);
 
     if (bTrackingActive)
     {
@@ -153,6 +158,26 @@ void UNytwatchSubsystem::OnEndPIE(bool /*bIsSimulating*/)
 }
 
 // ---------------------------------------------------------------------------
+// OnCrash  (crash-handler thread — keep it simple, no allocations if avoidable)
+// ---------------------------------------------------------------------------
+
+void UNytwatchSubsystem::OnCrash()
+{
+    if (!bTrackingActive) return;
+
+    // Ticker is no longer safe to touch from a crash context — just mark
+    // tracking as inactive so any re-entrant path is a no-op.
+    bTrackingActive = false;
+
+    const FString ProjectDir =
+        FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+    Writer.EmergencyClose(ProjectDir);
+
+    UE_LOG(LogNytwatchSubsystem, Warning,
+        TEXT("[NytwatchAgent] PIE hard close detected — session file marked as crashed."));
+}
+
+// ---------------------------------------------------------------------------
 // RegisterObject  (game thread, called from BeginPlay)
 // ---------------------------------------------------------------------------
 
@@ -217,7 +242,17 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
 
     FString HeaderPath;
 #if WITH_EDITOR
-    FSourceCodeNavigation::FindClassHeaderPath(Class, HeaderPath);
+    if (!FSourceCodeNavigation::FindClassHeaderPath(Class, HeaderPath) || HeaderPath.IsEmpty())
+    {
+        // FindClassHeaderPath relies on an async database that may not be ready yet.
+        // Fall back to deriving the path from the class package name — always synchronous.
+        const FString PackageName = Class->GetOutermost()->GetName();
+        if (FPackageName::IsValidLongPackageName(PackageName))
+        {
+            FPackageName::TryConvertLongPackageNameToFilename(PackageName, HeaderPath, TEXT(".h"));
+            HeaderPath = FPaths::ConvertRelativePathToFull(HeaderPath);
+        }
+    }
     FPaths::NormalizeFilename(HeaderPath);
 #endif
 
