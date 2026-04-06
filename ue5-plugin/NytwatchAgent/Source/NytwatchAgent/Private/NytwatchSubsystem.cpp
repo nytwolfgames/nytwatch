@@ -86,38 +86,28 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
         return;
     }
 
-    // 2. Write lock file
-    const FString NytwatchDir = FPaths::Combine(
-        ProjectDir, TEXT("Saved"), TEXT("Nytwatch"));
-    IFileManager::Get().MakeDirectory(*NytwatchDir, true);
-
-    const FString LockPath = FPaths::Combine(NytwatchDir, TEXT("nytwatch.lock"));
-    const FString LockJson = FString::Printf(
-        TEXT("{\"session_id\":\"\",\"started_at\":\"%s\",\"plugin_version\":\"%s\",\"pid\":%d}"),
-        *FDateTime::UtcNow().ToString(TEXT("%Y-%m-%dT%H:%M:%SZ")),
-        TEXT(NYTWATCH_PLUGIN_VERSION),
-        FPlatformProcess::GetCurrentProcessId());
-    FFileHelper::SaveStringToFile(LockJson, *LockPath,
-        FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-
-    // 3. Open session writer (also starts the background writer thread)
+    // 2. Open session writer (also starts the background writer thread)
     Writer.Open(Config, ProjectDir);
     if (!Writer.IsOpen())
     {
         UE_LOG(LogNytwatchSubsystem, Error,
             TEXT("[NytwatchAgent] Failed to open session writer — tracking disabled."));
-        IFileManager::Get().Delete(*LockPath, false, true);
         return;
     }
 
-    // Update lock with the real session ID
-    const FString LockJsonFinal = FString::Printf(
+    // 3. Write lock file once, with the session ID already populated.
+    // Writing only once avoids a delete+create on Windows (FFileHelper overwrites
+    // by truncating the existing file, which watchdog reports as two events),
+    // which would cause the server to briefly see the session as ended.
+    const FString LockPath = FPaths::Combine(
+        ProjectDir, TEXT("Saved"), TEXT("Nytwatch"), TEXT("nytwatch.lock"));
+    const FString LockJson = FString::Printf(
         TEXT("{\"session_id\":\"%s\",\"started_at\":\"%s\",\"plugin_version\":\"%s\",\"pid\":%d}"),
         *Writer.GetSessionId(),
         *FDateTime::UtcNow().ToString(TEXT("%Y-%m-%dT%H:%M:%SZ")),
         TEXT(NYTWATCH_PLUGIN_VERSION),
         FPlatformProcess::GetCurrentProcessId());
-    FFileHelper::SaveStringToFile(LockJsonFinal, *LockPath,
+    FFileHelper::SaveStringToFile(LockJson, *LockPath,
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
     // 4. Start tick
