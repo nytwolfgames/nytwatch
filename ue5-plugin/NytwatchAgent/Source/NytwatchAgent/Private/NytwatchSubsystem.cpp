@@ -232,15 +232,34 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
 
     FString HeaderPath;
 #if WITH_EDITOR
-    if (!FSourceCodeNavigation::FindClassHeaderPath(Class, HeaderPath) || HeaderPath.IsEmpty())
+    // Blueprint classes report their Content asset path, not a source header.
+    // Walk up to the nearest native C++ ancestor so the path can be matched
+    // against armed system source directories.
+    UClass* NativeClass = Class;
+    while (NativeClass && !NativeClass->IsNative())
     {
-        // FindClassHeaderPath relies on an async database that may not be ready yet.
-        // Fall back to deriving the path from the class package name — always synchronous.
-        const FString PackageName = Class->GetOutermost()->GetName();
-        if (FPackageName::IsValidLongPackageName(PackageName))
+        NativeClass = NativeClass->GetSuperClass();
+    }
+
+    if (NativeClass)
+    {
+        if (!FSourceCodeNavigation::FindClassHeaderPath(NativeClass, HeaderPath) || HeaderPath.IsEmpty())
         {
-            FPackageName::TryConvertLongPackageNameToFilename(PackageName, HeaderPath, TEXT(".h"));
-            HeaderPath = FPaths::ConvertRelativePathToFull(HeaderPath);
+            // FindClassHeaderPath relies on an async database that may not be ready yet.
+            // Fall back to deriving the path from the class package name — always synchronous.
+            // NOTE: /Script/ packages (all C++ classes) cannot be converted to a file path;
+            // TryConvertLongPackageNameToFilename returns false for them.  Only promote the
+            // result if the conversion actually succeeds, otherwise leave HeaderPath empty.
+            const FString PackageName = NativeClass->GetOutermost()->GetName();
+            if (FPackageName::IsValidLongPackageName(PackageName))
+            {
+                FString DerivedPath;
+                if (FPackageName::TryConvertLongPackageNameToFilename(PackageName, DerivedPath, TEXT(".h"))
+                    && !DerivedPath.IsEmpty())
+                {
+                    HeaderPath = FPaths::ConvertRelativePathToFull(DerivedPath);
+                }
+            }
         }
     }
     FPaths::NormalizeFilename(HeaderPath);

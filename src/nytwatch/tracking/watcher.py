@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+import sys
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
@@ -19,20 +19,53 @@ log = logging.getLogger(__name__)
 _CRASH_POLL_INTERVAL = 5.0  # seconds between PID liveness checks
 
 
-def _pid_is_alive(pid: int) -> bool:
-    """Return True if a process with the given PID is currently running."""
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Process exists but we lack permission to signal it — still alive.
-        return True
-    except OSError:
-        return False
+if sys.platform == "win32":
+    import ctypes
+    import ctypes.wintypes
+
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _STILL_ACTIVE = 259
+
+    def _pid_is_alive(pid: int) -> bool:
+        """Return True if the process is still running (Windows implementation).
+
+        os.kill(pid, 0) is NOT safe on Windows — CPython routes non-signal-event
+        signals to TerminateProcess(), which would kill the UE editor outright.
+        Use OpenProcess + GetExitCodeProcess instead.
+        """
+        if pid <= 0:
+            return False
+        handle = ctypes.windll.kernel32.OpenProcess(
+            _PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+        )
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.wintypes.DWORD()
+            ok = ctypes.windll.kernel32.GetExitCodeProcess(
+                handle, ctypes.byref(exit_code)
+            )
+            return bool(ok) and exit_code.value == _STILL_ACTIVE
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+
+else:
+    import os
+
+    def _pid_is_alive(pid: int) -> bool:
+        """Return True if the process is still running (Unix implementation)."""
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Process exists but we lack permission to signal it — still alive.
+            return True
+        except OSError:
+            return False
 
 
 def _read_lock_pid(lock_path: str) -> Optional[int]:
