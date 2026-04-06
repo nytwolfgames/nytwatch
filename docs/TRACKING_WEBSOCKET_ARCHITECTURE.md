@@ -67,6 +67,14 @@ All property-change events produced in a single tick are collected into one WebS
 
 On `OnHandleSystemError`, the plugin sends a `session_close` message with `end_reason: crash` and closes the WebSocket. The server handles the rest. The plugin no longer needs to backfill any file.
 
+### Server offline at PIE start
+
+If the WebSocket connection cannot be established when `OnBeginPIE` fires, the plugin sets `bTrackingActive = false` and skips all tracking for that session. No retry is attempted at session start — tracking either starts cleanly or not at all.
+
+### Mid-session disconnect (transient)
+
+If the WebSocket drops during an active session, the plugin attempts to reconnect. Events generated while disconnected are discarded (not buffered). On reconnect, the plugin resumes sending batches for the existing session. The server treats the gap as missing data, not a new session.
+
 ---
 
 ## Server side
@@ -79,7 +87,15 @@ A dedicated WebSocket endpoint handles tracking sessions. On `session_open` the 
 Saved/Nytwatch/Sessions/.tmp/<session_id>.ndjson
 ```
 
-On each `event_batch`, the server appends a line per event to the temp file:
+The **first line** of the temp file is the `session_open` payload, written as a JSON object with `"type": "session_open"`:
+
+```json
+{"type":"session_open","session_id":"...","ue_project_name":"...","plugin_version":"...","started_at":"...","armed_systems":["Combat","AI"]}
+```
+
+This makes the temp file self-contained — the consolidation script can reconstruct full front matter from the file alone, without relying on in-memory session state.
+
+On each `event_batch`, the server appends a line per event:
 
 ```json
 {"sys":"Combat","obj":"BP_Hero_1","prop":"Health","old":"100.0","new":"87.5","t":12.34}
@@ -103,11 +119,12 @@ The temp file is deleted after successful consolidation.
 
 Single-pass over the `.ndjson` temp file. Responsibilities:
 
-1. Group events by `sys` → `obj` → `prop`, preserving first-seen insertion order
-2. Apply delta encoding for numeric properties (`PropName:InitVal +N@t -N@t`)
-3. Apply transition chains for non-numeric properties (`PropName:A→B@t→C@t`)
-4. Format the final `.md` with YAML front matter (using metadata from `session_open` / `session_close` messages) and one `## SystemName` section per system, one line per object
-5. Strip UE class prefixes (`A`/`U`) from object names
+1. Read the first line as the `session_open` header to get front matter metadata
+2. Group events by `sys` → `obj` → `prop`, preserving first-seen insertion order
+3. Apply delta encoding for numeric properties (`PropName:InitVal +N@t -N@t`)
+4. Apply transition chains for non-numeric properties (`PropName:A→B@t→C@t`)
+5. Format the final `.md` with YAML front matter (combining `session_open` header and `session_close` metadata) and one `## SystemName` section per system, one line per object
+6. Strip UE class prefixes (`A`/`U`) from object names
 
 This is equivalent to the current `BuildFlushBlock` C++ logic, ported to Python and operating over the full event set rather than per-flush batches.
 
@@ -123,7 +140,18 @@ Raw events are not stored in the database. The `.ndjson` temp file is a transien
 |----------|---------|
 | Plugin sends `session_close` with `end_reason: crash` | Consolidation runs normally; `end_reason` in front matter is `crash` |
 | WebSocket disconnects without `session_close` | Server detects disconnect, treats as crash, runs consolidation on whatever arrived |
-| Server restarts mid-session | Temp file is on disk; on restart the server can detect orphaned `.ndjson` files and consolidate them as crashed sessions |
+| Server restarts mid-session | On startup, server scans `.tmp/*.ndjson` and consolidates each orphan as a crashed session (see below) |
+
+### Orphan recovery on server startup
+
+On startup, the server scans `Saved/Nytwatch/Sessions/.tmp/` for any `.ndjson` files left over from a previous run. For each file found:
+
+1. Read the `session_open` header line to recover session metadata
+2. Run consolidation with `end_reason: crash`
+3. Write the final `.md` to `Saved/Nytwatch/Sessions/`
+4. Delete the temp file
+
+The resulting `.md` is picked up by the watchdog and imported normally. Because all necessary metadata is in the header line, no in-memory state is required — recovery is fully self-contained.
 
 ---
 
