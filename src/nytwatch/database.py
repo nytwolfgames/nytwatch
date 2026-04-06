@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS nytwatch_sessions (
     started_at      TEXT NOT NULL,
     ended_at        TEXT,
     duration_secs   INTEGER,
+    end_reason      TEXT,
     display_name    TEXT NOT NULL,
     bookmarked      INTEGER NOT NULL DEFAULT 0,
     plugin_version  TEXT NOT NULL DEFAULT '',
@@ -194,6 +195,12 @@ class Database:
         if "tracking_verbosity" not in sys_cols:
             self.conn.execute(
                 "ALTER TABLE systems ADD COLUMN tracking_verbosity TEXT NOT NULL DEFAULT 'Standard'"
+            )
+
+        session_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(nytwatch_sessions)").fetchall()}
+        if "end_reason" not in session_cols:
+            self.conn.execute(
+                "ALTER TABLE nytwatch_sessions ADD COLUMN end_reason TEXT"
             )
 
         finding_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(findings)").fetchall()}
@@ -915,9 +922,9 @@ class Database:
             self.conn.execute(
                 """INSERT OR IGNORE INTO nytwatch_sessions
                    (id, file_path, project_dir, started_at, ended_at, duration_secs,
-                    display_name, bookmarked, plugin_version, ue_project_name,
+                    end_reason, display_name, bookmarked, plugin_version, ue_project_name,
                     systems_tracked, event_count, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     session["id"],
                     session["file_path"],
@@ -925,6 +932,7 @@ class Database:
                     session["started_at"],
                     session.get("ended_at"),
                     session.get("duration_secs"),
+                    session.get("end_reason"),
                     session.get("display_name") or session["id"],
                     int(session.get("bookmarked", False)),
                     session.get("plugin_version", ""),

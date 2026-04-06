@@ -86,6 +86,7 @@ class ConnectionManager:
         armed_systems: list,
         event_count: Optional[int],
         started_at: Optional[str],
+        crashed: bool = False,
     ) -> None:
         self.broadcast_from_thread({
             "type": "pie_state",
@@ -94,6 +95,7 @@ class ConnectionManager:
             "armed_systems": armed_systems,
             "event_count": event_count,
             "started_at": started_at,
+            "crashed": crashed,
         })
 
     def push_session_imported(self, session: dict) -> None:

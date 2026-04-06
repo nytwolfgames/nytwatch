@@ -73,6 +73,7 @@ def parse_session_file(file_path: str) -> dict:
     result["id"] = session_id
     result["started_at"] = header.get("started_at", "")
     result["ended_at"] = header.get("ended_at") or None
+    result["end_reason"] = header.get("end_reason") or None
     result["ue_project_name"] = header.get("ue_project_name", "")
     result["plugin_version"] = header.get("plugin_version", "")
 
