@@ -807,7 +807,8 @@ body.pie-active .main-content { margin-top: 42px; }
 .bookmark-btn {
   background: none; border: none; cursor: pointer;
   color: var(--outline-variant);
-  padding: 2px; line-height: 1; flex-shrink: 0;
+  font-size: 1.1rem; line-height: 1; flex-shrink: 0;
+  padding: 2px;
   transition: color 0.15s;
 }
 .bookmark-btn:hover { color: #d97706; }

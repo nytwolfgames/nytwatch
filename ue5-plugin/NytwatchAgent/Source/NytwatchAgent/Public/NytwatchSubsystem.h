@@ -49,8 +49,9 @@ private:
     FNytwatchSessionWriter   Writer;
 
     FTSTicker::FDelegateHandle TickHandle;
-    float PIEElapsedSeconds = 0.f;
-    bool  bTrackingActive   = false;
+    float PIEElapsedSeconds     = 0.f;
+    float TimeSinceConfigReload = 0.f;
+    bool  bTrackingActive       = false;
 
     // Cache: UClass* → index in Config.ArmedSystems (-1 = not tracked).
     // Populated lazily during Tick; cleared at session start/end.

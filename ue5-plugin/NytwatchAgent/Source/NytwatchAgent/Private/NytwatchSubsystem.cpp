@@ -54,8 +54,9 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
     // Reset any state from previous sessions
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
-    PIEElapsedSeconds = 0.f;
-    bTrackingActive   = false;
+    PIEElapsedSeconds     = 0.f;
+    TimeSinceConfigReload = 0.f;
+    bTrackingActive       = false;
 
     const FString ProjectDir =
         FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
@@ -147,7 +148,6 @@ bool UNytwatchSubsystem::PassesBasicFilter(UObject* Obj) const
 {
     if (!IsValid(Obj))                             return false; // RF_Unreachable / GC'd
     if (Obj->HasAnyFlags(RF_ClassDefaultObject))   return false;
-    if (Obj->HasAnyFlags(RF_Transient) && !Obj->IsA<AActor>()) return false;
 
     // Self-exclusion: skip objects whose class lives in this plugin
     const FString& PackageName = Obj->GetClass()->GetPackage()->GetName();
@@ -192,6 +192,29 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
         }
     }
 
+    // Log every new class lookup so mismatches are visible in the Output Log.
+    if (Result == INDEX_NONE)
+    {
+        if (HeaderPath.IsEmpty())
+        {
+            UE_LOG(LogNytwatchSubsystem, Verbose,
+                TEXT("[NytwatchAgent] Class '%s' — FSourceCodeNavigation returned no header (skipped)."),
+                *Class->GetName());
+        }
+        else
+        {
+            UE_LOG(LogNytwatchSubsystem, Verbose,
+                TEXT("[NytwatchAgent] Class '%s' — header '%s' matched no armed system (skipped)."),
+                *Class->GetName(), *HeaderPath);
+        }
+    }
+    else
+    {
+        UE_LOG(LogNytwatchSubsystem, VeryVerbose,
+            TEXT("[NytwatchAgent] Class '%s' → system[%d] '%s'  header: %s"),
+            *Class->GetName(), Result, *Config.ArmedSystems[Result].SystemName, *HeaderPath);
+    }
+
     ClassSystemIndexCache.Add(Class, Result);
     return Result;
 }
@@ -204,7 +227,23 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
 {
     if (!bTrackingActive) return false;
 
-    PIEElapsedSeconds += DeltaTime;
+    PIEElapsedSeconds     += DeltaTime;
+    TimeSinceConfigReload += DeltaTime;
+
+    // Hot-reload NytwatchConfig.json every 1 second so the server can arm or
+    // disarm systems mid-session without requiring a PIE restart.
+    if (TimeSinceConfigReload >= 1.0f)
+    {
+        TimeSinceConfigReload = 0.f;
+        const FString ProjectDir =
+            FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+        FNytwatchConfig NewConfig = FNytwatchConfig::Load(ProjectDir);
+        if (NewConfig.bValid)
+        {
+            Config = NewConfig;
+            ClassSystemIndexCache.Reset(); // evict stale class→system mappings
+        }
+    }
 
     // If the session has hit the event cap, keep ticking (so we don't lose
     // the PIE end delegate) but skip all polling.
@@ -240,6 +279,17 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
             Seen.Add({Obj, SysIdx});
         else
             Unseen.Add({Obj, SysIdx});
+    }
+
+    // Log candidate summary once every ~5 seconds so it's easy to confirm
+    // objects are being found without flooding the Output Log every tick.
+    static float LastDiagTime = -5.f;
+    if (PIEElapsedSeconds - LastDiagTime >= 5.f)
+    {
+        LastDiagTime = PIEElapsedSeconds;
+        UE_LOG(LogNytwatchSubsystem, Log,
+            TEXT("[NytwatchAgent] Scan @ %.1fs — %d seen + %d new candidates (total events so far: %d)"),
+            PIEElapsedSeconds, Seen.Num(), Unseen.Num(), Writer.GetTotalEventCount());
     }
 
     // ----------------------------------------------------------------

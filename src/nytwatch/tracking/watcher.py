@@ -26,8 +26,9 @@ class _NytwatchEventHandler(FileSystemEventHandler):
         path = Path(str(event.src_path))
         if path.name == "nytwatch.lock":
             self._watcher._on_lock_created(str(path))
-        elif path.suffix == ".md" and path.parent.name == "Sessions":
-            self._watcher._on_session_file(str(path))
+        # .md files are NOT imported on creation — the plugin creates the file at
+        # PIE start and writes events throughout the session. Import happens after
+        # PIE ends via _scan_for_new_sessions (triggered by lock deletion).
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if event.is_directory:
@@ -171,6 +172,11 @@ class TrackingWatcher:
             self._ws.push_session_imported(session)
 
     def _on_session_file_deleted(self, file_path: str) -> None:
+        # On Windows, plugins often rewrite session files by truncating then
+        # recreating them (delete + create). Verify the file is actually gone
+        # before removing the DB record so we don't react to transient events.
+        if Path(file_path).exists():
+            return
         db = self._db_getter()
         if db is None:
             return

@@ -2249,6 +2249,9 @@ async def _tracker_response(request: Request, active_tab: str, highlight: Option
     tracking_cap = db.get_config("tracking_scan_cap", "2000") if db else "2000"
     plugin_installed = _plugin_installed(config.repo_path)
 
+    watcher = getattr(request.app.state, "watcher", None)
+    pie_recording = bool(watcher and config.repo_path and watcher.get_pie_state(config.repo_path))
+
     # Build grouped structure for the systems table
     all_systems = db.list_systems() if db else []
     all_source_dirs = db.list_source_dirs() if db else []
@@ -2271,6 +2274,9 @@ async def _tracker_response(request: Request, active_tab: str, highlight: Option
     ]
     has_tracking_grouping = any(g["source_dir"] for g in grouped_tracking)
 
+    pie_armed  = [s["name"] for s in all_systems if s.get("tracking_enabled")] if pie_recording else []
+    any_armed  = any(s.get("tracking_enabled") for s in all_systems)
+
     return templates.TemplateResponse(request, "tracker.html", {
         "sessions": sessions,
         "highlight": highlight,
@@ -2282,6 +2288,9 @@ async def _tracker_response(request: Request, active_tab: str, highlight: Option
         "tracking_tick": tracking_tick,
         "tracking_cap": tracking_cap,
         "plugin_installed": plugin_installed,
+        "pie_recording": pie_recording,
+        "pie_armed": pie_armed,
+        "any_armed": any_armed,
     })
 
 

@@ -33,6 +33,7 @@
     <div style="display:flex;align-items:center;gap:var(--sp-5);flex-wrap:wrap;">
         <button id="tracking-toggle-btn" class="btn btn-sm scan-safe btn-secondary"
                 onclick="toggleTracking()"
+                {% if not tracking_active and not any_armed %}disabled title="Arm at least one system to start tracking"{% endif %}
                 style="min-width:118px;{% if tracking_active %}background:var(--severity-critical);color:white;{% endif %}">
             {{ 'Stop Tracking' if tracking_active else 'Start Tracking' }}
         </button>
@@ -49,6 +50,22 @@
                    onchange="saveTrackingConfig()">
         </div>
         <span id="tracking-save-status" class="body-sm text-variant" style="flex:1;"></span>
+    </div>
+</div>
+{% endif %}
+
+{% if config.repo_path and plugin_installed %}
+<!-- ── Live recording indicator ─────────────────────────────────────────── -->
+<div id="trk-recording-card" class="card mb-4"
+     style="{% if not pie_recording %}display:none;{% endif %}border-left:3px solid #ef4444;padding:12px 20px;">
+    <div style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;">
+        <span style="width:9px;height:9px;border-radius:50%;background:#ef4444;flex-shrink:0;
+                     display:inline-block;animation:trk-pulse 1.4s ease-in-out infinite;"></span>
+        <span style="font-weight:600;font-size:0.875rem;">Recording</span>
+        <span id="trk-elapsed" class="body-sm text-variant"></span>
+        <div id="trk-systems" style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;">
+            {% for name in pie_armed %}<span class="badge badge-category" style="font-size:0.65rem;">{{ name }}</span>{% endfor %}
+        </div>
     </div>
 </div>
 {% endif %}
@@ -640,12 +657,16 @@ function closeConfirm() {
 }
 async function confirmDelete() {
     if (!_pendingDelete) return;
+    const idToDelete = _pendingDelete;   // capture before closeConfirm() nulls it
     closeConfirm();
     try {
-        const r = await fetch(`/api/sessions/${_pendingDelete}`, { method: 'DELETE' });
+        const r = await fetch(`/api/sessions/${idToDelete}`, { method: 'DELETE' });
         const d = await r.json();
-        if (d.ok) {
-            document.getElementById('row-' + _pendingDelete)?.remove();
+        if (d.ok || r.status === 404) {
+            // 404 means the session was already removed from the DB (e.g. by a
+            // watchdog event between page load and the delete click). The desired
+            // end-state is the same, so treat it as a success and clean up the UI.
+            document.getElementById('row-' + idToDelete)?.remove();
             document.getElementById('detail-empty').style.display = '';
             document.getElementById('detail-content').style.display = 'none';
             _activeId = null; _activeData = null;
@@ -687,9 +708,18 @@ function copyPath() {
 // ── WS: live session updates ──────────────────────────────────────────────────
 onWsMessage('session_imported', data => {
     const s = data.session;
-    if (!s || document.getElementById('row-' + s.id)) return;
+    if (!s) return;
+
+    // If sessions layout not yet in DOM (was on empty-state), reload to get full UI
     const list = document.getElementById('session-list');
-    if (!list) return;
+    if (!list) { window.location.reload(); return; }
+
+    if (document.getElementById('row-' + s.id)) {
+        // Row already exists — just select it
+        selectSession(s.id);
+        return;
+    }
+
     const name = s.display_name !== s.id
         ? s.display_name
         : (s.ue_project_name ? `${s.ue_project_name} · ${(s.started_at||'').slice(0,10)}` : s.id.slice(0,12) + '…');
@@ -712,6 +742,9 @@ onWsMessage('session_imported', data => {
         </div>`;
     row.onclick = () => selectSession(s.id);
     list.insertBefore(row, list.firstChild);
+
+    // Auto-select the newly arrived session
+    selectSession(s.id);
 });
 
 onWsMessage('session_deleted', data => {
@@ -768,12 +801,23 @@ async function _doSaveTracking() {
         if (d.ok) {
             if (status) { status.textContent = '✓ Saved'; status.style.color = 'var(--status-verified-fg)'; }
             setTimeout(() => { if (status) status.textContent = ''; }, 2000);
+            updateTrackingBtnState();
         } else {
             if (status) { status.textContent = d.error || 'Save failed'; status.style.color = '#ef4444'; }
         }
     } catch (e) {
         if (status) { status.textContent = 'Save failed'; status.style.color = '#ef4444'; }
     }
+}
+
+function updateTrackingBtnState() {
+    const btn = document.getElementById('tracking-toggle-btn');
+    if (!btn || _trackingActive) return; // never disable while a session is running
+    const anyArmed = Array.from(
+        document.querySelectorAll('#tracking-systems-list .ts-row input[type=checkbox][id^="arm-"]')
+    ).some(cb => cb.checked);
+    btn.disabled = !anyArmed;
+    btn.title    = anyArmed ? '' : 'Arm at least one system to start tracking';
 }
 
 async function toggleTracking() {
@@ -1061,6 +1105,43 @@ async function checkPlugin() {
     }
 }
 
+// ── PIE recording indicator ───────────────────────────────────────────────────
+let _trkElapsedTimer = null;
+let _trkStartedAt    = null;
+
+function _trkShow(armedSystems, startedAt) {
+    const card = document.getElementById('trk-recording-card');
+    if (!card) return;
+    card.style.display = '';
+    const sysList = document.getElementById('trk-systems');
+    if (sysList) {
+        sysList.innerHTML = (armedSystems || [])
+            .map(n => `<span class="badge badge-category" style="font-size:0.65rem;">${n}</span>`)
+            .join('');
+    }
+    _trkStartedAt = startedAt ? new Date(startedAt) : new Date();
+    clearInterval(_trkElapsedTimer);
+    function tick() {
+        const el = document.getElementById('trk-elapsed');
+        if (el) el.textContent = _fmt(Math.floor((Date.now() - _trkStartedAt.getTime()) / 1000));
+    }
+    tick();
+    _trkElapsedTimer = setInterval(tick, 1000);
+}
+
+function _trkHide() {
+    const card = document.getElementById('trk-recording-card');
+    if (card) card.style.display = 'none';
+    clearInterval(_trkElapsedTimer);
+    _trkElapsedTimer = null;
+    _trkStartedAt    = null;
+}
+
+onWsMessage('pie_state', data => {
+    if (data.running) { _trkShow(data.armed_systems || [], data.started_at); }
+    else              { _trkHide(); }
+});
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 (function() {
     // Tracking toggle button lives in the sessions pane — always in DOM
@@ -1069,6 +1150,11 @@ async function checkPlugin() {
         btn.style.background = 'var(--severity-critical)';
         btn.style.color = 'white';
     }
+    updateTrackingBtnState();
+    // Restore recording indicator if PIE was already running on page load
+    {% if pie_recording %}
+    _trkShow({{ pie_armed | tojson }}, null);
+    {% endif %}
 })();
 
 // Auto-select highlighted session
@@ -1077,4 +1163,11 @@ if (_highlight) {
     if (row) { row.scrollIntoView({block:'nearest'}); selectSession(_highlight); }
 }
 </script>
+
+<style>
+@keyframes trk-pulse {
+    0%, 100% { opacity: 1;   transform: scale(1); }
+    50%       { opacity: .3;  transform: scale(.75); }
+}
+</style>
 {% endblock %}
