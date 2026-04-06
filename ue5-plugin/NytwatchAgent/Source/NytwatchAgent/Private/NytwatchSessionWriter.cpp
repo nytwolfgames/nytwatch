@@ -60,6 +60,7 @@ void FNytwatchSessionWriter::Open(const FNytwatchConfig& Config, const FString& 
     bCapReached       = false;
     TotalEventCount   = 0;
     bStopRequested.AtomicSet(false);
+    AccumulatedEvents.Reset();
 
     // Directories
     const FString NytwatchDir = FPaths::Combine(ProjectDir, TEXT("Saved"), TEXT("Nytwatch"));
@@ -185,23 +186,15 @@ void FNytwatchSessionWriter::AppendEvent(const FNytwatchEvent& Event)
 
 uint32 FNytwatchSessionWriter::Run()
 {
-    TArray<FNytwatchEvent> Batch;
-
     while (true)
     {
         // Sleep until signalled or 200 ms elapses (safety drain timeout).
         if (WorkSignal) WorkSignal->Wait(200);
 
-        // Drain everything currently in the queue.
+        // Drain everything currently in the queue into the accumulator.
         FNytwatchEvent Evt;
         while (EventQueue.Dequeue(Evt))
-            Batch.Add(MoveTemp(Evt));
-
-        if (Batch.Num() > 0)
-        {
-            InternalFlush(Batch);
-            Batch.Reset();
-        }
+            AccumulatedEvents.Add(MoveTemp(Evt));
 
         // Exit only after the stop has been requested AND the queue is empty.
         if (bStopRequested && EventQueue.IsEmpty())
@@ -246,6 +239,11 @@ void FNytwatchSessionWriter::Close(const FString& ProjectDir)
         FPlatformProcess::ReturnSynchEventToPool(WorkSignal);
         WorkSignal = nullptr;
     }
+
+    // --- Write body (one consolidated pass over all accumulated events) ---
+    // This runs on the game thread after the writer thread has drained the
+    // queue, so AccumulatedEvents is safe to read here.
+    InternalFlush(AccumulatedEvents);
 
     // --- Backfill header placeholders ---
     const FDateTime EndedAtDT  = FDateTime::UtcNow();
@@ -296,6 +294,18 @@ void FNytwatchSessionWriter::EmergencyClose(const FString& ProjectDir)
     // backfilling the header region here is race-free.
     bStopRequested.AtomicSet(true);
     if (WorkSignal) WorkSignal->Trigger();
+
+    // Flush whatever events accumulated before the crash.  We do not wait for
+    // the writer thread, so AccumulatedEvents may be mid-drain — but since
+    // FQueue is SPSC and we only append here, the worst case is a few events
+    // missing from the tail.  Better to write partial data than nothing.
+    // Drain the queue one more time ourselves to catch any last enqueued events.
+    {
+        FNytwatchEvent Evt;
+        while (EventQueue.Dequeue(Evt))
+            AccumulatedEvents.Add(MoveTemp(Evt));
+    }
+    InternalFlush(AccumulatedEvents);
 
     // Backfill header placeholders with crash metadata.
     const FDateTime EndedAtDT  = FDateTime::UtcNow();

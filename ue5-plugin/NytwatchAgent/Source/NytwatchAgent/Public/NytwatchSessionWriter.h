@@ -84,9 +84,13 @@ private:
     FRunnableThread* WriterThread   = nullptr;
     FThreadSafeBool  bStopRequested;   // written: game thread  read: writer thread
 
-    // ── Writer-thread helpers (called only from Run()) ───────────────────────
-    void    InternalFlush(const TArray<FNytwatchEvent>& Batch);
-    FString BuildFlushBlock(const TArray<FNytwatchEvent>& Batch) const;
+    // ── Writer-thread accumulator (writer thread only after Open()) ─────────
+    // Events are accumulated here during the session and flushed once at Close.
+    TArray<FNytwatchEvent> AccumulatedEvents;
+
+    // ── Writer-thread helpers ────────────────────────────────────────────────
+    void    InternalFlush(const TArray<FNytwatchEvent>& Events);
+    FString BuildFlushBlock(const TArray<FNytwatchEvent>& Events) const;
 
     static FString StripUEPrefix(const FString& Name);
     static FString TrimFloat(double Val);
