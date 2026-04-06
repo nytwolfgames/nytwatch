@@ -239,6 +239,10 @@ class TrackingWebSocketHandler:
         if not events:
             return
 
+        # Batch-level causality fields — propagated into every event record.
+        tl: str = msg.get("time_label",   "")  # game-time label from INytwatchTimeProvider
+        eh: str = msg.get("event_header", "")  # narrative header from LogEvent()
+
         lines: list[str] = []
         for evt in events:
             record: dict = {
@@ -251,6 +255,10 @@ class TrackingWebSocketHandler:
             }
             if "num" in evt:
                 record["num"] = evt["num"]
+            if tl:
+                record["tl"] = tl
+            if eh:
+                record["eh"] = eh
             lines.append(json.dumps(record))
 
         with session.tmp_path.open("a", encoding="utf-8") as fh:

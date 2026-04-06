@@ -102,6 +102,15 @@ def parse_session_file(file_path: str) -> dict:
     except (ValueError, TypeError):
         result["event_count"] = 0
 
+    # Causality tracking fields (present in sessions recorded with plugin causality support)
+    causality_str = _header_val("causality_tracking")
+    result["causality_tracking"] = causality_str == "true" if causality_str is not None else False
+    result["time_dimension"] = _header_val("time_dimension") or "wall-clock"
+    try:
+        result["named_events"] = int(header.get("named_events", 0))
+    except (ValueError, TypeError):
+        result["named_events"] = 0
+
     # Cross-check event count by counting timestamp lines
     actual_count = sum(1 for line in lines if _TIMESTAMP_RE.match(line))
     if actual_count != result["event_count"]:
