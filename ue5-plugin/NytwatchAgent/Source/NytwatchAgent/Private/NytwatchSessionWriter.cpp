@@ -30,11 +30,11 @@ FString FNytwatchSessionWriter::StripUEPrefix(const FString& Name)
     return Name;
 }
 
-FString FNytwatchSessionWriter::TrimFloat(double Val)
+FString FNytwatchSessionWriter::TrimFloat(double Val, int32 Precision)
 {
     if (FMath::Abs(Val) < 1e-9) return TEXT("0");
 
-    FString S = FString::Printf(TEXT("%.6f"), Val);
+    FString S = FString::Printf(TEXT("%.*f"), Precision, Val);
     if (S.Contains(TEXT(".")))
     {
         while (S.EndsWith(TEXT("0"))) S.LeftChopInline(1);
@@ -442,7 +442,7 @@ FString FNytwatchSessionWriter::BuildFlushBlock(const TArray<FNytwatchEvent>& Ba
                         const double Delta = NewN - OldN;
                         const FString Sign = (Delta >= 0) ? TEXT("+") : TEXT("");
                         PropStr += FString::Printf(TEXT(" %s%s@%s"),
-                            *Sign, *TrimFloat(Delta), *TrimFloat((double)E.TimeSeconds));
+                            *Sign, *TrimFloat(Delta), *TrimFloat((double)E.TimeSeconds, 2));
                     }
                 }
                 else

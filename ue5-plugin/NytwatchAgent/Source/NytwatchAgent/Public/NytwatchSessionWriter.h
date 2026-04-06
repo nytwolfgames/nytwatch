@@ -93,6 +93,6 @@ private:
     FString BuildFlushBlock(const TArray<FNytwatchEvent>& Events) const;
 
     static FString StripUEPrefix(const FString& Name);
-    static FString TrimFloat(double Val);
+    static FString TrimFloat(double Val, int32 Precision = 6);
     static FString FormatBool(const FString& Val);
 };
