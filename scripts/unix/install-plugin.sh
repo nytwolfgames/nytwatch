@@ -67,42 +67,77 @@ total=${#project_names[@]}
 [ "$total" -gt 0 ] || fail "No projects configured in Nytwatch yet. Set up a project first via the Nytwatch dashboard."
 
 # ---------------------------------------------------------------------------
-# 3. Display project menu and collect selection
+# 3. Interactive project selection menu
 # ---------------------------------------------------------------------------
-printf "\n"
-printf "   \033[1mAvailable projects:\033[0m\n\n"
+_mcursor=0
+declare -A _msel=()
 
-for ((i=0; i<total; i++)); do
-    printf "   [%d]  %s\n" "$((i+1))" "${project_names[$i]}"
-    printf "         \033[90m%s\033[0m\n" "${project_paths[$i]}"
+_draw_menu() {
+    local i prefix check
+    for ((i = 0; i < total; i++)); do
+        if (( i == _mcursor )); then
+            prefix=" \033[36m►\033[0m "
+        else
+            prefix="   "
+        fi
+        if [[ -v _msel[$i] ]]; then
+            check="\033[32m[x]\033[0m"
+        else
+            check="[ ]"
+        fi
+        printf "\r\033[2K${prefix}${check}  %s\n" "${project_names[$i]}"
+        printf "\r\033[2K         \033[90m%s\033[0m\n" "${project_paths[$i]}"
+    done
+}
+
+printf "\n"
+printf "   Use \033[36m↑↓\033[0m to navigate,  \033[36mSpace\033[0m to select,  "
+printf "\033[36mEnter\033[0m to confirm,  \033[36mA\033[0m to toggle all.\n\n"
+
+tput civis 2>/dev/null || true          # hide cursor
+tput sc    2>/dev/null || printf "\033[s"  # save cursor position
+_draw_menu
+
+_mdone=0
+while (( ! _mdone )); do
+    IFS= read -r -s -n1 _k </dev/tty || true
+    case "$_k" in
+        $'\x1b')
+            IFS= read -r -s -n2 -t 0.15 _seq </dev/tty 2>/dev/null || _seq=""
+            case "$_seq" in
+                '[A') (( _mcursor > 0       )) && (( _mcursor-- )) || true ;;  # Up
+                '[B') (( _mcursor < total-1 )) && (( _mcursor++ )) || true ;;  # Down
+            esac
+            ;;
+        ' ')
+            if [[ -v _msel[$_mcursor] ]]; then
+                unset "_msel[$_mcursor]"
+            else
+                _msel[$_mcursor]=1
+            fi
+            ;;
+        '')  # Enter (read strips the newline delimiter)
+            (( ${#_msel[@]} > 0 )) && _mdone=1 || true
+            ;;
+        a|A)
+            if (( ${#_msel[@]} == total )); then
+                unset _msel; declare -A _msel=()
+            else
+                for ((i = 0; i < total; i++)); do _msel[$i]=1; done
+            fi
+            ;;
+    esac
+    if (( ! _mdone )); then
+        tput rc 2>/dev/null || printf "\033[u"
+        _draw_menu
+    fi
 done
 
+tput cnorm 2>/dev/null || true  # restore cursor
 printf "\n"
-info "Enter project number(s) to install into, separated by spaces."
-info "Example: 1   or   1 3   or   all"
-printf "\n"
-
-printf "   Selection: "
-read -r raw || true
-raw=$(echo "$raw" | tr '[:upper:]' '[:lower:]' | xargs)
 
 selected_indices=()
-
-if [ "$raw" = "all" ]; then
-    for ((i=0; i<total; i++)); do selected_indices+=("$i"); done
-else
-    for token in $raw; do
-        if [[ "$token" =~ ^[0-9]+$ ]] && [ "$token" -ge 1 ] && [ "$token" -le "$total" ]; then
-            selected_indices+=("$((token-1))")
-        else
-            warn "Ignoring invalid selection: $token"
-        fi
-    done
-fi
-
-[ "${#selected_indices[@]}" -gt 0 ] || fail "No valid projects selected."
-
-# Deduplicate
+for _i in "${!_msel[@]}"; do selected_indices+=("$_i"); done
 mapfile -t selected_indices < <(printf '%s\n' "${selected_indices[@]}" | sort -un)
 
 # ---------------------------------------------------------------------------
@@ -132,7 +167,7 @@ if [ "${#failed[@]}" -eq 0 ]; then
     info "Next steps:"
     info "  1. Open each project in the Unreal Editor"
     info "  2. Recompile when prompted"
-    info "  3. Start the Nytwatch server and arm systems from the Sessions page"
+    info "  3. Start the Nytwatch server and arm systems from the Tracker page"
 else
     printf "\033[33mCompleted with errors.\033[0m\n\n"
     info "Failed:"

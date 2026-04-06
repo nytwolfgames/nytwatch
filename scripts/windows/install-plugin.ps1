@@ -1,14 +1,22 @@
-# Nytwatch - NytwatchAgent Plugin Installer (Windows)
+﻿# Nytwatch - NytwatchAgent Plugin Installer (Windows)
 # Lists configured projects and installs the UE5 plugin into selected ones.
 # No administrator privileges required.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Catch any unhandled terminating error and keep the window open
+trap {
+    try { [Console]::CursorVisible = $true } catch {}
+    Write-Host "`n   UNEXPECTED ERROR: $_" -ForegroundColor Red
+    Read-Host "`nPress Enter to close"
+    exit 1
+}
+
 function Write-Step($msg) { Write-Host "`n>> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "   OK   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   WARN $msg" -ForegroundColor Yellow }
-function Write-Fail($msg) { Write-Host "`n   ERROR $msg" -ForegroundColor Red; exit 1 }
+function Write-Fail($msg) { Write-Host "`n   ERROR $msg" -ForegroundColor Red; Read-Host "`nPress Enter to close"; exit 1 }
 function Write-Info($msg) { Write-Host "   $msg" }
 
 # ---------------------------------------------------------------------------
@@ -50,47 +58,77 @@ if ($projects.Count -eq 0) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Display project menu and collect selection
+# 3. Interactive project selection menu
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "   Available projects:" -ForegroundColor White
-Write-Host ""
-
-for ($i = 0; $i -lt $projects.Count; $i++) {
-    $p = $projects[$i]
-    Write-Host ("   [{0}]  {1}" -f ($i + 1), $p.name) -ForegroundColor White
-    Write-Host ("         {0}" -f $p.repo_path) -ForegroundColor Gray
+function Render-MenuRow {
+    param($Project, [bool]$IsCursor, [bool]$IsSelected, [int]$Width)
+    $check  = if ($IsSelected) { "[x]" } else { "[ ]" }
+    $line1  = if ($IsCursor) { " ► $check  $($Project.name)" } else { "   $check  $($Project.name)" }
+    $line2  = "         $($Project.repo_path)"
+    $pad1   = " " * [Math]::Max(0, $Width - $line1.Length)
+    $pad2   = " " * [Math]::Max(0, $Width - $line2.Length)
+    if ($IsCursor) {
+        Write-Host ($line1 + $pad1) -ForegroundColor Cyan
+    } else {
+        Write-Host ($line1 + $pad1)
+    }
+    Write-Host ($line2 + $pad2) -ForegroundColor Gray
 }
 
 Write-Host ""
-Write-Host "   Enter project number(s) to install into, separated by spaces." -ForegroundColor White
-Write-Host "   Example: 1   or   1 3   or   all" -ForegroundColor Gray
+Write-Host "   Use " -NoNewline
+Write-Host "↑↓" -ForegroundColor Cyan -NoNewline
+Write-Host " to navigate,  " -NoNewline
+Write-Host "Space" -ForegroundColor Cyan -NoNewline
+Write-Host " to select,  " -NoNewline
+Write-Host "Enter" -ForegroundColor Cyan -NoNewline
+Write-Host " to confirm,  " -NoNewline
+Write-Host "A" -ForegroundColor Cyan -NoNewline
+Write-Host " to toggle all."
 Write-Host ""
 
-$raw = Read-Host "   Selection"
-$raw = $raw.Trim().ToLower()
+$menuCount    = $projects.Count
+$menuCursor   = 0
+$menuSelected = @{}
+$winWidth     = try { $Host.UI.RawUI.WindowSize.Width } catch { 80 }
 
-$selectedIndices = @()
+try { [Console]::CursorVisible = $false } catch {}
+$menuStartRow = try { [Console]::CursorTop } catch { 0 }
 
-if ($raw -eq "all") {
-    $selectedIndices = 0..($projects.Count - 1)
-} else {
-    foreach ($token in ($raw -split '\s+')) {
-        $n = 0
-        if ([int]::TryParse($token, [ref]$n) -and $n -ge 1 -and $n -le $projects.Count) {
-            $selectedIndices += ($n - 1)
-        } else {
-            Write-Warn "Ignoring invalid selection: $token"
+for ($i = 0; $i -lt $menuCount; $i++) {
+    Render-MenuRow $projects[$i] ($i -eq $menuCursor) ($menuSelected.ContainsKey($i)) $winWidth
+}
+
+$done = $false
+while (-not $done) {
+    $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
+    switch ($key.VirtualKeyCode) {
+        38 { if ($menuCursor -gt 0)             { $menuCursor-- } }          # Up
+        40 { if ($menuCursor -lt $menuCount-1)  { $menuCursor++ } }          # Down
+        32 { # Space - toggle
+            if ($menuSelected.ContainsKey($menuCursor)) { $menuSelected.Remove($menuCursor) }
+            else { $menuSelected[$menuCursor] = $true }
+        }
+        65 { # A - toggle all
+            if ($menuSelected.Count -eq $menuCount) { $menuSelected = @{} }
+            else { for ($i = 0; $i -lt $menuCount; $i++) { $menuSelected[$i] = $true } }
+        }
+        13 { if ($menuSelected.Count -gt 0) { $done = $true } }              # Enter
+    }
+
+    if (-not $done) {
+        try { [Console]::SetCursorPosition(0, $menuStartRow) } catch {}
+        for ($i = 0; $i -lt $menuCount; $i++) {
+            Render-MenuRow $projects[$i] ($i -eq $menuCursor) ($menuSelected.ContainsKey($i)) $winWidth
         }
     }
 }
 
-if ($selectedIndices.Count -eq 0) {
-    Write-Fail "No valid projects selected."
-}
+try { [Console]::CursorVisible = $true } catch {}
+Write-Host ""
 
-# Deduplicate
-$selectedIndices = $selectedIndices | Sort-Object -Unique
+$selectedIndices = $menuSelected.Keys | Sort-Object
 
 # ---------------------------------------------------------------------------
 # 4. Install into each selected project
@@ -121,7 +159,7 @@ if ($failed.Count -eq 0) {
     Write-Host "   Next steps:"
     Write-Host "     1. Open each project in the Unreal Editor"
     Write-Host "     2. Recompile when prompted"
-    Write-Host "     3. Start the Nytwatch server and arm systems from the Sessions page"
+    Write-Host "     3. Start the Nytwatch server and arm systems from the Tracker page"
 } else {
     Write-Host "Completed with errors." -ForegroundColor Yellow
     Write-Host ""
@@ -131,3 +169,4 @@ if ($failed.Count -eq 0) {
     Write-Host "   Re-run this script for failed projects after resolving any issues."
 }
 Write-Host ""
+Read-Host "Press Enter to close"
