@@ -274,7 +274,7 @@ async def auditor_batch_detail(request: Request, batch_id: str):
         return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
     findings = [db.get_finding(fid) for fid in batch["finding_ids"]]
     findings = [f for f in findings if f]
-    return templates.TemplateResponse(request, "batch_status.html", {
+    return templates.TemplateResponse(request, "batch_detail.html", {
         "batch": batch,
         "findings": findings,
     })
@@ -1735,12 +1735,18 @@ async def settings_page(request: Request):
     active_dirs = [d for d in source_dirs if d["source_type"] != "ignored"]
     ignored_dirs = [d for d in source_dirs if d["source_type"] == "ignored"]
 
-    # Count systems per source_dir for display
+    # Count systems per source_dir for display; also build per-dir system list for reclassify
     all_systems = db.list_systems() if db else []
     sys_count: dict[str, int] = {}
+    systems_by_dir: dict[str, list] = {}
     for s in all_systems:
         sd = (s.get("source_dir") or "").strip()
         sys_count[sd] = sys_count.get(sd, 0) + 1
+        systems_by_dir.setdefault(sd, []).append({
+            "name": s["name"],
+            "source_dir": sd,
+            "paths": s.get("paths") or [],
+        })
     for d in active_dirs:
         d["system_count"] = sys_count.get(d["path"], 0)
 
@@ -1752,6 +1758,7 @@ async def settings_page(request: Request):
     return templates.TemplateResponse(request, "settings.html", {
         "active_dirs": active_dirs,
         "ignored_dirs": ignored_dirs,
+        "systems_by_dir": systems_by_dir,
         "config": config,
         "config_path": config_path,
         "configured_branch": configured_branch,
@@ -1821,6 +1828,87 @@ async def bulk_update_source_dirs(request: Request):
 
     logger.info("Bulk source-dirs: upserted %d, deleted %d", len(upserted), len(deleted))
     return JSONResponse({"ok": True, "upserted": upserted, "deleted": deleted})
+
+
+@router.post("/settings/source-dirs/reclassify")
+async def reclassify_source_dir(request: Request):
+    """Replace systems for a source dir and purge all their findings."""
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    body = await request.json()
+    source_dir = (body.get("source_dir") or "").strip()
+    old_system_names = [n for n in (body.get("old_system_names") or []) if n]
+    new_systems = body.get("systems", [])
+
+    if not source_dir:
+        return JSONResponse({"error": "source_dir is required"}, status_code=400)
+
+    for s in new_systems:
+        if not (s.get("name") or "").strip():
+            return JSONResponse({"error": "System name cannot be empty"}, status_code=400)
+        if not [p for p in (s.get("paths") or []) if (p or "").strip()]:
+            return JSONResponse({"error": f"System '{s.get('name', '')}' has no paths"}, status_code=400)
+
+    # Delete findings (and their chats) for all old systems under this source dir
+    deleted_findings = 0
+    if old_system_names:
+        placeholders = ",".join("?" * len(old_system_names))
+        with db._lock:
+            db.conn.execute(
+                f"DELETE FROM finding_chats WHERE finding_id IN "
+                f"(SELECT id FROM findings WHERE scan_id IN "
+                f"(SELECT id FROM scans WHERE system_name IN ({placeholders})))",
+                old_system_names,
+            )
+            cursor = db.conn.execute(
+                f"DELETE FROM findings WHERE scan_id IN "
+                f"(SELECT id FROM scans WHERE system_name IN ({placeholders}))",
+                old_system_names,
+            )
+            db.conn.commit()
+            deleted_findings = cursor.rowcount
+
+    # Preserve tracking config for systems that survive the reclassify
+    existing_tracking = {
+        s["name"]: {
+            "tracking_enabled": s.get("tracking_enabled", False),
+            "tracking_verbosity": s.get("tracking_verbosity", "Standard"),
+        }
+        for s in db.list_systems()
+    }
+
+    other_systems = [s for s in db.list_systems() if (s.get("source_dir") or "").strip() != source_dir]
+    new_clean = [
+        {
+            "name": s["name"].strip(),
+            "source_dir": source_dir,
+            "paths": [p for p in (s.get("paths") or []) if (p or "").strip()],
+            "min_confidence": s.get("min_confidence") or None,
+            "file_extensions": s.get("file_extensions") or None,
+            "claude_fast_mode": s.get("claude_fast_mode"),
+            "tracking_enabled": s.get(
+                "tracking_enabled",
+                existing_tracking.get(s["name"].strip(), {}).get("tracking_enabled", False),
+            ),
+            "tracking_verbosity": s.get(
+                "tracking_verbosity",
+                existing_tracking.get(s["name"].strip(), {}).get("tracking_verbosity", "Standard"),
+            ),
+        }
+        for s in new_systems
+    ]
+
+    errs = _validate_systems(other_systems + new_clean)
+    if errs:
+        return JSONResponse({"error": errs[0], "errors": errs}, status_code=400)
+
+    db.replace_systems(other_systems + new_clean)
+    logger.info(
+        "Reclassified source dir '%s': %d systems, %d findings deleted",
+        source_dir, len(new_clean), deleted_findings,
+    )
+    return JSONResponse({"ok": True, "deleted_findings": deleted_findings, "systems_count": len(new_clean)})
 
 
 # --- Batches ---
@@ -2203,7 +2291,7 @@ async def sessions_page(request: Request):
     ]
     has_tracking_grouping = any(g["source_dir"] for g in grouped_tracking)
 
-    return templates.TemplateResponse(request, "sessions.html", {
+    return templates.TemplateResponse(request, "tracker.html", {
         "sessions": sessions,
         "highlight": highlight,
         "active_tab": tab,

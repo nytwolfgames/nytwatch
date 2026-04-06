@@ -109,10 +109,11 @@
             {% for d in active_dirs %}
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
-                <span class="body-sm text-variant" style="white-space:nowrap;margin-right:8px;"
-                      title="{{ d.system_count }} system(s) under this directory">
+                <button onclick='openReclassify({{ d.path | tojson }})'
+                        class="btn btn-sm" style="margin-right:4px;"
+                        title="Reclassify systems for this directory">
                     {{ d.system_count }} system{{ 's' if d.system_count != 1 else '' }}
-                </span>
+                </button>
                 <div class="type-toggle">
                     <button class="tgl-on tgl-active" disabled>Active</button>
                     <button onclick="moveDir('{{ d.path }}', 'ignored')">Ignored</button>
@@ -143,6 +144,41 @@
         {% else %}
         <p class="body-sm text-variant">No ignored directories.</p>
         {% endif %}
+    </div>
+</div>
+
+<!-- ── Reclassify Source Dir Modal ───────────────────────────────────────── -->
+<div id="rcl-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);
+            overflow-y:auto;align-items:flex-start;justify-content:center;padding:40px 16px;">
+    <div style="background:var(--surface);border-radius:12px;width:100%;max-width:640px;
+                box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto;">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--outline);display:flex;align-items:center;gap:12px;">
+            <div style="flex:1;">
+                <span style="font-weight:600;font-size:1rem;">Reclassify</span>
+                <span id="rcl-dir-label" class="mono body-sm text-variant" style="margin-left:8px;"></span>
+            </div>
+            <button onclick="closeReclassify()"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.4rem;line-height:1;padding:2px 8px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 0;">
+            <p class="body-sm text-variant" style="margin:0 0 16px;">
+                Adjust the systems for this source directory. All existing findings for these systems will be
+                removed and require a full re-scan.
+            </p>
+            <div class="flex items-center gap-2 mb-4">
+                <div class="label-sm" style="flex:1;">Systems</div>
+                <button onclick="rclSuggest(this)" class="btn btn-sm scan-safe">✨ Suggest with Claude</button>
+            </div>
+            <div id="rcl-sys-list" style="min-height:40px;"></div>
+            <div id="rcl-overlaps"></div>
+        </div>
+        <div style="padding:14px 24px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;margin-top:16px;">
+            <span id="rcl-err" style="flex:1;color:#ef4444;font-size:0.82rem;"></span>
+            <button onclick="closeReclassify()" class="btn btn-sm scan-safe">Cancel</button>
+            <button onclick="rclSave()" id="rcl-save-btn" class="btn btn-sm btn-primary scan-safe">Save</button>
+        </div>
     </div>
 </div>
 
@@ -472,6 +508,9 @@ function _sysValidationErrors(systems) {
     return errors;
 }
 
+const _allSystemsByDir = {{ systems_by_dir | tojson }};
+const _repoPath = {{ (config.repo_path or '') | tojson }};
+
 // ── Source dir classification (existing) ──────────────────────────────────────
 async function moveDir(path, newType) {
     try {
@@ -507,6 +546,134 @@ async function addDir() {
         if (data.ok) location.reload();
         else alert(data.error || 'Failed to add');
     } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// ── Reclassify ────────────────────────────────────────────────────────────────
+let _rclDir = '';
+let _rclOrigNames = [];
+
+function openReclassify(path) {
+    _rclDir = path;
+    const dirSystems = (_allSystemsByDir[path] || []).map(s => ({
+        name: s.name,
+        source_dir: s.source_dir,
+        paths: Array.isArray(s.paths) ? [...s.paths] : [],
+        hint: '',
+    }));
+    _rclOrigNames = dirSystems.map(s => s.name);
+    _wz.systems = dirSystems;
+    _wz.repo_path = _repoPath;
+    _wz.source_dirs = [{path, source_type: 'active'}];
+
+    document.getElementById('rcl-dir-label').textContent = path;
+    document.getElementById('rcl-err').textContent = '';
+    document.getElementById('rcl-overlaps').innerHTML = '';
+    _rclRenderSystems();
+
+    document.getElementById('rcl-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeReclassify() {
+    document.getElementById('rcl-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    spClose();
+}
+
+function _rclRenderSystems() {
+    wzRenderSysList(document.getElementById('rcl-sys-list'));
+    _rclCheckOverlaps();
+}
+
+function _rclCheckOverlaps() {
+    const el = document.getElementById('rcl-overlaps');
+    if (!el) return false;
+    const errors = _sysValidationErrors(_wz.systems);
+    el.innerHTML = errors.map(e =>
+        `<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;
+                     background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);
+                     border-radius:6px;margin-top:6px;">
+            <span style="color:#ef4444;flex-shrink:0;">✕</span>
+            <span class="body-sm" style="color:#ef4444;">${escH(e)}</span>
+        </div>`
+    ).join('');
+    return errors.length > 0;
+}
+
+async function rclSuggest(btn) {
+    const listEl = document.getElementById('rcl-sys-list');
+    const errEl  = document.getElementById('rcl-err');
+    if (btn) { btn.disabled = true; btn.textContent = 'Asking Claude…'; }
+    if (listEl && !_wz.systems.length) {
+        listEl.innerHTML = `<div class="body-sm text-variant" style="padding:18px 0;text-align:center;">
+            <span style="display:inline-block;animation:spin 1s linear infinite;">⟳</span>
+            Claude is analysing your source structure…
+        </div>`;
+    }
+    try {
+        const r = await fetch('/api/suggest-systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({repo_path: _wz.repo_path, source_dirs: _wz.source_dirs}),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        if (!d.systems.length) {
+            errEl.textContent = 'Claude returned no suggestions — add systems manually';
+            _rclRenderSystems();
+        } else {
+            const existing = new Set(_wz.systems.map(s => s.name));
+            for (const s of d.systems) {
+                if (!existing.has(s.name)) {
+                    _wz.systems.push({name: s.name, paths: s.paths || [], source_dir: s.source_dir || _rclDir, hint: ''});
+                }
+            }
+            errEl.textContent = '';
+            _rclRenderSystems();
+        }
+    } catch (e) {
+        errEl.textContent = 'Suggestion failed: ' + e.message;
+        _rclRenderSystems();
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest with Claude'; }
+    }
+}
+
+async function rclSave() {
+    if (_rclCheckOverlaps()) return;
+    const errEl = document.getElementById('rcl-err');
+    for (const s of _wz.systems) {
+        if (!(s.name || '').trim()) { errEl.textContent = 'All systems must have a name'; return; }
+        if (!(s.paths || []).filter(p => (p || '').trim()).length) {
+            errEl.textContent = `System "${s.name}" has no paths`; return;
+        }
+    }
+    const saveBtn = document.getElementById('rcl-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try {
+        const r = await fetch('/settings/source-dirs/reclassify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                source_dir: _rclDir,
+                old_system_names: _rclOrigNames,
+                systems: _wz.systems.map(s => ({
+                    name: s.name.trim(),
+                    source_dir: _rclDir,
+                    paths: (s.paths || []).filter(p => (p || '').trim()),
+                })),
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) { closeReclassify(); location.reload(); }
+        else errEl.textContent = d.error || 'Failed to save';
+    } catch (e) {
+        errEl.textContent = 'Failed: ' + e.message;
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+    }
 }
 
 // ── Auto Detect Source Dirs ───────────────────────────────────────────────────
@@ -1505,8 +1672,11 @@ function wzPathRow(si, pi, path, srcDir) {
 
 function wzRerender() {
     const cfgOpen = document.getElementById('cfg-systems-overlay')?.style.display === 'flex';
+    const rclOpen = document.getElementById('rcl-overlay')?.style.display === 'flex';
     if (cfgOpen) {
         _cfgSysRender();
+    } else if (rclOpen) {
+        _rclRenderSystems();
     } else {
         wzRenderSysList(document.getElementById('wz-sys-list'));
         wzCheckOverlaps();
@@ -2178,5 +2348,9 @@ loadHealth();
 if (new URLSearchParams(location.search).get('setup') === '1') {
     openWizard();
 }
+
+// Auto-open reclassify when redirected here with ?reclassify=<source_dir>
+const _rclParam = new URLSearchParams(location.search).get('reclassify');
+if (_rclParam) openReclassify(_rclParam);
 </script>
 {% endblock %}
