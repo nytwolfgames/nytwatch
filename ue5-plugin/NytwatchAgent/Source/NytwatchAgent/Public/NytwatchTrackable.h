@@ -6,24 +6,67 @@
 #include "NytwatchTrackable.generated.h"
 
 // ---------------------------------------------------------------------------
-// Opt-in interface for per-instance tracking control.
+// Opt-in interface for classes that should be tracked by Nytwatch.
 //
-// Add to any UCLASS that already carries a NytwatchVerbosity tag to gain a
-// per-instance enable/disable toggle.
+// Implementing this interface on a class does two things:
+//   1. Registers instances with the Nytwatch subsystem so their properties
+//      are polled each second — without this, even a correctly annotated
+//      class will not be tracked.
+//   2. Provides a per-instance enable/disable toggle via
+//      IsNytwatchTrackingEnabled().
 //
-// Usage (C++):
+// ── Required wiring ────────────────────────────────────────────────────────
+//
+// In BeginPlay, call RegisterObject to add this instance to the tracked list:
+//
+//   #include "NytwatchSubsystem.h"
+//
+//   void AMyActor::BeginPlay()
+//   {
+//       Super::BeginPlay();
+//   #if WITH_EDITOR
+//       if (auto* NW = GEditor->GetEditorSubsystem<UNytwatchSubsystem>())
+//           NW->RegisterObject(this);
+//   #endif
+//   }
+//
+// In EndPlay, unregister so stale entries are cleaned up immediately:
+//
+//   void AMyActor::EndPlay(const EEndPlayReason::Type Reason)
+//   {
+//   #if WITH_EDITOR
+//       if (auto* NW = GEditor->GetEditorSubsystem<UNytwatchSubsystem>())
+//           NW->UnregisterObject(this);
+//   #endif
+//       Super::EndPlay(Reason);
+//   }
+//
+// Both calls are no-ops when tracking is not active (outside PIE, or when
+// NytwatchConfig.json has status "Off"), so they are safe to leave in
+// shipping builds as long as they are wrapped in #if WITH_EDITOR.
+//
+// ── NytwatchVerbosity annotation ───────────────────────────────────────────
+//
+// The class (or individual UPROPERTYs) must still carry a NytwatchVerbosity
+// meta tag, otherwise no properties will be recorded even for registered
+// instances:
+//
 //   UCLASS(meta=(NytwatchVerbosity="Standard"))
 //   class AMyActor : public AActor, public INytwatchTrackable { ... };
 //
-//   Override IsNytwatchTrackingEnabled_Implementation() and return a
-//   UPROPERTY bool to expose a Details-panel toggle per instance.
+// ── Per-instance toggle ─────────────────────────────────────────────────────
 //
-// Usage (Blueprint):
-//   Implement the interface on a Blueprint class and override
-//   IsNytwatchTrackingEnabled to drive tracking from a variable.
+// Override IsNytwatchTrackingEnabled_Implementation() to expose a per-instance
+// enable/disable toggle in the Details panel:
 //
-// Default behaviour: returns true — implementing the interface alone does
-// not affect tracking.
+//   UPROPERTY(EditAnywhere, Category="Nytwatch")
+//   bool bEnableNytwatchTrack = true;
+//
+//   virtual bool IsNytwatchTrackingEnabled_Implementation() const override
+//   { return bEnableNytwatchTrack; }
+//
+// The default implementation returns true — adding the interface alone does
+// not suppress tracking.
 // ---------------------------------------------------------------------------
 
 UINTERFACE(MinimalAPI, Blueprintable)

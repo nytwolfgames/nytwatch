@@ -57,6 +57,25 @@ bool FNytwatchPropertyTracker::HasSeen(UObject* Obj) const
     return SeenObjects.Contains(FObjectKey(Obj));
 }
 
+void FNytwatchPropertyTracker::RemoveObject(UObject* Obj)
+{
+    SeenObjects.Remove(FObjectKey(Obj));
+
+    // Snapshot keys have the form "ObjectName::ClassName::PropertyName".
+    // Remove every key that belongs to this object.
+    const FString Prefix = FString::Printf(TEXT("%s::%s::"),
+        *Obj->GetName(), *Obj->GetClass()->GetName());
+
+    TArray<FString> ToRemove;
+    for (const auto& KV : Snapshot)
+    {
+        if (KV.Key.StartsWith(Prefix))
+            ToRemove.Add(KV.Key);
+    }
+    for (const FString& Key : ToRemove)
+        Snapshot.Remove(Key);
+}
+
 FString FNytwatchPropertyTracker::MakeSnapshotKey(UObject* Obj, FProperty* Prop)
 {
     return FString::Printf(TEXT("%s::%s::%s"),

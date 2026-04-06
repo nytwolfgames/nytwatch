@@ -35,7 +35,7 @@ def write_config(repo_path: str, db: "Database", tracking_active: bool) -> None:
     nytwatch_dir.mkdir(parents=True, exist_ok=True)
 
     armed = db.get_armed_systems()
-    tick_interval = float(db.get_config("tracking_tick_interval", "0.1"))
+    tick_interval = float(db.get_config("tracking_tick_interval", "1.0"))
     scan_cap = int(db.get_config("tracking_scan_cap", "2000"))
 
     systems_payload = []

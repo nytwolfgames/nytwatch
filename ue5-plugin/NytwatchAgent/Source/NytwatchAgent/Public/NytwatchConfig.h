@@ -38,8 +38,8 @@ struct FNytwatchConfig
 {
     FString PluginCompatVersion;
     TArray<FNytwatchSystemConfig> ArmedSystems;
-    int32  ObjectScanCap       = 2000;
-    float  TickIntervalSeconds = 0.1f;
+    int32  ObjectScanCap       = 2000;  // retained for config compatibility; no longer used by the subsystem
+    float  TickIntervalSeconds = 1.0f;  // poll registered objects once per second
     bool   bValid              = false;
 
     // Reads <ProjectDir>/Saved/Nytwatch/NytwatchConfig.json.

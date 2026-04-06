@@ -40,6 +40,11 @@ public:
     // Returns true if this object has already been snapshotted this session.
     bool HasSeen(UObject* Obj) const;
 
+    // Remove all snapshot data for the given object.
+    // Call from UnregisterObject (while the pointer is still valid) to
+    // prevent the snapshot map from accumulating stale entries.
+    void RemoveObject(UObject* Obj);
+
 private:
     // Key: "ObjectName::ClassName::PropertyName"  Value: last serialised value
     TMap<FString, FString> Snapshot;

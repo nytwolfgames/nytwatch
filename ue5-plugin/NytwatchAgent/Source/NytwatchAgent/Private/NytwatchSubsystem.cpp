@@ -6,8 +6,6 @@
 #include "Misc/DateTime.h"
 #include "Misc/App.h"
 #include "HAL/PlatformProcess.h"
-#include "UObject/UObjectIterator.h"
-#include "GameFramework/Actor.h"
 #include "SourceCodeNavigation.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogNytwatchSubsystem, Log, All);
@@ -32,7 +30,6 @@ void UNytwatchSubsystem::Deinitialize()
     FEditorDelegates::BeginPIE.RemoveAll(this);
     FEditorDelegates::EndPIE.RemoveAll(this);
 
-    // If the editor is shut down while PIE is active, clean up gracefully.
     if (bTrackingActive)
     {
         FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
@@ -51,9 +48,10 @@ void UNytwatchSubsystem::Deinitialize()
 
 void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
 {
-    // Reset any state from previous sessions
+    // Reset state from any previous session
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
+    TrackedObjects.Reset();
     PIEElapsedSeconds     = 0.f;
     TimeSinceConfigReload = 0.f;
     bTrackingActive       = false;
@@ -84,17 +82,17 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
     FFileHelper::SaveStringToFile(LockJson, *LockPath,
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
-    // 3. Open session writer
+    // 3. Open session writer (also starts the background writer thread)
     Writer.Open(Config, ProjectDir);
     if (!Writer.IsOpen())
     {
         UE_LOG(LogNytwatchSubsystem, Error,
-            TEXT("[NytwatchAgent] Failed to open session file — tracking disabled."));
+            TEXT("[NytwatchAgent] Failed to open session writer — tracking disabled."));
         IFileManager::Get().Delete(*LockPath, false, true);
         return;
     }
 
-    // Update lock with the real session ID now that the writer has generated it
+    // Update lock with the real session ID
     const FString LockJsonFinal = FString::Printf(
         TEXT("{\"session_id\":\"%s\",\"started_at\":\"%s\",\"plugin_version\":\"%s\",\"pid\":%d}"),
         *Writer.GetSessionId(),
@@ -111,8 +109,8 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
         Config.TickIntervalSeconds);
 
     UE_LOG(LogNytwatchSubsystem, Log,
-        TEXT("[NytwatchAgent] Tracking session started. Armed: %d system(s)."),
-        Config.ArmedSystems.Num());
+        TEXT("[NytwatchAgent] Session started — armed: %d system(s), poll interval: %.1fs."),
+        Config.ArmedSystems.Num(), Config.TickIntervalSeconds);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,37 +121,85 @@ void UNytwatchSubsystem::OnEndPIE(bool /*bIsSimulating*/)
 {
     if (!bTrackingActive) return;
 
-    // Stop tick
     FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
 
-    // Close session (flushes + backfills header + deletes lock)
     const FString ProjectDir =
         FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+
+    // Close waits for the background writer thread to flush then stops it.
     Writer.Close(ProjectDir);
 
     UE_LOG(LogNytwatchSubsystem, Log,
-        TEXT("[NytwatchAgent] Session closed. %d events written to %s.md"),
-        Writer.GetTotalEventCount(), *Writer.GetSessionId());
+        TEXT("[NytwatchAgent] Session closed — %d events, %d objects tracked."),
+        Writer.GetTotalEventCount(), TrackedObjects.Num());
 
     bTrackingActive = false;
+    TrackedObjects.Reset();
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
 }
 
 // ---------------------------------------------------------------------------
-// PassesBasicFilter
+// RegisterObject  (game thread, called from BeginPlay)
 // ---------------------------------------------------------------------------
 
-bool UNytwatchSubsystem::PassesBasicFilter(UObject* Obj) const
+void UNytwatchSubsystem::RegisterObject(UObject* Obj)
 {
-    if (!IsValid(Obj))                             return false; // RF_Unreachable / GC'd
-    if (Obj->HasAnyFlags(RF_ClassDefaultObject))   return false;
+    if (!bTrackingActive || !IsValid(Obj)) return;
 
-    // Self-exclusion: skip objects whose class lives in this plugin
-    const FString& PackageName = Obj->GetClass()->GetPackage()->GetName();
-    if (PackageName == TEXT("/Script/NytwatchAgent")) return false;
+    // Respect per-instance toggle
+    if (Obj->GetClass()->ImplementsInterface(UNytwatchTrackable::StaticClass()))
+    {
+        if (!INytwatchTrackable::Execute_IsNytwatchTrackingEnabled(Obj))
+        {
+            UE_LOG(LogNytwatchSubsystem, Verbose,
+                TEXT("[NytwatchAgent] RegisterObject: '%s' has IsNytwatchTrackingEnabled=false — skipped."),
+                *Obj->GetName());
+            return;
+        }
+    }
 
-    return true;
+    const int32 SysIdx = FindSystemIndexForClass(Obj->GetClass());
+    if (SysIdx == INDEX_NONE) return; // class not in any armed system
+
+    // Prevent duplicate registrations
+    for (const FTrackedObject& T : TrackedObjects)
+    {
+        if (T.Object == Obj) return;
+    }
+
+    // Snapshot initial property values so the first poll has a baseline
+    const FNytwatchSystemConfig& System = Config.ArmedSystems[SysIdx];
+    Tracker.SnapshotObject(Obj, System);
+
+    TrackedObjects.Add({ Obj, SysIdx });
+
+    UE_LOG(LogNytwatchSubsystem, Log,
+        TEXT("[NytwatchAgent] Registered '%s' (%s) → system '%s'."),
+        *Obj->GetName(), *Obj->GetClass()->GetName(),
+        *Config.ArmedSystems[SysIdx].SystemName);
+}
+
+// ---------------------------------------------------------------------------
+// UnregisterObject  (game thread, called from EndPlay while Obj is still valid)
+// ---------------------------------------------------------------------------
+
+void UNytwatchSubsystem::UnregisterObject(UObject* Obj)
+{
+    if (!Obj) return;
+
+    for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
+    {
+        if (TrackedObjects[i].Object == Obj)
+        {
+            Tracker.RemoveObject(Obj);
+            TrackedObjects.RemoveAtSwap(i);
+
+            UE_LOG(LogNytwatchSubsystem, Verbose,
+                TEXT("[NytwatchAgent] Unregistered '%s'."), *Obj->GetName());
+            return;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,11 +209,8 @@ bool UNytwatchSubsystem::PassesBasicFilter(UObject* Obj) const
 int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
 {
     if (int32* Cached = ClassSystemIndexCache.Find(Class))
-    {
         return *Cached;
-    }
 
-    // Resolve header path via FSourceCodeNavigation (cached inside Tracker)
     FString HeaderPath;
 #if WITH_EDITOR
     FSourceCodeNavigation::FindClassHeaderPath(Class, HeaderPath);
@@ -192,21 +235,16 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
         }
     }
 
-    // Log every new class lookup so mismatches are visible in the Output Log.
     if (Result == INDEX_NONE)
     {
         if (HeaderPath.IsEmpty())
-        {
             UE_LOG(LogNytwatchSubsystem, Verbose,
                 TEXT("[NytwatchAgent] Class '%s' — FSourceCodeNavigation returned no header (skipped)."),
                 *Class->GetName());
-        }
         else
-        {
             UE_LOG(LogNytwatchSubsystem, Verbose,
                 TEXT("[NytwatchAgent] Class '%s' — header '%s' matched no armed system (skipped)."),
                 *Class->GetName(), *HeaderPath);
-        }
     }
     else
     {
@@ -220,18 +258,19 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
 }
 
 // ---------------------------------------------------------------------------
-// OnTick
+// OnTick  (game thread, every Config.TickIntervalSeconds)
 // ---------------------------------------------------------------------------
 
 bool UNytwatchSubsystem::OnTick(float DeltaTime)
 {
-    if (!bTrackingActive) return false;
+    if (!bTrackingActive) return true;
 
     PIEElapsedSeconds     += DeltaTime;
     TimeSinceConfigReload += DeltaTime;
 
-    // Hot-reload NytwatchConfig.json every 1 second so the server can arm or
-    // disarm systems mid-session without requiring a PIE restart.
+    // Hot-reload config every 1 second so verbosity changes take effect
+    // without requiring a PIE restart.  Also re-validates registered objects
+    // in case a system was disarmed.
     if (TimeSinceConfigReload >= 1.0f)
     {
         TimeSinceConfigReload = 0.f;
@@ -241,97 +280,52 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
         if (NewConfig.bValid)
         {
             Config = NewConfig;
-            ClassSystemIndexCache.Reset(); // evict stale class→system mappings
-        }
-    }
 
-    // If the session has hit the event cap, keep ticking (so we don't lose
-    // the PIE end delegate) but skip all polling.
-    if (Writer.IsCapReached()) return true;
-
-    // ----------------------------------------------------------------
-    // Collect candidates, separating previously-seen from new objects
-    // so that seen objects are prioritised when the cap is applied.
-    // ----------------------------------------------------------------
-    struct FCandidate { UObject* Obj; int32 SystemIdx; };
-    TArray<FCandidate> Seen, Unseen;
-
-    for (TObjectIterator<UObject> It; It; ++It)
-    {
-        UObject* Obj = *It;
-        if (!PassesBasicFilter(Obj)) continue;
-
-        // Restrict to PIE game world — skip editor-world and transient objects
-        UWorld* World = Obj->GetWorld();
-        if (!World || !World->IsGameWorld()) continue;
-
-        const int32 SysIdx = FindSystemIndexForClass(Obj->GetClass());
-        if (SysIdx == INDEX_NONE) continue;
-
-        // Respect per-instance toggle when the object implements INytwatchTrackable.
-        if (Obj->GetClass()->ImplementsInterface(UNytwatchTrackable::StaticClass()))
-        {
-            if (!INytwatchTrackable::Execute_IsNytwatchTrackingEnabled(Obj))
-                continue;
-        }
-
-        if (Tracker.HasSeen(Obj))
-            Seen.Add({Obj, SysIdx});
-        else
-            Unseen.Add({Obj, SysIdx});
-    }
-
-    // Log candidate summary once every ~5 seconds so it's easy to confirm
-    // objects are being found without flooding the Output Log every tick.
-    static float LastDiagTime = -5.f;
-    if (PIEElapsedSeconds - LastDiagTime >= 5.f)
-    {
-        LastDiagTime = PIEElapsedSeconds;
-        UE_LOG(LogNytwatchSubsystem, Log,
-            TEXT("[NytwatchAgent] Scan @ %.1fs — %d seen + %d new candidates (total events so far: %d)"),
-            PIEElapsedSeconds, Seen.Num(), Unseen.Num(), Writer.GetTotalEventCount());
-    }
-
-    // ----------------------------------------------------------------
-    // Poll within cap: seen objects first, then new ones.
-    // ----------------------------------------------------------------
-    int32 Remaining = Config.ObjectScanCap;
-    TArray<FNytwatchEvent> Events;
-
-    auto ProcessCandidate = [&](const FCandidate& C)
-    {
-        if (Remaining-- <= 0) return;
-
-        const FNytwatchSystemConfig& System = Config.ArmedSystems[C.SystemIdx];
-        Events.Reset();
-
-        if (!Tracker.HasSeen(C.Obj))
-        {
-            Tracker.SnapshotObject(C.Obj, System);
-        }
-        else
-        {
-            Tracker.PollObject(C.Obj, System, PIEElapsedSeconds, Events);
-            for (const FNytwatchEvent& Evt : Events)
+            // Re-resolve system indices: armed systems may have changed.
+            ClassSystemIndexCache.Reset();
+            for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
             {
-                Writer.AppendEvent(Evt);
-                if (Writer.IsCapReached()) return;
+                UObject* Obj = TrackedObjects[i].Object.Get();
+                if (!Obj || !IsValid(Obj))
+                {
+                    TrackedObjects.RemoveAtSwap(i);
+                    continue;
+                }
+                const int32 NewIdx = FindSystemIndexForClass(Obj->GetClass());
+                if (NewIdx == INDEX_NONE)
+                    TrackedObjects.RemoveAtSwap(i); // system was disarmed
+                else
+                    TrackedObjects[i].SystemIdx = NewIdx;
             }
         }
-    };
-
-    for (const FCandidate& C : Seen)
-    {
-        ProcessCandidate(C);
-        if (Writer.IsCapReached()) break;
     }
 
-    if (!Writer.IsCapReached())
+    if (Writer.IsCapReached()) return true;
+
+    // Poll each registered object for property changes.
+    TArray<FNytwatchEvent> Events;
+
+    for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
     {
-        for (const FCandidate& C : Unseen)
+        UObject* Obj = TrackedObjects[i].Object.Get();
+        if (!Obj || !IsValid(Obj))
         {
-            ProcessCandidate(C);
-            if (Writer.IsCapReached()) break;
+            // Object was destroyed without calling UnregisterObject
+            TrackedObjects.RemoveAtSwap(i);
+            continue;
+        }
+
+        if (TrackedObjects[i].SystemIdx >= Config.ArmedSystems.Num()) continue;
+
+        const FNytwatchSystemConfig& System = Config.ArmedSystems[TrackedObjects[i].SystemIdx];
+        Events.Reset();
+
+        Tracker.PollObject(Obj, System, PIEElapsedSeconds, Events);
+
+        for (const FNytwatchEvent& Evt : Events)
+        {
+            Writer.AppendEvent(Evt);
+            if (Writer.IsCapReached()) return true;
         }
     }
 
