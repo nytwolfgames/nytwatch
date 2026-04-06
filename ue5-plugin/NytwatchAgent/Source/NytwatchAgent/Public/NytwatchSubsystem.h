@@ -74,6 +74,10 @@ private:
     // Returns true to keep ticking.
     bool OnTick(float DeltaTime);
 
+    // One-shot ticker fired ~100 ms after OnEndPIE to give the WebSocket send
+    // buffer time to flush the session_close message before the socket closes.
+    bool OnDeferredDisconnect(float DeltaTime);
+
     // ── Class → system index resolution ─────────────────────────────────────
     // Returns the index into Config.ArmedSystems that owns the class,
     // or INDEX_NONE if none.  Result is cached in ClassSystemIndexCache.

@@ -20,9 +20,10 @@ class IWebSocket;
 //   Open()        — generate session ID, connect WebSocket.
 //   (async)       — OnConnected fires → send session_open, set bReady.
 //   SendBatch()   — called each tick; no-op until bReady is true.
-//   Close()       — send session_close with end_reason "normal", close socket.
-//   EmergencyClose() — best-effort send of session_close with end_reason
-//                      "crash" from a crash-handler context.
+//   Close()       — send session_close "normal"; set bPendingDisconnect.
+//   FlushAndDisconnect() — close+reset the socket (call ~100 ms after Close).
+//   EmergencyClose() — best-effort send of session_close "crash" + immediate
+//                      socket close (crash-handler context).
 //
 // Reconnect
 // ─────────
@@ -43,8 +44,14 @@ public:
     // No-op if bReady is false (still connecting) or bCapReached is true.
     void SendBatch(const TArray<FNytwatchEvent>& Events, float PIEElapsedSeconds);
 
-    // Send session_close with end_reason "normal" and close the WebSocket.
+    // Send session_close with end_reason "normal".
+    // Does NOT close the WebSocket immediately — call FlushAndDisconnect()
+    // ~100 ms later so the send buffer can drain before the close frame fires.
     void Close(float PIEElapsedSeconds);
+
+    // Actually close and release the WebSocket.  Must be called after Close().
+    // Safe to call even if Close() was never reached (e.g. already reset).
+    void FlushAndDisconnect();
 
     // Best-effort close for crash / OnHandleSystemError contexts.
     // Sends session_close with end_reason "crash" and closes the socket
@@ -58,10 +65,11 @@ public:
     // Cleanly abort a pending connection attempt (e.g. on connection timeout).
     void Abort();
 
-    bool    IsOpen()          const { return bIsOpen;         }
-    bool    IsReady()         const { return bReady;          }
-    bool    IsCapReached()    const { return bCapReached;      }
-    bool    NeedsReconnect()  const { return bNeedsReconnect; }
+    bool    IsOpen()              const { return bIsOpen;            }
+    bool    IsReady()             const { return bReady;             }
+    bool    IsCapReached()        const { return bCapReached;        }
+    bool    NeedsReconnect()      const { return bNeedsReconnect;    }
+    bool    IsPendingDisconnect() const { return bPendingDisconnect; }
     FString GetSessionId()    const { return SessionId;        }
     int32   GetTotalEventCount() const { return TotalEventCount; }
 
@@ -93,12 +101,13 @@ private:
     FString   ArmedSystemsJson; // JSON array of system name strings
 
     // ── Counters / flags ─────────────────────────────────────────────────────
-    int32 TotalEventCount   = 0;
-    bool  bIsOpen           = false; // true between Open() and Close/EmergencyClose
-    bool  bReady            = false; // true after WS connected + session_open sent
-    bool  bCapReached       = false;
-    bool  bNeedsReconnect   = false;
-    int32 ReconnectAttempts = 0;
+    int32 TotalEventCount      = 0;
+    bool  bIsOpen              = false; // true between Open() and Close/EmergencyClose
+    bool  bReady               = false; // true after WS connected + session_open sent
+    bool  bCapReached          = false;
+    bool  bNeedsReconnect      = false;
+    bool  bPendingDisconnect   = false; // set by Close(); cleared by FlushAndDisconnect()
+    int32 ReconnectAttempts    = 0;
 
     static constexpr int32 EventCap             = 50000;
     static constexpr int32 MaxReconnectAttempts = 5;

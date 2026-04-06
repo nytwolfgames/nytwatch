@@ -33,12 +33,13 @@ FString FNytwatchSessionWriter::EscapeJsonString(const FString& Str)
 void FNytwatchSessionWriter::Open(const FNytwatchConfig& Config)
 {
     // Reset all state from any previous session
-    bIsOpen           = false;
-    bReady            = false;
-    bCapReached       = false;
-    bNeedsReconnect   = false;
-    ReconnectAttempts = 0;
-    TotalEventCount   = 0;
+    bIsOpen            = false;
+    bReady             = false;
+    bCapReached        = false;
+    bNeedsReconnect    = false;
+    bPendingDisconnect = false;
+    ReconnectAttempts  = 0;
+    TotalEventCount    = 0;
 
     WebSocketUrl = Config.WebSocketUrl;
     if (WebSocketUrl.IsEmpty())
@@ -202,14 +203,33 @@ void FNytwatchSessionWriter::Close(float PIEElapsedSeconds)
     if (WebSocket.IsValid() && WebSocket->IsConnected())
     {
         SendSessionClose(PIEElapsedSeconds, TEXT("normal"));
-        WebSocket->Close();
+        // Do NOT call WebSocket->Close() here — the send is async and the
+        // close frame would race against the session_close data frame.
+        // The caller must invoke FlushAndDisconnect() ~100 ms later.
+        bPendingDisconnect = true;
     }
-
-    WebSocket.Reset();
+    else
+    {
+        WebSocket.Reset();
+    }
 
     UE_LOG(LogNytwatchWriter, Log,
         TEXT("[NytwatchAgent] Session closed normally — %d events, session %s"),
         TotalEventCount, *SessionId);
+}
+
+// ---------------------------------------------------------------------------
+// FlushAndDisconnect  (game thread, called ~100 ms after Close)
+// ---------------------------------------------------------------------------
+
+void FNytwatchSessionWriter::FlushAndDisconnect()
+{
+    bPendingDisconnect = false;
+    if (WebSocket.IsValid())
+    {
+        WebSocket->Close();
+        WebSocket.Reset();
+    }
 }
 
 // ---------------------------------------------------------------------------

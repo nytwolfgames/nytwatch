@@ -55,6 +55,10 @@ void UNytwatchSubsystem::Deinitialize()
         bTrackingActive = false;
     }
 
+    // Flush any pending disconnect synchronously — the deferred ticker won't
+    // fire after Deinitialize (subsystem is being torn down).
+    Writer.FlushAndDisconnect();
+
     Super::Deinitialize();
 }
 
@@ -135,6 +139,8 @@ void UNytwatchSubsystem::OnEndPIE(bool /*bIsSimulating*/)
     FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
     bTrackingActive = false;
 
+    // Send session_close.  Writer sets bPendingDisconnect — actual socket
+    // close is deferred to OnDeferredDisconnect so the send can flush first.
     Writer.Close(PIEElapsedSeconds);
 
     // Delete lock file so the watchdog sees the clean end
@@ -151,6 +157,23 @@ void UNytwatchSubsystem::OnEndPIE(bool /*bIsSimulating*/)
     TrackedObjects.Reset();
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
+
+    if (Writer.IsPendingDisconnect())
+    {
+        FTSTicker::GetCoreTicker().AddTicker(
+            FTickerDelegate::CreateUObject(this, &UNytwatchSubsystem::OnDeferredDisconnect),
+            0.1f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OnDeferredDisconnect  (one-shot, fires ~100 ms after OnEndPIE)
+// ---------------------------------------------------------------------------
+
+bool UNytwatchSubsystem::OnDeferredDisconnect(float /*DeltaTime*/)
+{
+    Writer.FlushAndDisconnect();
+    return false; // one-shot — do not re-register
 }
 
 // ---------------------------------------------------------------------------
@@ -238,18 +261,30 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
 
     if (NativeClass)
     {
-        if (!FSourceCodeNavigation::FindClassHeaderPath(NativeClass, HeaderPath) || HeaderPath.IsEmpty())
+        // Primary: ModuleRelativePath is baked in by UHT at compile time —
+        // reliable and synchronous, unlike FSourceCodeNavigation which depends
+        // on an async database that may not be ready at BeginPlay time.
+        const FString ModuleRelPath = NativeClass->GetMetaData(TEXT("ModuleRelativePath"));
+        if (!ModuleRelPath.IsEmpty())
         {
-            const FString PackageName = NativeClass->GetOutermost()->GetName();
-            if (FPackageName::IsValidLongPackageName(PackageName))
+            // Derive module name from package: "/Script/ProjectAlpha" → "ProjectAlpha"
+            FString ModuleName;
+            NativeClass->GetOutermost()->GetName().Split(
+                TEXT("/Script/"), nullptr, &ModuleName, ESearchCase::CaseSensitive);
+
+            if (!ModuleName.IsEmpty())
             {
-                FString DerivedPath;
-                if (FPackageName::TryConvertLongPackageNameToFilename(PackageName, DerivedPath, TEXT(".h"))
-                    && !DerivedPath.IsEmpty())
-                {
-                    HeaderPath = FPaths::ConvertRelativePathToFull(DerivedPath);
-                }
+                const FString ProjectDir =
+                    FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+                HeaderPath = FPaths::Combine(
+                    ProjectDir, TEXT("Source"), ModuleName, ModuleRelPath);
             }
+        }
+
+        // Fallback: FSourceCodeNavigation (async — may return empty on first PIE).
+        if (HeaderPath.IsEmpty())
+        {
+            FSourceCodeNavigation::FindClassHeaderPath(NativeClass, HeaderPath);
         }
     }
     FPaths::NormalizeFilename(HeaderPath);
@@ -277,22 +312,21 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
     {
         if (HeaderPath.IsEmpty())
         {
-            UE_LOG(LogNytwatchSubsystem, Verbose,
+            UE_LOG(LogNytwatchSubsystem, Log,
                 TEXT("[NytwatchAgent] Class '%s' — no header path (skipped)."),
                 *Class->GetName());
         }
         else
         {
-
-            UE_LOG(LogNytwatchSubsystem, Verbose,
+            UE_LOG(LogNytwatchSubsystem, Log,
                 TEXT("[NytwatchAgent] Class '%s' — header '%s' matched no armed system (skipped)."),
                 *Class->GetName(), *HeaderPath);
-        }    
+        }
     }
     else
     {
-        UE_LOG(LogNytwatchSubsystem, VeryVerbose,
-            TEXT("[NytwatchAgent] Class '%s' → system[%d] '%s'  header: %s"),
+        UE_LOG(LogNytwatchSubsystem, Log,
+            TEXT("[NytwatchAgent] Class '%s' → system[%d] '%s'  (header: %s)"),
             *Class->GetName(), Result, *Config.ArmedSystems[Result].SystemName, *HeaderPath);
     }
 

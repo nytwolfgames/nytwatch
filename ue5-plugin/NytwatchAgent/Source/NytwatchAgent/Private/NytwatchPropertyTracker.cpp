@@ -134,34 +134,37 @@ FString FNytwatchPropertyTracker::GetOrCacheHeaderPath(UClass* Class)
 
     FString HeaderPath;
 #if WITH_EDITOR
-    // Blueprint classes report their Content asset path, not a source header.
-    // Walk up to the nearest native C++ ancestor so the path can be matched
-    // against armed system source directories.
+    // Blueprint classes have no source header; walk up to the nearest native
+    // C++ ancestor so the path can be matched against armed system directories.
     UClass* NativeClass = Class;
     while (NativeClass && !NativeClass->IsNative())
-    {
         NativeClass = NativeClass->GetSuperClass();
-    }
 
     if (NativeClass)
     {
-        if (!FSourceCodeNavigation::FindClassHeaderPath(NativeClass, HeaderPath) || HeaderPath.IsEmpty())
+        // Primary: ModuleRelativePath is baked in by UHT at compile time —
+        // reliable and synchronous, unlike FSourceCodeNavigation which depends
+        // on an async database that may not be ready at BeginPlay time.
+        const FString ModuleRelPath = NativeClass->GetMetaData(TEXT("ModuleRelativePath"));
+        if (!ModuleRelPath.IsEmpty())
         {
-            // FindClassHeaderPath relies on an async database that may not be ready yet.
-            // Fall back to deriving the path from the class package name — always synchronous.
-            // NOTE: /Script/ packages (all C++ classes) cannot be converted to a file path;
-            // TryConvertLongPackageNameToFilename returns false for them.  Only promote the
-            // result if the conversion actually succeeds, otherwise leave HeaderPath empty.
-            const FString PackageName = NativeClass->GetOutermost()->GetName();
-            if (FPackageName::IsValidLongPackageName(PackageName))
+            FString ModuleName;
+            NativeClass->GetOutermost()->GetName().Split(
+                TEXT("/Script/"), nullptr, &ModuleName, ESearchCase::CaseSensitive);
+
+            if (!ModuleName.IsEmpty())
             {
-                FString DerivedPath;
-                if (FPackageName::TryConvertLongPackageNameToFilename(PackageName, DerivedPath, TEXT(".h"))
-                    && !DerivedPath.IsEmpty())
-                {
-                    HeaderPath = FPaths::ConvertRelativePathToFull(DerivedPath);
-                }
+                const FString ProjectDir =
+                    FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+                HeaderPath = FPaths::Combine(
+                    ProjectDir, TEXT("Source"), ModuleName, ModuleRelPath);
             }
+        }
+
+        // Fallback: FSourceCodeNavigation (async — may return empty on first PIE).
+        if (HeaderPath.IsEmpty())
+        {
+            FSourceCodeNavigation::FindClassHeaderPath(NativeClass, HeaderPath);
         }
     }
     FPaths::NormalizeFilename(HeaderPath);

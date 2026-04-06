@@ -1,8 +1,10 @@
 # NytwatchAgent — Adapter Guide
 
-An adapter is a single game-side class that bridges your game's event system to the NytwatchAgent plugin. It is optional. Without one, the plugin works exactly as it always has — property diffs, wall-clock timestamps, no causality layer. With one, you get game-time timestamps and named event causality.
+An adapter is a game-side class that bridges your game's event system to the NytwatchAgent plugin. It is optional. Without one, the plugin works exactly as it always has — property diffs, wall-clock timestamps, no causality layer. With one, you get game-time timestamps and named event causality.
 
 The plugin knows nothing about your game's types. The adapter is where that knowledge lives.
+
+**Multiple adapters can coexist.** A game with distinct gameplay modes (e.g. campaign and battle) should have one adapter per mode. Each adapter is scoped to its mode's lifetime. See [Multiple Adapters](#multiple-adapters).
 
 ---
 
@@ -206,7 +208,7 @@ The property changes are the same. The context is not.
 
 The adapter must be initialized after the game's event system exists and before any events you care about fire.
 
-Exact timing is game-specific and deferred to per-project documentation. The general rule: initialize from wherever your game mode or game instance confirms the world is ready, wrapped in `#if WITH_EDITOR`.
+Exact timing is game-specific and deferred to per-project documentation. The general rule: initialize from wherever your game mode confirms the world is ready, wrapped in `#if WITH_EDITOR`.
 
 ```cpp
 #if WITH_EDITOR
@@ -217,8 +219,82 @@ NytwatchAdapter->Initialize(this); // pass whatever gives access to your event s
 
 ---
 
+## Multiple Adapters
+
+Multiple adapters can coexist without any changes to the plugin. Each part of the plugin API is designed for this:
+
+| API | Multi-adapter behaviour |
+|---|---|
+| `LogEvent()` | Push to a shared queue. Any adapter can call it freely. |
+| `RequestDeferredPoll()` | Same — any adapter can trigger a deferred poll. |
+| `SetTimeProvider()` | Singular. Last caller wins. In practice, only one mode is active at a time, so the active adapter's provider is always current. |
+| Object registration | Handled automatically by `RegisterObject` / `UnregisterObject` in `BeginPlay` / `EndPlay`. Each mode's objects register themselves when they spawn and unregister when they are destroyed. The subsystem's tracked object list always reflects what is currently alive. |
+
+### One adapter per gameplay mode
+
+For a game with distinct modes backed by separate game modes (e.g. campaign and battle), create one adapter per mode. Each adapter:
+
+- Initializes when its game mode starts
+- Binds only to that mode's event system
+- Calls `SetTimeProvider(this)` on init, taking over as the active time provider
+- **Unbinds all delegates when its mode ends** — not just when the world ends
+
+The last point is important. If the campaign adapter remains bound to campaign delegates while the battle game mode is running, those delegates may still fire and push stale events or incorrect time strings into the plugin. Each adapter must clean up on mode transition.
+
+### Shutdown pattern
+
+```cpp
+void UCampaignNytwatchAdapter::Shutdown()
+{
+    if (CampaignGameMode)
+    {
+        CampaignGameMode->Events->DayPassed.RemoveDynamic(this, &ThisClass::OnDayPassed);
+        CampaignGameMode->Events->SettlementCaptured.RemoveDynamic(this, &ThisClass::OnSettlementCaptured);
+        // unbind all delegates bound in Initialize()
+    }
+
+    // Only clear the time provider if this adapter set it.
+    // If the battle adapter has already called SetTimeProvider, don't overwrite it.
+    if (NW && NW->GetTimeProvider() == this)
+        NW->SetTimeProvider(nullptr);
+}
+```
+
+Call `Shutdown()` from the game mode's `EndPlay` or equivalent teardown, before the new mode starts.
+
+### Example: campaign + battle
+
+```
+Campaign game mode starts
+  → UCampaignNytwatchAdapter::Initialize()
+  → SetTimeProvider(this)           // "Day 45, Year 2, Hour 14"
+  → binds DayPassed, SettlementCaptured, WarDeclared, etc.
+
+Player enters battle
+  → UCampaignNytwatchAdapter::Shutdown()
+    → removes campaign delegate bindings
+    → clears time provider (if still set to self)
+  → Battle game mode starts
+  → URTSBattleNytwatchAdapter::Initialize()
+  → SetTimeProvider(this)           // "Battle, Turn 3" or "Wave 2" or wall-clock
+  → binds battle-specific events (unit destroyed, wave started, etc.)
+
+Battle ends
+  → URTSBattleNytwatchAdapter::Shutdown()
+    → removes battle delegate bindings
+    → clears time provider
+  → Campaign game mode resumes
+  → UCampaignNytwatchAdapter::Initialize()
+  → SetTimeProvider(this)           // campaign time resumes
+```
+
+Each adapter is active for exactly its mode's duration. The plugin sees a continuous stream of events and polls — it has no concept of mode boundaries.
+
+---
+
 ## Checklist
 
+### Per adapter
 - [ ] Class inherits `INytwatchTimeProvider` if using game-time
 - [ ] `GetCurrentTimeString()` returns a stable, human-readable time string
 - [ ] `SetTimeProvider(this)` called in `Initialize()`
@@ -226,4 +302,11 @@ NytwatchAdapter->Initialize(this); // pass whatever gives access to your event s
 - [ ] `LogEvent` called only for events with meaningful parameters and tracked affected actors
 - [ ] `RequestDeferredPoll()` called on routine game-time ticks (e.g. `DayPassed`)
 - [ ] Adapter instantiated and initialized inside `#if WITH_EDITOR`
-- [ ] Adapter destroyed or unbound when the world ends (prevent stale delegate bindings)
+- [ ] `Shutdown()` removes all delegate bindings bound in `Initialize()`
+- [ ] `Shutdown()` clears `SetTimeProvider` only if this adapter is still the active provider
+- [ ] `Shutdown()` called on **mode end**, not just world end
+
+### If using multiple adapters
+- [ ] Each adapter is scoped to exactly one gameplay mode
+- [ ] `Shutdown()` is called before the next mode's adapter initializes
+- [ ] No two adapters are bound to the same delegate simultaneously
