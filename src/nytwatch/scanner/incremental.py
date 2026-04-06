@@ -79,16 +79,29 @@ def get_changed_files(
 
 
 def find_owning_system(file_path: str, systems: list[SystemDef]) -> Optional[str]:
-    """Return the system name whose path prefix most specifically matches file_path."""
+    """Return the system name whose path most specifically matches file_path.
+
+    A system path can be either a directory prefix or an exact file path.
+    Exact file matches take priority; among directory matches the longest prefix wins.
+    """
     norm_file = normalize_path(file_path)
     best_system: Optional[str] = None
     best_len = -1
     for system in systems:
-        for prefix in system.paths:
-            norm_prefix = normalize_path(prefix).rstrip("/") + "/"
-            if norm_file.startswith(norm_prefix) and len(norm_prefix) > best_len:
-                best_len = len(norm_prefix)
-                best_system = system.name
+        for p in system.paths:
+            norm_p = normalize_path(p)
+            # Exact file path match — treat as highest-specificity (use full path length + 1)
+            if norm_p.rstrip("/") == norm_file:
+                score = len(norm_p) + 1
+                if score > best_len:
+                    best_len = score
+                    best_system = system.name
+            else:
+                # Directory prefix match
+                dir_prefix = norm_p.rstrip("/") + "/"
+                if norm_file.startswith(dir_prefix) and len(dir_prefix) > best_len:
+                    best_len = len(dir_prefix)
+                    best_system = system.name
     return best_system
 
 

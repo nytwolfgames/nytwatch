@@ -990,7 +990,8 @@ async def switch_project(request: Request):
     request.app.state.config = new_config
     request.app.state.config_path = str(p)
     request.app.state.db = new_db
-    request.app.state.tracking_active = False
+    from nytwatch.main import _read_tracking_active
+    request.app.state.tracking_active = _read_tracking_active(new_config.repo_path) if new_config.repo_path else False
 
     # Update filesystem watcher to the new project
     watcher = getattr(request.app.state, "watcher", None)
@@ -998,7 +999,7 @@ async def switch_project(request: Request):
         if old_repo:
             watcher.remove_watch(old_repo)
         if new_config.repo_path:
-            watcher.add_watch(new_config.repo_path)
+            watcher.add_watch(new_config.repo_path, new_db)
 
     from nytwatch.config import set_active_config_path
     set_active_config_path(p)
@@ -1115,7 +1116,10 @@ def _validate_systems(systems: list[dict]) -> list[str]:
         for p in s.get("paths", []):
             if not p:
                 continue
-            norm = p.replace("\\", "/").rstrip("/") + "/"
+            norm_p = p.replace("\\", "/")
+            # Preserve file paths as-is; normalise directory paths to a trailing slash
+            # so that "Source/Foo/" and "Source/Foo" are treated as the same directory.
+            norm = norm_p if "." in norm_p.split("/")[-1] else norm_p.rstrip("/") + "/"
             if norm in seen_paths:
                 owner = seen_paths[norm]
                 if owner != name:
@@ -1389,7 +1393,7 @@ Rules:
 - System names must be unique across ALL systems — no two systems may share the same name
 - System names should be short and descriptive (use the feature folder name)
 - "source_dir" must exactly match one of the active source directory paths listed above (with trailing slash)
-- All paths must use forward slashes with a trailing slash
+- All paths must be DIRECTORIES (folders), never individual files — use forward slashes with a trailing slash
 - Every path must be unique across ALL systems — no path may appear in more than one system's paths list
 - UE module Public/Private rule: a UE module directory contains both a Public/ and a Private/ subfolder. There are two valid cases:
   1. If you want the entire module → use the module root path (e.g. "Module/") which covers all code inside it
@@ -1480,7 +1484,7 @@ Explore the directory structure under "{sd_root}" using your tools, then decide 
 Rules:
 - Only return paths that actually exist under "{sd_root}"
 - If no subdirectory is clearly related, return the entire source dir: "{sd_root}"
-- All paths must use forward slashes with a trailing slash
+- All paths must be DIRECTORIES (folders), never individual files — use forward slashes with a trailing slash
 - Do not invent paths
 - UE module Public/Private rule: a UE module directory contains both a Public/ and a Private/ subfolder. There are two valid cases:
   1. If this system covers the entire module → use the module root path (e.g. "Module/") which covers all code inside it

@@ -118,6 +118,7 @@ class TrackingWatcher:
         self._watches: dict[str, object] = {}       # project_dir → watchdog watch handle
         self._pie_state: dict[str, bool] = {}        # project_dir → running
         self._pie_pids: dict[str, int] = {}          # project_dir → PIE process PID
+        self._dbs: dict[str, "Database"] = {}        # project_dir → per-project Database
         self._debounce_timers: dict[str, threading.Timer] = {}
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -126,8 +127,13 @@ class TrackingWatcher:
         )
         self._poll_thread.start()
 
-    def add_watch(self, project_dir: str) -> None:
-        """Start watching <project_dir>/Saved/Nytwatch/. Creates dir if absent."""
+    def add_watch(self, project_dir: str, db: Optional["Database"] = None) -> None:
+        """Start watching <project_dir>/Saved/Nytwatch/. Creates dir if absent.
+
+        Pass the project's Database instance so session imports and event
+        handlers always use the correct DB regardless of which project is
+        currently active in app.state.
+        """
         if not project_dir:
             return
         watch_path = Path(project_dir) / "Saved" / "Nytwatch"
@@ -135,6 +141,8 @@ class TrackingWatcher:
         with self._lock:
             if project_dir in self._watches:
                 return
+            if db is not None:
+                self._dbs[project_dir] = db
             try:
                 handler = _NytwatchEventHandler(self)
                 watch = self._observer.schedule(handler, str(watch_path), recursive=True)
@@ -143,6 +151,7 @@ class TrackingWatcher:
                 log.info("TrackingWatcher: watching %s", watch_path)
             except Exception:
                 log.exception("TrackingWatcher: failed to watch %s", watch_path)
+                self._dbs.pop(project_dir, None)
                 return
 
         # Check for a stale lock left by a previous crash (outside the write lock).
@@ -172,6 +181,7 @@ class TrackingWatcher:
             watch = self._watches.pop(project_dir, None)
             self._pie_state.pop(project_dir, None)
             self._pie_pids.pop(project_dir, None)
+            self._dbs.pop(project_dir, None)
             timer = self._debounce_timers.pop(project_dir, None)
         if timer:
             timer.cancel()
@@ -191,6 +201,15 @@ class TrackingWatcher:
         self._observer.join()
 
     # ── Internal helpers ─────────────────────────────────────────────────────
+
+    def _get_project_db(self, project_dir: str) -> Optional["Database"]:
+        """Return the Database for the given project.
+
+        Prefers the per-project DB registered via add_watch(db=...).
+        Falls back to the global getter only if no per-project DB is stored,
+        so old callers that didn't pass a DB still work.
+        """
+        return self._dbs.get(project_dir) or self._db_getter()
 
     def _resolve_project_dir(self, event_path: str) -> Optional[str]:
         """Given any path under Saved/Nytwatch/, return the matching project_dir."""
@@ -216,7 +235,7 @@ class TrackingWatcher:
         if pd is None:
             return
         pid = _read_lock_pid(lock_path)
-        db = self._db_getter()
+        db = self._get_project_db(pd)
         armed_names = [s["name"] for s in db.get_armed_systems()] if db else []
         with self._lock:
             self._pie_state[pd] = True
@@ -263,7 +282,7 @@ class TrackingWatcher:
         pd = self._resolve_project_dir(file_path)
         if pd is None:
             return
-        db = self._db_getter()
+        db = self._get_project_db(pd)
         if db is None:
             return
         from nytwatch.tracking.session_store import import_session_file
@@ -277,7 +296,8 @@ class TrackingWatcher:
         # before removing the DB record so we don't react to transient events.
         if Path(file_path).exists():
             return
-        db = self._db_getter()
+        pd = self._resolve_project_dir(file_path)
+        db = self._get_project_db(pd) if pd else self._db_getter()
         if db is None:
             return
         # Find matching DB row by file_path and remove it regardless of bookmark status
@@ -345,7 +365,7 @@ class TrackingWatcher:
         sessions_dir = Path(project_dir) / "Saved" / "Nytwatch" / "Sessions"
         if not sessions_dir.exists():
             return
-        db = self._db_getter()
+        db = self._get_project_db(project_dir)
         if db is None:
             return
         from nytwatch.tracking.session_store import import_session_file

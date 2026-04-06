@@ -22,13 +22,24 @@ logging.basicConfig(
 logger = logging.getLogger("nytwatch")
 
 
+def _read_tracking_active(repo_path: str) -> bool:
+    """Read the tracking status from NytwatchConfig.json. Returns False if absent or unreadable."""
+    import json as _json
+    try:
+        cfg_path = Path(repo_path) / "Saved" / "Nytwatch" / "NytwatchConfig.json"
+        data = _json.loads(cfg_path.read_text(encoding="utf-8"))
+        return data.get("status", "Off") == "On"
+    except Exception:
+        return False
+
+
 def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> FastAPI:
     import asyncio
     from nytwatch.ws_manager import manager as ws_manager
 
     app = FastAPI(title="Nytwatch", version="0.1.0")
 
-    app.state.tracking_active = False
+    app.state.tracking_active = _read_tracking_active(config.repo_path) if config.repo_path else False
 
     @app.on_event("startup")
     async def startup():
@@ -71,7 +82,7 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     watcher = TrackingWatcher(ws_manager, lambda: app.state.db)
     app.state.watcher = watcher
     if config.repo_path:
-        watcher.add_watch(config.repo_path)
+        watcher.add_watch(config.repo_path, db)
 
     static_dir = Path(__file__).parent / "web" / "static"
     static_dir.mkdir(parents=True, exist_ok=True)

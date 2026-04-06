@@ -35,19 +35,31 @@ def collect_system_files(
             log.warning("System path does not exist: %s", full_path)
             continue
 
-        for root, _dirs, files in os.walk(full_path):
-            for fname in files:
-                if not any(fname.endswith(ext) for ext in extensions):
-                    continue
-                fpath = Path(root) / fname
-                if fpath.stat().st_size > MAX_FILE_SIZE:
-                    log.debug("Skipping large file: %s (%d bytes)", fpath, fpath.stat().st_size)
-                    continue
-                rel = normalize_path(str(fpath.relative_to(repo)))
-                try:
-                    collected[rel] = fpath.read_text(errors="replace")
-                except OSError as exc:
-                    log.warning("Could not read %s: %s", fpath, exc)
+        if full_path.is_file():
+            if not any(sys_path.endswith(ext) for ext in extensions):
+                continue
+            if full_path.stat().st_size > MAX_FILE_SIZE:
+                log.debug("Skipping large file: %s (%d bytes)", full_path, full_path.stat().st_size)
+                continue
+            rel = normalize_path(str(full_path.relative_to(repo)))
+            try:
+                collected[rel] = full_path.read_text(errors="replace")
+            except OSError as exc:
+                log.warning("Could not read %s: %s", full_path, exc)
+        else:
+            for root, _dirs, files in os.walk(full_path):
+                for fname in files:
+                    if not any(fname.endswith(ext) for ext in extensions):
+                        continue
+                    fpath = Path(root) / fname
+                    if fpath.stat().st_size > MAX_FILE_SIZE:
+                        log.debug("Skipping large file: %s (%d bytes)", fpath, fpath.stat().st_size)
+                        continue
+                    rel = normalize_path(str(fpath.relative_to(repo)))
+                    try:
+                        collected[rel] = fpath.read_text(errors="replace")
+                    except OSError as exc:
+                        log.warning("Could not read %s: %s", fpath, exc)
 
     log.info("Collected %d files for system '%s'", len(collected), system.name)
     return collected
@@ -70,14 +82,20 @@ def list_system_files(
         if not full_path.exists():
             log.warning("System path does not exist: %s", full_path)
             continue
-        for root, _dirs, files in os.walk(full_path):
-            for fname in files:
-                if not any(fname.endswith(ext) for ext in extensions):
-                    continue
-                fpath = Path(root) / fname
-                if fpath.stat().st_size > MAX_FILE_SIZE:
-                    continue
-                paths.append(normalize_path(str(fpath.relative_to(repo))))
+        if full_path.is_file():
+            if not any(sys_path.endswith(ext) for ext in extensions):
+                continue
+            if full_path.stat().st_size <= MAX_FILE_SIZE:
+                paths.append(normalize_path(str(full_path.relative_to(repo))))
+        else:
+            for root, _dirs, files in os.walk(full_path):
+                for fname in files:
+                    if not any(fname.endswith(ext) for ext in extensions):
+                        continue
+                    fpath = Path(root) / fname
+                    if fpath.stat().st_size > MAX_FILE_SIZE:
+                        continue
+                    paths.append(normalize_path(str(fpath.relative_to(repo))))
 
     log.info("Listed %d files for system '%s'", len(paths), system.name)
     return paths
