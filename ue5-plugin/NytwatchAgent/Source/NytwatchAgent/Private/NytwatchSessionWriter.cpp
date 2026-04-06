@@ -314,8 +314,8 @@ void FNytwatchSessionWriter::FlushBuffer()
     {
         // FFileHelper::SaveStringToFile does not support append mode.
         // Use IFileManager directly to open with FILEWRITE_Append.
-        IFileHandle* Handle = IFileManager::Get().CreateFileWriter(
-            *SessionFilePath, FILEWRITE_Append | FILEWRITE_AllowRead);
+        IFileHandle* Handle = FPlatformFileManager::Get().GetPlatformFile().OpenWrite(
+            *SessionFilePath, /*bAppend=*/true, /*bAllowRead=*/true);
         if (Handle)
         {
             FTCHARToUTF8 Utf8(*Block);

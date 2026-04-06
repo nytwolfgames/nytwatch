@@ -932,7 +932,6 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 | GET | `/tracker/sessions` | redirect | — | Redirects to `/tracker` (sessions tab) |
 | GET | `/tracker/systems` | redirect | — | Redirects to `/tracker` (systems tab) |
 | GET | `/settings` | `settings_page` | `settings.html` | Active project card, project switcher, config health, source directory classification, setup wizard modal |
-| GET | `/settings/tracking/{system_name}/files` | `file_verbosity_page` | `file_verbosity.html` | Per-file verbosity override configuration for a tracked system |
 
 Legacy redirects: `/findings` → `/auditor/findings`, `/findings/{id}` → `/auditor/findings/{id}`, `/scans` → `/auditor/scans`, `/batches` → `/auditor/batches`, `/batches/{id}` → `/auditor/batches/{id}`
 
@@ -1060,7 +1059,6 @@ Jinja2 templates at `src/nytwatch/web/templates/`:
 - `batch_detail.html` — Batch detail with findings list, build/test logs, PR link
 - `settings.html` — Project config, source directory classification, setup wizard
 - `tracker.html` — Gameplay tracking interface (sessions list / arm systems tabs)
-- `file_verbosity.html` — Per-file verbosity override configuration for a tracked system
 
 ---
 

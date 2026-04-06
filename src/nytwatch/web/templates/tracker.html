@@ -31,7 +31,7 @@
 <!-- ── Tracking controls bar ──────────────────────────────────────────────── -->
 <div class="card mb-4" style="padding:14px 20px;">
     <div style="display:flex;align-items:center;gap:var(--sp-5);flex-wrap:wrap;">
-        <button id="tracking-toggle-btn" class="btn btn-sm scan-safe"
+        <button id="tracking-toggle-btn" class="btn btn-sm scan-safe btn-secondary"
                 onclick="toggleTracking()"
                 style="min-width:118px;{% if tracking_active %}background:var(--severity-critical);color:white;{% endif %}">
             {{ 'Stop Tracking' if tracking_active else 'Start Tracking' }}
@@ -354,7 +354,7 @@
         <div id="vd-loading" style="padding:32px;text-align:center;color:var(--on-surface-variant);font-size:0.85rem;">Loading…</div>
         <table id="vd-table" style="display:none;width:100%;border-collapse:collapse;">
             <thead>
-                <tr style="border-bottom:1px solid var(--outline-variant);background:var(--surface-raised);position:sticky;top:0;z-index:1;">
+                <tr style="border-bottom:1px solid var(--outline-variant);background:var(--surface-container-low);position:sticky;top:0;z-index:1;">
                     <th style="text-align:left;padding:8px 16px;font-size:11px;font-weight:600;color:var(--on-surface-variant);">File</th>
                     <th style="text-align:center;padding:8px 12px;font-size:11px;font-weight:600;color:var(--on-surface-variant);width:56px;">Track</th>
                     <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:var(--on-surface-variant);width:155px;">Verbosity</th>
@@ -366,6 +366,13 @@
         <div id="vd-empty" style="display:none;padding:32px;text-align:center;color:var(--on-surface-variant);font-size:0.85rem;">No header files found for this system.</div>
     </div>
     <div style="padding:8px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <select id="vd-toggle-select" class="input" style="font-size:0.8rem;width:140px;">
+            <option value="Critical">Critical</option>
+            <option value="Standard" selected>Standard</option>
+            <option value="Verbose">Verbose</option>
+            <option value="Ignore">Ignore</option>
+        </select>
+        <button onclick="vdToggleAll()" class="btn btn-sm scan-safe">Toggle All</button>
         <button onclick="vdClearAll()" class="btn btn-sm scan-safe">Clear All</button>
         <span id="vd-status" style="flex:1;font-size:0.8rem;color:var(--on-surface-variant);"></span>
     </div>
@@ -916,6 +923,30 @@ function vdClearRow(btn) {
     row.classList.remove('has-override');
     row.style.opacity = '';
     btn.style.visibility = 'hidden';
+    vdScheduleSave();
+}
+
+function vdToggleAll() {
+    const level = document.getElementById('vd-toggle-select').value;
+    document.querySelectorAll('.vd-row').forEach(row => {
+        if (row.style.display === 'none') return;
+        const sel    = row.querySelector('.vd-select');
+        const toggle = row.querySelector('.vd-track-toggle');
+        if (level === 'Ignore') {
+            if (toggle && toggle.checked) {
+                row.dataset.prevVerbosity = sel.value;
+                toggle.checked = false;
+                row.style.opacity = '0.55';
+                row.classList.add('has-override');
+                row.querySelector('.vd-clear-btn').style.visibility = 'visible';
+            }
+        } else {
+            if (toggle) { toggle.checked = true; row.style.opacity = ''; }
+            sel.value = level;
+            row.classList.add('has-override');
+            row.querySelector('.vd-clear-btn').style.visibility = 'visible';
+        }
+    });
     vdScheduleSave();
 }
 

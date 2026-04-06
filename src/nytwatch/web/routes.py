@@ -2215,31 +2215,6 @@ async def api_set_file_verbosity(request: Request, system_name: str):
 
 # ── Gameplay Tracker — Sessions ───────────────────────────────────────────────
 
-@router.get("/settings/tracking/{system_name}/files", response_class=HTMLResponse)
-async def file_verbosity_page(request: Request, system_name: str):
-    db = get_db(request)
-    config = get_config(request)
-    if db is None or not config.repo_path:
-        return RedirectResponse(url="/settings")
-    system = next((s for s in db.list_systems() if s["name"] == system_name), None)
-    if system is None:
-        return RedirectResponse(url="/settings")
-    overrides = {o["file_path"]: o["verbosity"] for o in db.get_file_verbosity_overrides(system_name)}
-    repo = Path(config.repo_path)
-    files = []
-    for path_entry in system.get("paths", []):
-        abs_path = Path(path_entry) if Path(path_entry).is_absolute() else repo / path_entry
-        if abs_path.is_dir():
-            for h_file in sorted(abs_path.rglob("*.h")):
-                rel = str(h_file.relative_to(repo)).replace("\\", "/")
-                files.append({"file_path": rel, "verbosity_override": overrides.get(rel)})
-        elif abs_path.is_file() and abs_path.suffix == ".h":
-            rel = str(abs_path.relative_to(repo)).replace("\\", "/")
-            files.append({"file_path": rel, "verbosity_override": overrides.get(rel)})
-    return templates.TemplateResponse(request, "file_verbosity.html", {
-        "system": system,
-        "files": files,
-    })
 
 
 def _plugin_installed(repo_path: str | None) -> bool:
