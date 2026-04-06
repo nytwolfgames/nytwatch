@@ -32,14 +32,24 @@ class NYTWATCHAGENT_API UNytwatchSubsystem : public UEditorSubsystem
     GENERATED_BODY()
 
 public:
+    // Convenience getter — returns the subsystem or nullptr outside the editor.
+    // Use this from game code so GEditor never needs to be referenced directly:
+    //
+    //   if (auto* NW = UNytwatchSubsystem::Get())
+    //       NW->RegisterObject(this);
+    //
+    static UNytwatchSubsystem* Get();
+
     // UEditorSubsystem interface
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
     virtual void Deinitialize() override;
 
     // ── Registration API (called from game-thread BeginPlay / EndPlay) ───────
 
-    // Add Obj to the tracked list.  No-op when tracking is not active
-    // (outside PIE, or NytwatchConfig "status" is "Off").
+    // Add Obj to the tracked list.
+    // Eligibility is based entirely on whether the class's source file falls
+    // within an armed system's paths — no interface or annotation check.
+    // No-op when tracking is not active (outside PIE, or status "Off").
     // Must be called on the game thread.
     UFUNCTION()
     void RegisterObject(UObject* Obj);

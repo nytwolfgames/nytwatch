@@ -6,67 +6,73 @@
 #include "NytwatchTrackable.generated.h"
 
 // ---------------------------------------------------------------------------
-// Opt-in interface for classes that should be tracked by Nytwatch.
+// Optional interface for per-instance tracking control.
 //
-// Implementing this interface on a class does two things:
-//   1. Registers instances with the Nytwatch subsystem so their properties
-//      are polled each second — without this, even a correctly annotated
-//      class will not be tracked.
-//   2. Provides a per-instance enable/disable toggle via
-//      IsNytwatchTrackingEnabled().
+// This interface is NOT required for registration.  Any class that calls
+// RegisterObject(this) from BeginPlay will be tracked, provided its source
+// file falls within an armed system's paths and it carries a NytwatchVerbosity
+// tag.  INytwatchTrackable is only needed when you want a per-instance
+// enable/disable toggle.
 //
-// ── Required wiring ────────────────────────────────────────────────────────
+// ── Registration (required, interface-independent) ─────────────────────────
 //
-// In BeginPlay, call RegisterObject to add this instance to the tracked list:
+// Add these two calls to any class you want tracked.  Use the static
+// UNytwatchSubsystem::Get() accessor so your game code never has to
+// reference GEditor or link UnrealEd directly:
 //
+//   // MyActor.h
+//   virtual void BeginPlay() override;
+//   virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+//
+//   // MyActor.cpp
+//   #if WITH_EDITOR
 //   #include "NytwatchSubsystem.h"
+//   #endif
 //
 //   void AMyActor::BeginPlay()
 //   {
 //       Super::BeginPlay();
 //   #if WITH_EDITOR
-//       if (auto* NW = GEditor->GetEditorSubsystem<UNytwatchSubsystem>())
+//       if (auto* NW = UNytwatchSubsystem::Get())
 //           NW->RegisterObject(this);
 //   #endif
 //   }
 //
-// In EndPlay, unregister so stale entries are cleaned up immediately:
-//
 //   void AMyActor::EndPlay(const EEndPlayReason::Type Reason)
 //   {
 //   #if WITH_EDITOR
-//       if (auto* NW = GEditor->GetEditorSubsystem<UNytwatchSubsystem>())
+//       if (auto* NW = UNytwatchSubsystem::Get())
 //           NW->UnregisterObject(this);
 //   #endif
 //       Super::EndPlay(Reason);
 //   }
 //
-// Both calls are no-ops when tracking is not active (outside PIE, or when
-// NytwatchConfig.json has status "Off"), so they are safe to leave in
-// shipping builds as long as they are wrapped in #if WITH_EDITOR.
+// Both calls are no-ops when tracking is not active, so they are safe to
+// leave in your codebase wrapped in #if WITH_EDITOR.
 //
-// ── NytwatchVerbosity annotation ───────────────────────────────────────────
+// ── Per-instance toggle (optional, requires this interface) ────────────────
 //
-// The class (or individual UPROPERTYs) must still carry a NytwatchVerbosity
-// meta tag, otherwise no properties will be recorded even for registered
-// instances:
+// Implement INytwatchTrackable only when you need to suppress tracking on
+// specific instances at runtime.  Do NOT use #if WITH_EDITOR around the
+// inheritance — add NytwatchAgent as an editor-only Build.cs dependency
+// instead:
 //
-//   UCLASS(meta=(NytwatchVerbosity="Standard"))
-//   class AMyActor : public AActor, public INytwatchTrackable { ... };
+//   // ProjectAlpha.Build.cs
+//   if (Target.bBuildEditor)
+//       PrivateDependencyModuleNames.Add("NytwatchAgent");
 //
-// ── Per-instance toggle ─────────────────────────────────────────────────────
+//   // MyActor.h — no preprocessor in inheritance list (UHT limitation)
+//   class AMyActor : public AActor, public INytwatchTrackable { ... }
 //
-// Override IsNytwatchTrackingEnabled_Implementation() to expose a per-instance
-// enable/disable toggle in the Details panel:
-//
+//   // Per-instance Details-panel toggle
 //   UPROPERTY(EditAnywhere, Category="Nytwatch")
 //   bool bEnableNytwatchTrack = true;
 //
 //   virtual bool IsNytwatchTrackingEnabled_Implementation() const override
 //   { return bEnableNytwatchTrack; }
 //
-// The default implementation returns true — adding the interface alone does
-// not suppress tracking.
+// The default implementation returns true — implementing the interface alone
+// has no effect on tracking.
 // ---------------------------------------------------------------------------
 
 UINTERFACE(MinimalAPI, Blueprintable)

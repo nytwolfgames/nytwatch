@@ -127,22 +127,16 @@ Tag resolution order (highest priority first):
 3. `UCLASS` meta tag on a parent class (walks up to, but not including, `UObject`)
 4. No tag found → `Ignore` (property is never tracked)
 
-### Step 2 — Implement INytwatchTrackable and register
+### Step 2 — Register in BeginPlay / EndPlay
 
-The plugin uses an explicit registration model — it does **not** scan all UObjects. Each class that should be tracked must:
-
-1. Implement `INytwatchTrackable`
-2. Call `RegisterObject` in `BeginPlay` and `UnregisterObject` in `EndPlay`
+The plugin uses an explicit registration model — it does **not** scan all UObjects. Each class that should be tracked must call `RegisterObject` in `BeginPlay` and `UnregisterObject` in `EndPlay`. No interface is required for this.
 
 ```cpp
-#include "NytwatchTrackable.h"
-#include "NytwatchSubsystem.h"
-
+// MyActor.h
 UCLASS(meta=(NytwatchVerbosity="Standard"))
-class AMyCharacter : public ACharacter, public INytwatchTrackable
+class AMyCharacter : public ACharacter
 {
     GENERATED_BODY()
-
 public:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
@@ -150,11 +144,16 @@ public:
 ```
 
 ```cpp
+// MyActor.cpp
+#if WITH_EDITOR
+#include "NytwatchSubsystem.h"
+#endif
+
 void AMyCharacter::BeginPlay()
 {
     Super::BeginPlay();
 #if WITH_EDITOR
-    if (auto* NW = GEditor->GetEditorSubsystem<UNytwatchSubsystem>())
+    if (auto* NW = UNytwatchSubsystem::Get())
         NW->RegisterObject(this);
 #endif
 }
@@ -162,30 +161,43 @@ void AMyCharacter::BeginPlay()
 void AMyCharacter::EndPlay(const EEndPlayReason::Type Reason)
 {
 #if WITH_EDITOR
-    if (auto* NW = GEditor->GetEditorSubsystem<UNytwatchSubsystem>())
+    if (auto* NW = UNytwatchSubsystem::Get())
         NW->UnregisterObject(this);
 #endif
     Super::EndPlay(Reason);
 }
 ```
 
-Both calls are **no-ops** when tracking is not active (outside PIE, or `"status": "Off"`), so they are safe to leave in your codebase as long as they are wrapped in `#if WITH_EDITOR`.
+Both calls are **no-ops** when tracking is not active (outside PIE, or `"status": "Off"`).
 
-### Per-instance tracking toggle
+### Per-instance tracking toggle (optional)
 
-Override `IsNytwatchTrackingEnabled_Implementation()` to expose a per-instance toggle in the Details panel:
+To suppress tracking on specific instances at runtime, implement `INytwatchTrackable`. This is entirely optional — registration does not require it.
 
-```cpp
-UPROPERTY(EditAnywhere, Category="Nytwatch")
-bool bEnableNytwatchTrack = true;
+Because UHT does not allow preprocessor directives in a `UCLASS` inheritance list, add `NytwatchAgent` as an editor-only dependency in your game module's `Build.cs` instead of using `#if WITH_EDITOR` around the inheritance:
 
-virtual bool IsNytwatchTrackingEnabled_Implementation() const override
-{
-    return bEnableNytwatchTrack;
-}
+```csharp
+// ProjectAlpha.Build.cs
+if (Target.bBuildEditor)
+    PrivateDependencyModuleNames.Add("NytwatchAgent");
 ```
 
-If `IsNytwatchTrackingEnabled` returns `false` when `RegisterObject` is called, the instance is silently skipped. The default implementation returns `true`.
+Then inherit unconditionally:
+
+```cpp
+#include "NytwatchTrackable.h"
+
+class AMyCharacter : public ACharacter, public INytwatchTrackable
+{
+    UPROPERTY(EditAnywhere, Category="Nytwatch")
+    bool bEnableNytwatchTrack = true;
+
+    virtual bool IsNytwatchTrackingEnabled_Implementation() const override
+    { return bEnableNytwatchTrack; }
+};
+```
+
+The default implementation returns `true` — implementing the interface alone has no effect on tracking.
 
 ---
 

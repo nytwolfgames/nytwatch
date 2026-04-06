@@ -11,6 +11,19 @@
 DEFINE_LOG_CATEGORY_STATIC(LogNytwatchSubsystem, Log, All);
 
 // ---------------------------------------------------------------------------
+// Get  (static convenience accessor)
+// ---------------------------------------------------------------------------
+
+UNytwatchSubsystem* UNytwatchSubsystem::Get()
+{
+#if WITH_EDITOR
+    if (GEditor)
+        return GEditor->GetEditorSubsystem<UNytwatchSubsystem>();
+#endif
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // Initialize / Deinitialize
 // ---------------------------------------------------------------------------
 
@@ -147,18 +160,9 @@ void UNytwatchSubsystem::RegisterObject(UObject* Obj)
 {
     if (!bTrackingActive || !IsValid(Obj)) return;
 
-    // Respect per-instance toggle
-    if (Obj->GetClass()->ImplementsInterface(UNytwatchTrackable::StaticClass()))
-    {
-        if (!INytwatchTrackable::Execute_IsNytwatchTrackingEnabled(Obj))
-        {
-            UE_LOG(LogNytwatchSubsystem, Verbose,
-                TEXT("[NytwatchAgent] RegisterObject: '%s' has IsNytwatchTrackingEnabled=false — skipped."),
-                *Obj->GetName());
-            return;
-        }
-    }
-
+    // Eligibility is determined solely by whether the class's header falls
+    // within an armed system's paths.  Any object that explicitly calls
+    // RegisterObject is trusted to want tracking — no interface check here.
     const int32 SysIdx = FindSystemIndexForClass(Obj->GetClass());
     if (SysIdx == INDEX_NONE) return; // class not in any armed system
 
