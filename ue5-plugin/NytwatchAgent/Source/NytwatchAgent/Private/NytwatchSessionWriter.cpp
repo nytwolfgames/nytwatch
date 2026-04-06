@@ -166,11 +166,14 @@ void FNytwatchSessionWriter::Abort()
 // SendBatch  (game thread, each tick)
 // ---------------------------------------------------------------------------
 
-void FNytwatchSessionWriter::SendBatch(const TArray<FNytwatchEvent>& Events, float PIEElapsedSeconds)
+void FNytwatchSessionWriter::SendBatch(const TArray<FNytwatchEvent>& Events,
+                                       float PIEElapsedSeconds,
+                                       const FString& TimeLabel,
+                                       const FString& EventHeader)
 {
     if (!bReady || bCapReached || Events.Num() == 0) return;
 
-    const FString Json = BuildBatchJson(Events, PIEElapsedSeconds);
+    const FString Json = BuildBatchJson(Events, PIEElapsedSeconds, TimeLabel, EventHeader);
     WebSocket->Send(Json);
 
     TotalEventCount += Events.Num();
@@ -302,7 +305,9 @@ void FNytwatchSessionWriter::SendSessionClose(float DurationSeconds, const FStri
 // BuildBatchJson
 // ---------------------------------------------------------------------------
 
-FString FNytwatchSessionWriter::BuildBatchJson(const TArray<FNytwatchEvent>& Events, float T) const
+FString FNytwatchSessionWriter::BuildBatchJson(const TArray<FNytwatchEvent>& Events, float T,
+                                               const FString& TimeLabel,
+                                               const FString& EventHeader) const
 {
     FString EventsArray;
     EventsArray.Reserve(Events.Num() * 100);
@@ -324,11 +329,22 @@ FString FNytwatchSessionWriter::BuildBatchJson(const TArray<FNytwatchEvent>& Eve
         );
     }
 
+    // Build optional fields: time_label and event_header are omitted when empty
+    // so that legacy sessions (no adapter) produce identical output to before.
+    FString OptionalFields;
+    if (!TimeLabel.IsEmpty())
+        OptionalFields += FString::Printf(TEXT(",\"time_label\":\"%s\""),
+                                          *EscapeJsonString(TimeLabel));
+    if (!EventHeader.IsEmpty())
+        OptionalFields += FString::Printf(TEXT(",\"event_header\":\"%s\""),
+                                          *EscapeJsonString(EventHeader));
+
     return FString::Printf(
         TEXT("{\"type\":\"event_batch\","
              "\"session_id\":\"%s\","
-             "\"t\":%.2f,"
+             "\"t\":%.2f"
+             "%s,"
              "\"events\":[%s]}"),
-        *SessionId, T, *EventsArray
+        *SessionId, T, *OptionalFields, *EventsArray
     );
 }

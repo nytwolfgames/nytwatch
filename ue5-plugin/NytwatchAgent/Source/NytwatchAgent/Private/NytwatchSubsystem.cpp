@@ -63,6 +63,109 @@ void UNytwatchSubsystem::Deinitialize()
 }
 
 // ---------------------------------------------------------------------------
+// Causality / adapter API
+// ---------------------------------------------------------------------------
+
+void UNytwatchSubsystem::SetTimeProvider(INytwatchTimeProvider* Provider)
+{
+    TimeProvider = Provider;
+}
+
+void UNytwatchSubsystem::RequestDeferredPoll()
+{
+    // Schedule a deferred poll for the next tick.  No named event is added —
+    // all changed objects will appear in the routine block, labelled with the
+    // current time string from the provider.
+    bDeferredPollPending = true;
+}
+
+void UNytwatchSubsystem::LogEvent(const FString& NarrativeHeader,
+                                   const TArray<UObject*>& AffectedActors)
+{
+    bDeferredPollPending = true;
+
+    FNytwatchPendingEvent Event;
+    Event.NarrativeHeader = NarrativeHeader;
+    for (UObject* Obj : AffectedActors)
+    {
+        if (IsValid(Obj))
+            Event.AffectedActorKeys.Add(FObjectKey(Obj));
+    }
+    PendingEvents.Add(MoveTemp(Event));
+}
+
+// ---------------------------------------------------------------------------
+// RunDeferredPoll
+// ---------------------------------------------------------------------------
+
+void UNytwatchSubsystem::RunDeferredPoll()
+{
+    // Get time label once — all batches sent this tick share the same label.
+    const FString TimeLabel = TimeProvider ? TimeProvider->GetCurrentTimeString() : TEXT("");
+
+    // Build a fast FObjectKey → named-event-index map.
+    // First-listed event wins when an actor appears in multiple events.
+    TMap<FObjectKey, int32> ActorToEventIdx;
+    for (int32 EventIdx = 0; EventIdx < PendingEvents.Num(); ++EventIdx)
+    {
+        for (const FObjectKey& Key : PendingEvents[EventIdx].AffectedActorKeys)
+            ActorToEventIdx.FindOrAdd(Key, EventIdx);
+    }
+
+    // Per-named-event batches + one routine batch for everything else.
+    TArray<TArray<FNytwatchEvent>> PerEventBatches;
+    PerEventBatches.SetNum(PendingEvents.Num());
+    TArray<FNytwatchEvent> RoutineBatch;
+
+    // Poll all tracked objects and route each event to the correct batch.
+    for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
+    {
+        UObject* Obj = TrackedObjects[i].Object.Get();
+        if (!Obj || !IsValid(Obj))
+        {
+            TrackedObjects.RemoveAtSwap(i);
+            continue;
+        }
+        if (TrackedObjects[i].SystemIdx >= Config.ArmedSystems.Num()) continue;
+
+        const FNytwatchSystemConfig& System = Config.ArmedSystems[TrackedObjects[i].SystemIdx];
+        TArray<FNytwatchEvent> ObjEvents;
+        Tracker.PollObject(Obj, System, PIEElapsedSeconds, ObjEvents);
+        if (ObjEvents.IsEmpty()) continue;
+
+        if (const int32* EventIdx = ActorToEventIdx.Find(FObjectKey(Obj)))
+            PerEventBatches[*EventIdx].Append(ObjEvents);
+        else
+            RoutineBatch.Append(ObjEvents);
+    }
+
+    // Send routine batch (no event header).
+    if (RoutineBatch.Num() > 0)
+    {
+        UE_LOG(LogNytwatchSubsystem, Verbose,
+            TEXT("[NytwatchAgent] Deferred poll — routine batch: %d event(s)."),
+            RoutineBatch.Num());
+        Writer.SendBatch(RoutineBatch, PIEElapsedSeconds, TimeLabel, TEXT(""));
+    }
+
+    // Send one batch per named event.
+    for (int32 i = 0; i < PendingEvents.Num(); ++i)
+    {
+        if (PerEventBatches[i].Num() > 0)
+        {
+            UE_LOG(LogNytwatchSubsystem, Verbose,
+                TEXT("[NytwatchAgent] Deferred poll — event batch: %d event(s) [%s]."),
+                PerEventBatches[i].Num(), *PendingEvents[i].NarrativeHeader);
+            Writer.SendBatch(PerEventBatches[i], PIEElapsedSeconds,
+                             TimeLabel, PendingEvents[i].NarrativeHeader);
+        }
+    }
+
+    PendingEvents.Reset();
+    bDeferredPollPending = false;
+}
+
+// ---------------------------------------------------------------------------
 // OnBeginPIE
 // ---------------------------------------------------------------------------
 
@@ -72,10 +175,12 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
     TrackedObjects.Reset();
+    PendingEvents.Reset();
     PIEElapsedSeconds       = 0.f;
     TimeSinceConfigReload   = 0.f;
     ConnectionWaitSeconds   = 0.f;
     bTrackingActive         = false;
+    bDeferredPollPending    = false;
 
     const FString ProjectDir =
         FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
@@ -155,6 +260,8 @@ void UNytwatchSubsystem::OnEndPIE(bool /*bIsSimulating*/)
         Writer.GetTotalEventCount(), TrackedObjects.Num());
 
     TrackedObjects.Reset();
+    PendingEvents.Reset();
+    bDeferredPollPending = false;
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
 
@@ -433,31 +540,46 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
     if (Writer.IsCapReached()) return true;
 
     // ── Poll objects and send batch ──────────────────────────────────────────
-    TArray<FNytwatchEvent> BatchEvents;
-
-    for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
+    if (bDeferredPollPending)
     {
-        UObject* Obj = TrackedObjects[i].Object.Get();
-        if (!Obj || !IsValid(Obj))
+        // A deferred poll was requested by an adapter (via RequestDeferredPoll
+        // or LogEvent).  RunDeferredPoll handles grouping by event context,
+        // clears bDeferredPollPending, and sends all batches.
+        RunDeferredPoll();
+    }
+    else
+    {
+        // Routine wall-clock poll — no named event context.
+        const FString TimeLabel = TimeProvider
+            ? TimeProvider->GetCurrentTimeString()
+            : TEXT("");
+
+        TArray<FNytwatchEvent> BatchEvents;
+
+        for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
         {
-            TrackedObjects.RemoveAtSwap(i);
-            continue;
+            UObject* Obj = TrackedObjects[i].Object.Get();
+            if (!Obj || !IsValid(Obj))
+            {
+                TrackedObjects.RemoveAtSwap(i);
+                continue;
+            }
+
+            if (TrackedObjects[i].SystemIdx >= Config.ArmedSystems.Num()) continue;
+
+            const FNytwatchSystemConfig& System = Config.ArmedSystems[TrackedObjects[i].SystemIdx];
+            TArray<FNytwatchEvent> ObjEvents;
+            Tracker.PollObject(Obj, System, PIEElapsedSeconds, ObjEvents);
+            BatchEvents.Append(ObjEvents);
         }
 
-        if (TrackedObjects[i].SystemIdx >= Config.ArmedSystems.Num()) continue;
-
-        const FNytwatchSystemConfig& System = Config.ArmedSystems[TrackedObjects[i].SystemIdx];
-        TArray<FNytwatchEvent> ObjEvents;
-        Tracker.PollObject(Obj, System, PIEElapsedSeconds, ObjEvents);
-        BatchEvents.Append(ObjEvents);
-    }
-
-    if (BatchEvents.Num() > 0)
-    {
-        UE_LOG(LogNytwatchSubsystem, Verbose,
-            TEXT("[NytwatchAgent] Sending batch: %d event(s), t=%.2fs, %d object(s) polled."),
-            BatchEvents.Num(), PIEElapsedSeconds, TrackedObjects.Num());
-        Writer.SendBatch(BatchEvents, PIEElapsedSeconds);
+        if (BatchEvents.Num() > 0)
+        {
+            UE_LOG(LogNytwatchSubsystem, Verbose,
+                TEXT("[NytwatchAgent] Sending batch: %d event(s), t=%.2fs, %d object(s) polled."),
+                BatchEvents.Num(), PIEElapsedSeconds, TrackedObjects.Num());
+            Writer.SendBatch(BatchEvents, PIEElapsedSeconds, TimeLabel, TEXT(""));
+        }
     }
 
     return true; // keep ticking

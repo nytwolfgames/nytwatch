@@ -7,6 +7,7 @@
 #include "NytwatchPropertyTracker.h"
 #include "NytwatchSessionWriter.h"
 #include "NytwatchTrackable.h"
+#include "INytwatchTimeProvider.h"
 
 #include "NytwatchSubsystem.generated.h"
 
@@ -59,6 +60,28 @@ public:
     UFUNCTION()
     void UnregisterObject(UObject* Obj);
 
+    // ── Causality / adapter API ──────────────────────────────────────────────
+
+    // Set the active game-time provider.  Pass nullptr to revert to wall-clock
+    // seconds.  The adapter for the outgoing gameplay mode should clear this
+    // before the next adapter sets it, or check GetTimeProvider() == this first
+    // to avoid overwriting a provider already set by the incoming mode.
+    void SetTimeProvider(INytwatchTimeProvider* Provider);
+    INytwatchTimeProvider* GetTimeProvider() const { return TimeProvider; }
+
+    // Schedule a deferred poll on the next tick with no named event.
+    // Use this from routine game-time tick handlers (e.g. DayPassed) so that
+    // the poll captures fully-settled post-tick state rather than partial state
+    // mid-broadcast.
+    void RequestDeferredPoll();
+
+    // Schedule a deferred poll on the next tick attributed to a named event.
+    // NarrativeHeader is written verbatim as the output block header.
+    // AffectedActors determines which polled objects are grouped under this
+    // event; all other changed objects fall into the routine block.
+    // Safe to call multiple times per frame — each call enqueues one event.
+    void LogEvent(const FString& NarrativeHeader, const TArray<UObject*>& AffectedActors);
+
 private:
     // ── PIE delegates ────────────────────────────────────────────────────────
     void OnBeginPIE(bool bIsSimulating);
@@ -84,6 +107,12 @@ private:
     // Called once per class at RegisterObject time, not during polling.
     int32 FindSystemIndexForClass(UClass* Class);
 
+    // ── Deferred poll ────────────────────────────────────────────────────────
+    // Executes the pending deferred poll: polls all tracked objects once,
+    // groups their deltas by event context, and sends one batch per context.
+    // Called from OnTick() when bDeferredPollPending is true.
+    void RunDeferredPoll();
+
     // ── Tracked object list ──────────────────────────────────────────────────
     struct FTrackedObject
     {
@@ -92,10 +121,22 @@ private:
     };
     TArray<FTrackedObject> TrackedObjects;
 
+    // ── Pending event queue (populated by LogEvent / RequestDeferredPoll) ────
+    struct FNytwatchPendingEvent
+    {
+        FString            NarrativeHeader;   // empty = routine poll block
+        TArray<FObjectKey> AffectedActorKeys; // GC-safe; determines output grouping
+    };
+    TArray<FNytwatchPendingEvent> PendingEvents;
+    bool bDeferredPollPending = false;
+
     // ── State ────────────────────────────────────────────────────────────────
     FNytwatchConfig          Config;
     FNytwatchPropertyTracker Tracker;
     FNytwatchSessionWriter   Writer;
+
+    // Optional game-time provider set by the adapter.  Null = wall-clock fallback.
+    INytwatchTimeProvider* TimeProvider = nullptr;
 
     FTSTicker::FDelegateHandle TickHandle;
     FDelegateHandle            CrashDelegateHandle;

@@ -42,7 +42,15 @@ public:
 
     // Send all events produced in one tick as a single batch message.
     // No-op if bReady is false (still connecting) or bCapReached is true.
-    void SendBatch(const TArray<FNytwatchEvent>& Events, float PIEElapsedSeconds);
+    //
+    // TimeLabel    — human-readable game-time string from the adapter's
+    //                INytwatchTimeProvider (e.g. "Day 45, Year 2, Hour 14").
+    //                Pass empty string when no time provider is set.
+    // EventHeader  — narrative description of the named event that caused
+    //                these changes (e.g. "GreenskinHorde captured Thornvale").
+    //                Pass empty string for routine wall-clock poll batches.
+    void SendBatch(const TArray<FNytwatchEvent>& Events, float PIEElapsedSeconds,
+                   const FString& TimeLabel, const FString& EventHeader);
 
     // Send session_close with end_reason "normal".
     // Does NOT close the WebSocket immediately — call FlushAndDisconnect()
@@ -83,7 +91,8 @@ private:
     // ── Message builders ─────────────────────────────────────────────────────
     void    SendSessionOpen();
     void    SendSessionClose(float DurationSeconds, const FString& EndReason);
-    FString BuildBatchJson(const TArray<FNytwatchEvent>& Events, float T) const;
+    FString BuildBatchJson(const TArray<FNytwatchEvent>& Events, float T,
+                           const FString& TimeLabel, const FString& EventHeader) const;
 
     static FString EscapeJsonString(const FString& Str);
 
