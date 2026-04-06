@@ -27,14 +27,58 @@
 <!-- ════════════════════════════════════════════════════════════════════════ -->
 <div id="pane-sessions" {% if active_tab == 'tracking' %}style="display:none;"{% endif %}>
 
-{% if not sessions %}
+{% if config.repo_path and plugin_installed %}
+<!-- ── Tracking controls bar ──────────────────────────────────────────────── -->
+<div class="card mb-4" style="padding:14px 20px;">
+    <div style="display:flex;align-items:center;gap:var(--sp-5);flex-wrap:wrap;">
+        <button id="tracking-toggle-btn" class="btn btn-sm scan-safe"
+                onclick="toggleTracking()"
+                style="min-width:118px;{% if tracking_active %}background:var(--severity-critical);color:white;{% endif %}">
+            {{ 'Stop Tracking' if tracking_active else 'Start Tracking' }}
+        </button>
+        <div style="display:flex;align-items:center;gap:6px;">
+            <label class="body-sm text-outline" style="white-space:nowrap;">Tick (s)</label>
+            <input id="tracking-tick" type="number" class="input" step="0.05" min="0.05" max="5"
+                   style="width:90px;font-size:0.8rem;" value="{{ tracking_tick }}"
+                   onchange="saveTrackingConfig()">
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+            <label class="body-sm text-outline" style="white-space:nowrap;">Scan cap</label>
+            <input id="tracking-cap" type="number" class="input" step="100" min="100" max="10000"
+                   style="width:100px;font-size:0.8rem;" value="{{ tracking_cap }}"
+                   onchange="saveTrackingConfig()">
+        </div>
+        <span id="tracking-save-status" class="body-sm text-variant" style="flex:1;"></span>
+    </div>
+</div>
+{% endif %}
+
+{% if config.repo_path and not plugin_installed %}
+<!-- ── Plugin not configured card ────────────────────────────────────────── -->
+<div id="plugin-not-configured-card" class="card" style="text-align:center;padding:var(--sp-10);">
+    <div style="font-size:2rem;margin-bottom:var(--sp-3);">🔌</div>
+    <div class="headline-md mb-2">Plugin not configured</div>
+    <p class="body-md text-variant mb-4">
+        The NytwatchAgent UE5 plugin is not installed in this project.<br>
+        Run the installer, then reopen the project in Unreal Editor.
+    </p>
+    <div style="display:flex;align-items:center;justify-content:center;gap:var(--sp-3);flex-wrap:wrap;">
+        <code class="mono" style="font-size:0.8rem;padding:4px 10px;background:var(--surface-variant);border-radius:6px;">scripts/windows/install-plugin.ps1</code>
+        <span class="body-sm text-outline">or</span>
+        <code class="mono" style="font-size:0.8rem;padding:4px 10px;background:var(--surface-variant);border-radius:6px;">nytwatch install-plugin --project &lt;path&gt;</code>
+    </div>
+    <div style="margin-top:var(--sp-5);">
+        <button onclick="checkPlugin()" class="btn btn-primary scan-safe" id="plugin-check-btn">↻ Re-check</button>
+    </div>
+</div>
+{% elif not sessions %}
 <div class="card" style="text-align:center;padding:var(--sp-10);">
     <div style="font-size:2rem;margin-bottom:var(--sp-3);">⏱</div>
     <div class="headline-md mb-2">No sessions yet</div>
     <p class="body-md text-variant mb-4">
-        Arm systems in the Tracking tab and start a PIE session to record gameplay data.
+        Arm systems in the Tracking tab, then start a PIE session to record gameplay data.
     </p>
-    <a href="/sessions?tab=tracking" class="btn btn-primary">Open Tracking</a>
+    <a href="/sessions?tab=tracking" class="btn btn-primary">Configure Systems</a>
 </div>
 {% else %}
 <div class="sessions-layout">
@@ -183,36 +227,11 @@
 </div>
 {% else %}
 <div class="card mb-6" id="tracking-section">
-    <div class="flex items-center gap-3 mb-1">
-        <div class="section-label" style="flex:1;">Nytwatch Tracking</div>
-        <button id="tracking-toggle-btn" class="btn btn-sm scan-safe"
-                onclick="toggleTracking()"
-                style="min-width:110px;">
-            {{ 'Stop Tracking' if tracking_active else 'Start Tracking' }}
-        </button>
-    </div>
+    <div class="section-label mb-1">Systems</div>
     <p class="body-sm text-variant mb-4">
-        Arm systems below, then click <strong>Start Tracking</strong>.
-        The NytwatchAgent plugin reads the config on the next PIE start.
+        Arm systems to include them in tracking sessions.
+        Changes take effect on the next PIE start.
     </p>
-
-    <div style="display:flex;gap:var(--sp-6);flex-wrap:wrap;margin-bottom:var(--sp-5);">
-        <div>
-            <label class="body-sm text-outline" style="display:block;margin-bottom:4px;">Tick interval (seconds)</label>
-            <input id="tracking-tick" type="number" class="input" step="0.05" min="0.05" max="5"
-                   style="width:120px;" value="{{ tracking_tick }}"
-                   onchange="saveTrackingConfig()">
-        </div>
-        <div>
-            <label class="body-sm text-outline" style="display:block;margin-bottom:4px;">Object scan cap</label>
-            <input id="tracking-cap" type="number" class="input" step="100" min="100" max="10000"
-                   style="width:130px;" value="{{ tracking_cap }}"
-                   onchange="saveTrackingConfig()">
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-            <span id="tracking-save-status" class="body-sm text-variant"></span>
-        </div>
-    </div>
 
     {% if grouped_tracking %}
     <style>
@@ -989,9 +1008,31 @@ function closeVerbosityDrawer() {
     _vdSystem = null;
 }
 
+// ── Plugin check ─────────────────────────────────────────────────────────────
+async function checkPlugin() {
+    const btn = document.getElementById('plugin-check-btn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+        const r = await fetch('/api/nytwatch/plugin-check');
+        const d = await r.json();
+        if (d.installed) {
+            // Reload so the page re-renders with plugin_installed=true
+            window.location.reload();
+        } else {
+            btn.textContent = '↻ Re-check';
+            btn.disabled = false;
+        }
+    } catch {
+        btn.textContent = '↻ Re-check';
+        btn.disabled = false;
+    }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
-// Reflect initial tracking state on button
 (function() {
+    // Tracking toggle button lives in the sessions pane — always in DOM
     const btn = document.getElementById('tracking-toggle-btn');
     if (btn && _trackingActive) {
         btn.style.background = 'var(--severity-critical)';

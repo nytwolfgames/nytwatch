@@ -62,10 +62,14 @@ def _heuristic_classify(repo: Path) -> tuple[dict[str, str], list[str]]:
     source_dir = repo / "Source"
     plugins_dir = repo / "Plugins"
 
-    # Rule 1: Everything under Plugins/ is active (it's code we may care about)
+    # Rule 1: Everything under Plugins/ is active (it's code we may care about),
+    # except NytwatchAgent which is the tracking agent itself and should not be scanned.
+    _excluded_plugins = {"NytwatchAgent"}
     if plugins_dir.exists():
         for item in plugins_dir.iterdir():
             if item.is_dir():
+                if item.name in _excluded_plugins:
+                    continue
                 rel = normalize_path(str(item.relative_to(repo)))
                 classified[rel] = "active"
 
@@ -79,9 +83,12 @@ def _heuristic_classify(repo: Path) -> tuple[dict[str, str], list[str]]:
                 elif rel not in classified:
                     classified[rel] = "active"
 
-    # Rule 3: Check for .uplugin files anywhere else (in-project plugins)
+    # Rule 3: Check for .uplugin files anywhere else (in-project plugins),
+    # but skip NytwatchAgent — it is the tracking agent, not game code.
     for uplugin in repo.rglob("*.uplugin"):
         plugin_dir = uplugin.parent
+        if plugin_dir.name in _excluded_plugins:
+            continue
         rel = normalize_path(str(plugin_dir.relative_to(repo)))
         if rel not in classified:
             classified[rel] = "active"

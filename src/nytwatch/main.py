@@ -157,6 +157,11 @@ def run():
     install_parser.add_argument("--project", required=True, help="Path to the UE game project root")
     install_parser.add_argument("--force", action="store_true", help="Reinstall even if already up to date")
 
+    # list-projects command (used by install scripts)
+    subparsers.add_parser(
+        "list-projects", help="List all configured Nytwatch projects as JSON"
+    )
+
     # scan command
     scan_parser = subparsers.add_parser("scan", help="Run a scan immediately")
     scan_parser.add_argument("--config", default=None, help="Config file path")
@@ -168,6 +173,12 @@ def run():
     if args.command == "install-plugin":
         from nytwatch.tracking.plugin_installer import install_plugin
         sys.exit(install_plugin(args.project, force=args.force))
+
+    if args.command == "list-projects":
+        import json
+        from nytwatch.config import list_project_configs
+        print(json.dumps(list_project_configs()))
+        return
 
     if args.command == "init":
         config_path = args.config

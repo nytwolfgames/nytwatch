@@ -2050,6 +2050,19 @@ async def file_verbosity_page(request: Request, system_name: str):
     })
 
 
+def _plugin_installed(repo_path: str | None) -> bool:
+    """Return True if NytwatchAgent plugin directory exists in the project."""
+    if not repo_path:
+        return False
+    return (Path(repo_path) / "Plugins" / "NytwatchAgent").is_dir()
+
+
+@router.get("/api/nytwatch/plugin-check")
+async def api_plugin_check(request: Request):
+    config = get_config(request)
+    return JSONResponse({"installed": _plugin_installed(config.repo_path)})
+
+
 @router.get("/sessions", response_class=HTMLResponse)
 async def sessions_page(request: Request):
     db = get_db(request)
@@ -2062,6 +2075,7 @@ async def sessions_page(request: Request):
     tracking_active = getattr(request.app.state, "tracking_active", False)
     tracking_tick = db.get_config("tracking_tick_interval", "0.1") if db else "0.1"
     tracking_cap = db.get_config("tracking_scan_cap", "2000") if db else "2000"
+    plugin_installed = _plugin_installed(config.repo_path)
 
     # Build grouped structure for the tracking systems table
     all_systems = db.list_systems() if db else []
@@ -2095,6 +2109,7 @@ async def sessions_page(request: Request):
         "has_tracking_grouping": has_tracking_grouping,
         "tracking_tick": tracking_tick,
         "tracking_cap": tracking_cap,
+        "plugin_installed": plugin_installed,
     })
 
 
