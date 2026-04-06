@@ -411,7 +411,7 @@
             clearTimeout(_pieSavedTimer);
             const session = data.session || {};
             const name = session.display_name || session.id || 'session';
-            const link = `/tracker?highlight=${session.id || ''}`;
+            const link = `/tracker/sessions?highlight=${session.id || ''}`;
             _showPieBanner('saved',
                 `Session saved — <a href="${link}" style="color:#86efac;text-decoration:underline;">${name}</a>`,
                 '');

@@ -8,24 +8,24 @@
 
 <!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
 <div style="display:flex;gap:0;border-bottom:2px solid var(--outline-variant);margin-bottom:var(--sp-6);">
-    <a id="tab-sessions" href="/tracker?tab=sessions"
+    <a id="tab-sessions" href="/tracker/sessions"
        style="padding:8px 20px;font-size:0.875rem;font-weight:500;text-decoration:none;
               border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;
-              {% if active_tab != 'tracking' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
+              {% if active_tab == 'sessions' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
         Sessions
     </a>
-    <a id="tab-tracking" href="/tracker?tab=tracking"
+    <a id="tab-systems" href="/tracker/systems"
        style="padding:8px 20px;font-size:0.875rem;font-weight:500;text-decoration:none;
               border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;
-              {% if active_tab == 'tracking' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
-        Tracking
+              {% if active_tab == 'systems' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
+        Systems
     </a>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Sessions                                                           -->
 <!-- ════════════════════════════════════════════════════════════════════════ -->
-<div id="pane-sessions" {% if active_tab == 'tracking' %}style="display:none;"{% endif %}>
+<div id="pane-sessions" {% if active_tab != 'sessions' %}style="display:none;"{% endif %}>
 
 {% if config.repo_path and plugin_installed %}
 <!-- ── Tracking controls bar ──────────────────────────────────────────────── -->
@@ -78,7 +78,7 @@
     <p class="body-md text-variant mb-4">
         Arm systems in the Tracking tab, then start a PIE session to record gameplay data.
     </p>
-    <a href="/tracker?tab=tracking" class="btn btn-primary">Configure Systems</a>
+    <a href="/tracker/systems" class="btn btn-primary">Configure Systems</a>
 </div>
 {% else %}
 <div class="sessions-layout">
@@ -215,9 +215,9 @@
 </div><!-- #pane-sessions -->
 
 <!-- ════════════════════════════════════════════════════════════════════════ -->
-<!-- TAB: Tracking                                                           -->
+<!-- TAB: Systems                                                            -->
 <!-- ════════════════════════════════════════════════════════════════════════ -->
-<div id="pane-tracking" {% if active_tab != 'tracking' %}style="display:none;"{% endif %}>
+<div id="pane-systems" {% if active_tab != 'systems' %}style="display:none;"{% endif %}>
 
 {% if not config.repo_path %}
 <div class="card" style="text-align:center;padding:var(--sp-10);">
@@ -326,7 +326,7 @@
 </div>
 {% endif %}
 
-</div><!-- #pane-tracking -->
+</div><!-- #pane-systems -->
 
 <!-- ── File verbosity drawer ──────────────────────────────────────────────── -->
 <div id="verbosity-backdrop" onclick="closeVerbosityDrawer()"
@@ -429,7 +429,7 @@ async function selectSession(id) {
         if (!d.session) return;
         _activeData = d.session;
         renderDetail(d.session);
-        history.replaceState(null, '', `/tracker?tab=sessions&highlight=${id}`);
+        history.replaceState(null, '', `/tracker/sessions?highlight=${id}`);
     } catch (e) {
         console.error('Failed to load session', e);
     }

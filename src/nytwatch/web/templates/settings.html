@@ -110,7 +110,7 @@
             <div class="dir-item" data-path="{{ d.path }}">
                 <span class="mono body-sm" style="flex:1;word-break:break-all;">{{ d.path }}</span>
                 <button onclick='openReclassify({{ d.path | tojson }})'
-                        class="btn btn-sm" style="margin-right:4px;"
+                        class="btn btn-sm btn-secondary" style="margin-right:4px;"
                         title="Reclassify systems for this directory">
                     {{ d.system_count }} system{{ 's' if d.system_count != 1 else '' }}
                 </button>
@@ -488,7 +488,7 @@ function _sysValidationErrors(systems) {
         const name = (s.name || '').trim();
         if (!name) continue;
         if (seenNames[name]) {
-            const msg = `Duplicate system name: "${name}"`;
+            const msg = `System name: "${name}" conflicts with another system`;
             if (!errors.includes(msg)) errors.push(msg);
         } else {
             seenNames[name] = true;

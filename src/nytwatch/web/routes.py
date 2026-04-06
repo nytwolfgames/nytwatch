@@ -1107,7 +1107,7 @@ def _validate_systems(systems: list[dict]) -> list[str]:
         if not name:
             continue
         if name in seen_names:
-            msg = f'Duplicate system name: "{name}"'
+            msg = f'System name: "{name}" conflicts with another system'
             if msg not in errors:
                 errors.append(msg)
         else:
@@ -2256,20 +2256,25 @@ async def api_plugin_check(request: Request):
 
 
 @router.get("/tracker", response_class=HTMLResponse)
-async def sessions_page(request: Request):
+async def tracker_redirect(request: Request):
+    highlight = request.query_params.get("highlight")
+    if highlight:
+        return RedirectResponse(url=f"/tracker/sessions?highlight={highlight}")
+    return RedirectResponse(url="/tracker/sessions")
+
+
+async def _tracker_response(request: Request, active_tab: str, highlight: Optional[str] = None):
     db = get_db(request)
     if db is None:
         return RedirectResponse(url="/settings?setup=1")
     config = get_config(request)
     sessions = db.list_sessions(project_dir=config.repo_path or None)
-    highlight = request.query_params.get("highlight")
-    tab = request.query_params.get("tab", "sessions")
     tracking_active = getattr(request.app.state, "tracking_active", False)
     tracking_tick = db.get_config("tracking_tick_interval", "0.1") if db else "0.1"
     tracking_cap = db.get_config("tracking_scan_cap", "2000") if db else "2000"
     plugin_installed = _plugin_installed(config.repo_path)
 
-    # Build grouped structure for the tracking systems table
+    # Build grouped structure for the systems table
     all_systems = db.list_systems() if db else []
     all_source_dirs = db.list_source_dirs() if db else []
     source_dir_map = {d["path"]: d["source_type"] for d in all_source_dirs}
@@ -2294,7 +2299,7 @@ async def sessions_page(request: Request):
     return templates.TemplateResponse(request, "tracker.html", {
         "sessions": sessions,
         "highlight": highlight,
-        "active_tab": tab,
+        "active_tab": active_tab,
         "config": config,
         "tracking_active": tracking_active,
         "grouped_tracking": grouped_tracking,
@@ -2303,6 +2308,17 @@ async def sessions_page(request: Request):
         "tracking_cap": tracking_cap,
         "plugin_installed": plugin_installed,
     })
+
+
+@router.get("/tracker/sessions", response_class=HTMLResponse)
+async def tracker_sessions(request: Request):
+    highlight = request.query_params.get("highlight")
+    return await _tracker_response(request, active_tab="sessions", highlight=highlight)
+
+
+@router.get("/tracker/systems", response_class=HTMLResponse)
+async def tracker_systems(request: Request):
+    return await _tracker_response(request, active_tab="systems")
 
 
 @router.get("/api/sessions")

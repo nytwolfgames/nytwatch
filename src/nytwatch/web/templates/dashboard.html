@@ -75,7 +75,7 @@
         </thead>
         <tbody>
             {% for s in recent_sessions %}
-            <tr style="cursor:pointer;" onclick="location.href='/tracker?highlight={{ s.id }}'">
+            <tr style="cursor:pointer;" onclick="location.href='/tracker/sessions?highlight={{ s.id }}'">
                 <td>
                     <span style="font-weight:500;">{{ s.display_name if s.display_name != s.id else (s.ue_project_name ~ ' ' ~ s.started_at[:10] if s.ue_project_name else s.id[:8]) }}</span>
                     {% if s.bookmarked %}
