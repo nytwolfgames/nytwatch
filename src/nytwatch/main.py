@@ -45,6 +45,15 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     async def startup():
         ws_manager.set_loop(asyncio.get_event_loop())
 
+        # Recover any .ndjson orphans left from a previous server run.
+        if config.repo_path:
+            try:
+                await tracking_ws_handler.recover_orphans(
+                    config.repo_path, ws_manager, db
+                )
+            except Exception:
+                logger.exception("Orphan session recovery failed")
+
     if config.repo_path:
         db = Database(get_db_path(config, config_path))
         db.init_schema()
@@ -76,6 +85,11 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     app.state.db = db
     app.state.config = config
     app.state.config_path = str(config_path) if config_path else ""
+
+    # WebSocket handler for plugin tracking sessions
+    from nytwatch.tracking.tracking_ws import TrackingWebSocketHandler
+    tracking_ws_handler = TrackingWebSocketHandler()
+    app.state.tracking_ws_handler = tracking_ws_handler
 
     # Start filesystem watcher for the active project
     from nytwatch.tracking.watcher import TrackingWatcher

@@ -22,6 +22,7 @@ public class NytwatchAgent : ModuleRules
             "JsonUtilities",     // FJsonObjectConverter
             "Slate",             // FSlateNotificationManager
             "SlateCore",
+            "WebSockets",        // IWebSocket / FWebSocketsModule
         });
 
         PublicDefinitions.Add("NYTWATCH_PLUGIN_VERSION=\"1.0.0\"");

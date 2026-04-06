@@ -1,166 +1,178 @@
 #include "NytwatchSessionWriter.h"
 
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
 #include "Misc/Guid.h"
 #include "Misc/DateTime.h"
 #include "Misc/App.h"
-#include "HAL/FileManager.h"
-#include "HAL/PlatformFileManager.h"
-#include "HAL/PlatformProcess.h"
-#include "HAL/RunnableThread.h"
-#include "GenericPlatform/GenericPlatformFile.h"
+#include "IWebSocket.h"
+#include "WebSocketsModule.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogNytwatchWriter, Log, All);
 
 // ---------------------------------------------------------------------------
-// Formatting helpers
+// JSON helpers
 // ---------------------------------------------------------------------------
 
-FString FNytwatchSessionWriter::StripUEPrefix(const FString& Name)
+FString FNytwatchSessionWriter::EscapeJsonString(const FString& Str)
 {
-    if (Name.Len() >= 2
-        && (Name[0] == TEXT('A') || Name[0] == TEXT('U'))
-        && FChar::IsUpper(Name[1]))
-    {
-        return Name.Mid(1);
-    }
-    return Name;
-}
-
-FString FNytwatchSessionWriter::TrimFloat(double Val, int32 Precision)
-{
-    if (FMath::Abs(Val) < 1e-9) return TEXT("0");
-
-    FString S = FString::Printf(TEXT("%.*f"), Precision, Val);
-    if (S.Contains(TEXT(".")))
-    {
-        while (S.EndsWith(TEXT("0"))) S.LeftChopInline(1);
-        if (S.EndsWith(TEXT(".")))    S.LeftChopInline(1);
-    }
-    return S;
-}
-
-FString FNytwatchSessionWriter::FormatBool(const FString& Val)
-{
-    if (Val == TEXT("True"))  return TEXT("T");
-    if (Val == TEXT("False")) return TEXT("F");
-    return Val;
+    FString Out = Str;
+    // Order matters: backslash first
+    Out.ReplaceInline(TEXT("\\"), TEXT("\\\\"), ESearchCase::CaseSensitive);
+    Out.ReplaceInline(TEXT("\""), TEXT("\\\""), ESearchCase::CaseSensitive);
+    Out.ReplaceInline(TEXT("\n"), TEXT("\\n"),  ESearchCase::CaseSensitive);
+    Out.ReplaceInline(TEXT("\r"), TEXT("\\r"),  ESearchCase::CaseSensitive);
+    Out.ReplaceInline(TEXT("\t"), TEXT("\\t"),  ESearchCase::CaseSensitive);
+    return Out;
 }
 
 // ---------------------------------------------------------------------------
 // Open  (game thread)
 // ---------------------------------------------------------------------------
 
-void FNytwatchSessionWriter::Open(const FNytwatchConfig& Config, const FString& ProjectDir)
+void FNytwatchSessionWriter::Open(const FNytwatchConfig& Config)
 {
+    // Reset all state from any previous session
     bIsOpen           = false;
+    bReady            = false;
     bCapReached       = false;
+    bNeedsReconnect   = false;
+    ReconnectAttempts = 0;
     TotalEventCount   = 0;
-    bStopRequested.AtomicSet(false);
-    AccumulatedEvents.Reset();
 
-    // Directories
-    const FString NytwatchDir = FPaths::Combine(ProjectDir, TEXT("Saved"), TEXT("Nytwatch"));
-    const FString SessionsDir = FPaths::Combine(NytwatchDir, TEXT("Sessions"));
-    IFileManager::Get().MakeDirectory(*NytwatchDir, true);
-    IFileManager::Get().MakeDirectory(*SessionsDir, true);
+    WebSocketUrl = Config.WebSocketUrl;
+    if (WebSocketUrl.IsEmpty())
+    {
+        UE_LOG(LogNytwatchWriter, Error,
+            TEXT("[NytwatchAgent] NytwatchConfig.json has no tracking_ws_url — tracking disabled."));
+        return;
+    }
 
-    // Session ID + paths
-    SessionId        = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
-    SessionFilePath  = FPaths::Combine(SessionsDir, SessionId + TEXT(".md"));
-
-    // Timestamps
+    // Session ID and timestamps
+    SessionId    = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
     StartedAtDT  = FDateTime::UtcNow();
     StartedAtStr = StartedAtDT.ToString(TEXT("%Y-%m-%dT%H:%M:%SZ"));
-
-    // Project name
     UEProjectName = FApp::GetProjectName();
 
-    // systems_tracked JSON array (built from config, not from actual events)
+    // Build armed system names JSON array  e.g. ["Combat","AI"]
     TArray<FString> SysNames;
     for (const FNytwatchSystemConfig& S : Config.ArmedSystems)
-        SysNames.Add(FString::Printf(TEXT("\"%s\""), *S.SystemName));
-    SystemsTrackedJson = TEXT("[") + FString::Join(SysNames, TEXT(", ")) + TEXT("]");
-
-    // Write header with placeholders for fields known only at Close time
-    const FString HeadingDate = StartedAtDT.ToString(TEXT("%Y-%m-%d %H:%M:%S"));
-    const FString Header = FString::Printf(
-        TEXT("---\n")
-        TEXT("session_id: %s\n")
-        TEXT("ue_project_name: %s\n")
-        TEXT("plugin_version: " NYTWATCH_PLUGIN_VERSION "\n")
-        TEXT("started_at: %s\n")
-        TEXT("ended_at: __ENDED_AT__\n")
-        TEXT("duration_seconds: __DURATION__\n")
-        TEXT("end_reason: __END_REASON__\n")
-        TEXT("systems_tracked: %s\n")
-        TEXT("event_count: __EVENT_COUNT__\n")
-        TEXT("---\n")
-        TEXT("\n")
-        TEXT("> This is a Nytwatch gameplay session log from Unreal Engine 5. "
-             "It records UObject property changes captured during a Play-In-Editor session.\n")
-        TEXT("> Format: one line per object. Properties separated by `|`. "
-             "Numeric properties use delta encoding: `PropName:InitialValue +N@t -N@t` "
-             "where `t` is seconds from session start. "
-             "Non-numeric properties (enum, string, bool, vector) use transition chains: "
-             "`PropName:From\u2192To@t`. "
-             "Booleans abbreviated as T/F. "
-             "UE class prefixes (A/U) are stripped from object names. "
-             "Objects with no recorded changes are omitted.\n")
-        TEXT("\n")
-        TEXT("# %s \u2014 %s\n")
-        TEXT("\n"),
-        *SessionId,
-        *UEProjectName,
-        *StartedAtStr,
-        *SystemsTrackedJson,
-        *UEProjectName,
-        *HeadingDate
-    );
-
-    const bool bOk = FFileHelper::SaveStringToFile(
-        Header, *SessionFilePath,
-        FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-
-    if (!bOk)
-    {
-        UE_LOG(LogNytwatchWriter, Error,
-            TEXT("[NytwatchAgent] Failed to create session file: %s"), *SessionFilePath);
-        return;
-    }
-
-    // Start background writer thread
-    WorkSignal = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
-    WriterThread = FRunnableThread::Create(this, TEXT("NytwatchWriter"),
-        0, TPri_BelowNormal);
-
-    if (!WriterThread)
-    {
-        UE_LOG(LogNytwatchWriter, Error,
-            TEXT("[NytwatchAgent] Failed to start writer thread — tracking disabled."));
-        FPlatformProcess::ReturnSynchEventToPool(WorkSignal);
-        WorkSignal = nullptr;
-        return;
-    }
+        SysNames.Add(FString::Printf(TEXT("\"%s\""), *EscapeJsonString(S.SystemName)));
+    ArmedSystemsJson = TEXT("[") + FString::Join(SysNames, TEXT(",")) + TEXT("]");
 
     bIsOpen = true;
-    UE_LOG(LogNytwatchWriter, Log,
-        TEXT("[NytwatchAgent] Session opened: %s"), *SessionFilePath);
+    CreateAndConnect();
 }
 
 // ---------------------------------------------------------------------------
-// AppendEvent  (game thread)
+// CreateAndConnect  (game thread)
 // ---------------------------------------------------------------------------
 
-void FNytwatchSessionWriter::AppendEvent(const FNytwatchEvent& Event)
+void FNytwatchSessionWriter::CreateAndConnect()
 {
-    if (!bIsOpen || bCapReached) return;
+    if (!FModuleManager::Get().IsModuleLoaded(TEXT("WebSockets")))
+        FModuleManager::Get().LoadModule(TEXT("WebSockets"));
 
-    EventQueue.Enqueue(Event);
-    ++TotalEventCount;
+    WebSocket = FWebSocketsModule::Get().CreateWebSocket(WebSocketUrl, TEXT(""));
+
+    WebSocket->OnConnected().AddRaw(this, &FNytwatchSessionWriter::OnConnected);
+    WebSocket->OnConnectionError().AddRaw(this, &FNytwatchSessionWriter::OnConnectionError);
+    WebSocket->OnClosed().AddRaw(this, &FNytwatchSessionWriter::OnClosed);
+    WebSocket->OnMessage().AddRaw(this, &FNytwatchSessionWriter::OnMessage);
+
+    WebSocket->Connect();
+    UE_LOG(LogNytwatchWriter, Log,
+        TEXT("[NytwatchAgent] Connecting to %s"), *WebSocketUrl);
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket callbacks  (game thread)
+// ---------------------------------------------------------------------------
+
+void FNytwatchSessionWriter::OnConnected()
+{
+    bNeedsReconnect   = false;
+    ReconnectAttempts = 0;
+    SendSessionOpen();
+    bReady = true;
+    UE_LOG(LogNytwatchWriter, Log,
+        TEXT("[NytwatchAgent] WebSocket connected — session %s"), *SessionId);
+}
+
+void FNytwatchSessionWriter::OnConnectionError(const FString& Error)
+{
+    UE_LOG(LogNytwatchWriter, Warning,
+        TEXT("[NytwatchAgent] WebSocket connection error: %s"), *Error);
+    bIsOpen = false;  // signal to the subsystem tick that connection failed
+    bReady  = false;
+}
+
+void FNytwatchSessionWriter::OnClosed(int32 StatusCode, const FString& Reason, bool bWasClean)
+{
+    if (!bIsOpen) return; // closed by our own Close() or EmergencyClose() — ignore
+
+    UE_LOG(LogNytwatchWriter, Warning,
+        TEXT("[NytwatchAgent] WebSocket closed unexpectedly (code=%d reason=%s) — will reconnect"),
+        StatusCode, *Reason);
+    bReady = false;
+    if (ReconnectAttempts < MaxReconnectAttempts)
+        bNeedsReconnect = true;
+    else
+        UE_LOG(LogNytwatchWriter, Warning,
+            TEXT("[NytwatchAgent] Max reconnect attempts reached — giving up."));
+}
+
+void FNytwatchSessionWriter::OnMessage(const FString& /*Msg*/)
+{
+    // Server sends no messages to the plugin in this protocol.
+}
+
+// ---------------------------------------------------------------------------
+// TryReconnect  (game thread, called from subsystem tick)
+// ---------------------------------------------------------------------------
+
+void FNytwatchSessionWriter::TryReconnect()
+{
+    bNeedsReconnect = false;
+    ++ReconnectAttempts;
+
+    if (WebSocket.IsValid())
+        WebSocket.Reset(); // destroy old socket before creating a new one
+
+    UE_LOG(LogNytwatchWriter, Log,
+        TEXT("[NytwatchAgent] Reconnect attempt %d/%d for session %s"),
+        ReconnectAttempts, MaxReconnectAttempts, *SessionId);
+
+    CreateAndConnect();
+}
+
+// ---------------------------------------------------------------------------
+// Abort  (game thread)
+// ---------------------------------------------------------------------------
+
+void FNytwatchSessionWriter::Abort()
+{
+    bIsOpen = false;
+    bReady  = false;
+    if (WebSocket.IsValid())
+    {
+        WebSocket->Close();
+        WebSocket.Reset();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SendBatch  (game thread, each tick)
+// ---------------------------------------------------------------------------
+
+void FNytwatchSessionWriter::SendBatch(const TArray<FNytwatchEvent>& Events, float PIEElapsedSeconds)
+{
+    if (!bReady || bCapReached || Events.Num() == 0) return;
+
+    const FString Json = BuildBatchJson(Events, PIEElapsedSeconds);
+    WebSocket->Send(Json);
+
+    TotalEventCount += Events.Num();
 
     if (TotalEventCount >= EventCap)
     {
@@ -170,312 +182,133 @@ void FNytwatchSessionWriter::AppendEvent(const FNytwatchEvent& Event)
         UE_LOG(LogNytwatchWriter, Warning, TEXT("[NytwatchAgent] %s"), *Msg);
 
         FNotificationInfo Info(FText::FromString(Msg));
-        Info.bFireAndForget      = true;
-        Info.ExpireDuration      = 8.0f;
+        Info.bFireAndForget       = true;
+        Info.ExpireDuration       = 8.0f;
         Info.bUseSuccessFailIcons = true;
         FSlateNotificationManager::Get().AddNotification(Info);
     }
-
-    // Wake the writer thread — auto-reset event coalesces rapid calls.
-    if (WorkSignal) WorkSignal->Trigger();
 }
 
 // ---------------------------------------------------------------------------
-// Run  (writer thread)
+// Close  (game thread, normal end)
 // ---------------------------------------------------------------------------
 
-uint32 FNytwatchSessionWriter::Run()
-{
-    while (true)
-    {
-        // Sleep until signalled or 200 ms elapses (safety drain timeout).
-        if (WorkSignal) WorkSignal->Wait(200);
-
-        // Drain everything currently in the queue into the accumulator.
-        FNytwatchEvent Evt;
-        while (EventQueue.Dequeue(Evt))
-            AccumulatedEvents.Add(MoveTemp(Evt));
-
-        // Exit only after the stop has been requested AND the queue is empty.
-        if (bStopRequested && EventQueue.IsEmpty())
-            break;
-    }
-
-    return 0;
-}
-
-// ---------------------------------------------------------------------------
-// Stop  (may be called by thread framework — forwards to the game-thread path)
-// ---------------------------------------------------------------------------
-
-void FNytwatchSessionWriter::Stop()
-{
-    bStopRequested.AtomicSet(true);
-    if (WorkSignal) WorkSignal->Trigger();
-}
-
-// ---------------------------------------------------------------------------
-// Close  (game thread)
-// ---------------------------------------------------------------------------
-
-void FNytwatchSessionWriter::Close(const FString& ProjectDir)
+void FNytwatchSessionWriter::Close(float PIEElapsedSeconds)
 {
     if (!bIsOpen) return;
+    bIsOpen = false;
+    bReady  = false;
 
-    // Signal the writer thread to drain remaining events and exit.
-    bStopRequested.AtomicSet(true);
-    if (WorkSignal) WorkSignal->Trigger();
-
-    // Block the game thread until the writer thread finishes.
-    if (WriterThread)
+    if (WebSocket.IsValid() && WebSocket->IsConnected())
     {
-        WriterThread->WaitForCompletion();
-        delete WriterThread;
-        WriterThread = nullptr;
+        SendSessionClose(PIEElapsedSeconds, TEXT("normal"));
+        WebSocket->Close();
     }
 
-    if (WorkSignal)
-    {
-        FPlatformProcess::ReturnSynchEventToPool(WorkSignal);
-        WorkSignal = nullptr;
-    }
-
-    // --- Write body (one consolidated pass over all accumulated events) ---
-    // This runs on the game thread after the writer thread has drained the
-    // queue, so AccumulatedEvents is safe to read here.
-    InternalFlush(AccumulatedEvents);
-
-    // --- Backfill header placeholders ---
-    const FDateTime EndedAtDT  = FDateTime::UtcNow();
-    const FString   EndedAtStr = EndedAtDT.ToString(TEXT("%Y-%m-%dT%H:%M:%SZ"));
-    const int32     DurationS  = (int32)(EndedAtDT - StartedAtDT).GetTotalSeconds();
-
-    FString Content;
-    if (FFileHelper::LoadFileToString(Content, *SessionFilePath))
-    {
-        Content.ReplaceInline(TEXT("__ENDED_AT__"),    *EndedAtStr,                       ESearchCase::CaseSensitive);
-        Content.ReplaceInline(TEXT("__DURATION__"),    *FString::FromInt(DurationS),       ESearchCase::CaseSensitive);
-        Content.ReplaceInline(TEXT("__END_REASON__"),  TEXT("normal"),                     ESearchCase::CaseSensitive);
-        Content.ReplaceInline(TEXT("__EVENT_COUNT__"), *FString::FromInt(TotalEventCount), ESearchCase::CaseSensitive);
-
-        FFileHelper::SaveStringToFile(Content, *SessionFilePath,
-            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-    }
-    else
-    {
-        UE_LOG(LogNytwatchWriter, Warning,
-            TEXT("[NytwatchAgent] Could not reopen session file to backfill header: %s"),
-            *SessionFilePath);
-    }
-
-    // Delete lock file
-    const FString LockPath = FPaths::Combine(
-        ProjectDir, TEXT("Saved"), TEXT("Nytwatch"), TEXT("nytwatch.lock"));
-    IFileManager::Get().Delete(*LockPath, false, true);
+    WebSocket.Reset();
 
     UE_LOG(LogNytwatchWriter, Log,
-        TEXT("[NytwatchAgent] Session closed — %d events written to %s"),
-        TotalEventCount, *FPaths::GetCleanFilename(SessionFilePath));
-
-    bIsOpen = false;
+        TEXT("[NytwatchAgent] Session closed normally — %d events, session %s"),
+        TotalEventCount, *SessionId);
 }
 
 // ---------------------------------------------------------------------------
 // EmergencyClose  (crash-handler context)
 // ---------------------------------------------------------------------------
 
-void FNytwatchSessionWriter::EmergencyClose(const FString& ProjectDir)
+void FNytwatchSessionWriter::EmergencyClose(float PIEElapsedSeconds)
 {
     if (!bIsOpen) return;
+    bIsOpen = false;
+    bReady  = false;
 
-    // Signal the writer thread to stop.  We do NOT wait for it — in a crash
-    // context, blocking is unsafe and the thread may already be in a bad
-    // state.  The writer thread only ever appends to the end of the file, so
-    // backfilling the header region here is race-free.
-    bStopRequested.AtomicSet(true);
-    if (WorkSignal) WorkSignal->Trigger();
-
-    // Flush whatever events accumulated before the crash.  We do not wait for
-    // the writer thread, so AccumulatedEvents may be mid-drain — but since
-    // FQueue is SPSC and we only append here, the worst case is a few events
-    // missing from the tail.  Better to write partial data than nothing.
-    // Drain the queue one more time ourselves to catch any last enqueued events.
+    if (WebSocket.IsValid() && WebSocket->IsConnected())
     {
-        FNytwatchEvent Evt;
-        while (EventQueue.Dequeue(Evt))
-            AccumulatedEvents.Add(MoveTemp(Evt));
-    }
-    InternalFlush(AccumulatedEvents);
-
-    // Backfill header placeholders with crash metadata.
-    const FDateTime EndedAtDT  = FDateTime::UtcNow();
-    const FString   EndedAtStr = EndedAtDT.ToString(TEXT("%Y-%m-%dT%H:%M:%SZ"));
-    const int32     DurationS  = (int32)(EndedAtDT - StartedAtDT).GetTotalSeconds();
-
-    FString Content;
-    if (FFileHelper::LoadFileToString(Content, *SessionFilePath))
-    {
-        Content.ReplaceInline(TEXT("__ENDED_AT__"),    *EndedAtStr,                       ESearchCase::CaseSensitive);
-        Content.ReplaceInline(TEXT("__DURATION__"),    *FString::FromInt(DurationS),       ESearchCase::CaseSensitive);
-        Content.ReplaceInline(TEXT("__END_REASON__"),  TEXT("crash"),                      ESearchCase::CaseSensitive);
-        Content.ReplaceInline(TEXT("__EVENT_COUNT__"), *FString::FromInt(TotalEventCount), ESearchCase::CaseSensitive);
-
-        FFileHelper::SaveStringToFile(Content, *SessionFilePath,
-            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+        SendSessionClose(PIEElapsedSeconds, TEXT("crash"));
+        WebSocket->Close();
     }
 
-    // Intentionally leave the lock file on disk — its presence after process
-    // exit is how external tools detect that the session ended abnormally.
+    WebSocket.Reset();
 
     UE_LOG(LogNytwatchWriter, Warning,
-        TEXT("[NytwatchAgent] Emergency close — session file marked as crashed: %s"),
-        *FPaths::GetCleanFilename(SessionFilePath));
-
-    bIsOpen = false;
+        TEXT("[NytwatchAgent] Emergency close — session %s marked as crashed"), *SessionId);
 }
 
 // ---------------------------------------------------------------------------
-// InternalFlush  (writer thread)
+// SendSessionOpen  (called from OnConnected)
 // ---------------------------------------------------------------------------
 
-void FNytwatchSessionWriter::InternalFlush(const TArray<FNytwatchEvent>& Batch)
+void FNytwatchSessionWriter::SendSessionOpen()
 {
-    const FString Block = BuildFlushBlock(Batch);
-    if (Block.IsEmpty()) return;
-
-    IFileHandle* Handle = FPlatformFileManager::Get().GetPlatformFile().OpenWrite(
-        *SessionFilePath, /*bAppend=*/true, /*bAllowRead=*/true);
-    if (Handle)
-    {
-        FTCHARToUTF8 Utf8(*Block);
-        Handle->Write(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
-        delete Handle;
-    }
-    else
-    {
-        UE_LOG(LogNytwatchWriter, Warning,
-            TEXT("[NytwatchAgent] Failed to open session file for append: %s"),
-            *SessionFilePath);
-    }
+    const FString Json = FString::Printf(
+        TEXT("{\"type\":\"session_open\","
+             "\"session_id\":\"%s\","
+             "\"ue_project_name\":\"%s\","
+             "\"plugin_version\":\"" NYTWATCH_PLUGIN_VERSION "\","
+             "\"started_at\":\"%s\","
+             "\"armed_systems\":%s}"),
+        *SessionId,
+        *EscapeJsonString(UEProjectName),
+        *StartedAtStr,
+        *ArmedSystemsJson
+    );
+    WebSocket->Send(Json);
 }
 
 // ---------------------------------------------------------------------------
-// BuildFlushBlock  (writer thread)
+// SendSessionClose
 // ---------------------------------------------------------------------------
 
-FString FNytwatchSessionWriter::BuildFlushBlock(const TArray<FNytwatchEvent>& Batch) const
+void FNytwatchSessionWriter::SendSessionClose(float DurationSeconds, const FString& EndReason)
 {
-    if (Batch.Num() == 0) return FString();
+    const FString EndedAt = FDateTime::UtcNow().ToString(TEXT("%Y-%m-%dT%H:%M:%SZ"));
+    const int32   DurS    = FMath::Max(0, FMath::RoundToInt(DurationSeconds));
 
-    // Group events preserving insertion order:
-    //   SystemName -> ObjectDisplayName -> PropertyName -> [Events]
-    TArray<FName>                                                  SystemOrder;
-    TMap<FName, TArray<FString>>                                   ObjOrder;
-    TMap<FName, TMap<FString, TArray<FName>>>                      PropOrder;
-    TMap<FName, TMap<FString, TMap<FName, TArray<FNytwatchEvent>>>> EventData;
+    const FString Json = FString::Printf(
+        TEXT("{\"type\":\"session_close\","
+             "\"session_id\":\"%s\","
+             "\"ended_at\":\"%s\","
+             "\"duration_seconds\":%d,"
+             "\"end_reason\":\"%s\"}"),
+        *SessionId,
+        *EndedAt,
+        DurS,
+        *EndReason
+    );
+    WebSocket->Send(Json);
+}
 
-    for (const FNytwatchEvent& Evt : Batch)
+// ---------------------------------------------------------------------------
+// BuildBatchJson
+// ---------------------------------------------------------------------------
+
+FString FNytwatchSessionWriter::BuildBatchJson(const TArray<FNytwatchEvent>& Events, float T) const
+{
+    FString EventsArray;
+    EventsArray.Reserve(Events.Num() * 100);
+
+    for (int32 i = 0; i < Events.Num(); ++i)
     {
-        const FString DisplayObj = StripUEPrefix(Evt.ObjectName);
+        if (i > 0) EventsArray += TEXT(",");
 
-        if (!EventData.Contains(Evt.SystemName))
-        {
-            SystemOrder.Add(Evt.SystemName);
-            ObjOrder.Add(Evt.SystemName,  {});
-            PropOrder.Add(Evt.SystemName, {});
-            EventData.Add(Evt.SystemName, {});
-        }
-
-        auto& ObjMap   = EventData[Evt.SystemName];
-        auto& ObjNames = ObjOrder[Evt.SystemName];
-        auto& PMap     = PropOrder[Evt.SystemName];
-
-        if (!ObjMap.Contains(DisplayObj))
-        {
-            ObjNames.Add(DisplayObj);
-            PMap.Add(DisplayObj,   {});
-            ObjMap.Add(DisplayObj, {});
-        }
-
-        auto& PropEvtMap = ObjMap[DisplayObj];
-        auto& PropNames  = PMap[DisplayObj];
-
-        if (!PropEvtMap.Contains(Evt.PropertyName))
-        {
-            PropNames.Add(Evt.PropertyName);
-            PropEvtMap.Add(Evt.PropertyName, {});
-        }
-
-        PropEvtMap[Evt.PropertyName].Add(Evt);
+        const FNytwatchEvent& E = Events[i];
+        EventsArray += FString::Printf(
+            TEXT("{\"sys\":\"%s\",\"obj\":\"%s\",\"prop\":\"%s\","
+                 "\"old\":\"%s\",\"new\":\"%s\",\"num\":%d}"),
+            *EscapeJsonString(E.SystemName.ToString()),
+            *EscapeJsonString(E.ObjectName),
+            *EscapeJsonString(E.PropertyName.ToString()),
+            *EscapeJsonString(E.OldValue),
+            *EscapeJsonString(E.NewValue),
+            E.bIsNumeric ? 1 : 0
+        );
     }
 
-    FString Out;
-    Out.Reserve(Batch.Num() * 80);
-
-    for (const FName& SysName : SystemOrder)
-    {
-        Out += FString::Printf(TEXT("## %s\n\n"), *SysName.ToString());
-
-        for (const FString& ObjName : ObjOrder[SysName])
-        {
-            const auto& PropEvtMap = EventData[SysName][ObjName];
-            const auto& PropNames  = PropOrder[SysName][ObjName];
-
-            TArray<FString> PropStrings;
-            PropStrings.Reserve(PropNames.Num());
-
-            for (const FName& PropName : PropNames)
-            {
-                const TArray<FNytwatchEvent>& Events = PropEvtMap[PropName];
-                FString PropStr;
-
-                if (Events[0].bIsNumeric)
-                {
-                    const double InitVal = FCString::Atod(*Events[0].OldValue);
-                    PropStr = FString::Printf(TEXT("%s:%s"),
-                        *PropName.ToString(), *TrimFloat(InitVal));
-
-                    for (const FNytwatchEvent& E : Events)
-                    {
-                        const double OldN  = FCString::Atod(*E.OldValue);
-                        const double NewN  = FCString::Atod(*E.NewValue);
-                        const double Delta = NewN - OldN;
-                        const FString Sign = (Delta >= 0) ? TEXT("+") : TEXT("");
-                        PropStr += FString::Printf(TEXT(" %s%s@%s"),
-                            *Sign, *TrimFloat(Delta), *TrimFloat((double)E.TimeSeconds, 2));
-                    }
-                }
-                else
-                {
-                    const FString FirstOld = FormatBool(Events[0].OldValue);
-                    const FString FirstNew = FormatBool(Events[0].NewValue);
-                    PropStr = FString::Printf(TEXT("%s:%s\u2192%s@%s"),
-                        *PropName.ToString(),
-                        *FirstOld, *FirstNew,
-                        *TrimFloat((double)Events[0].TimeSeconds));
-
-                    for (int32 i = 1; i < Events.Num(); ++i)
-                    {
-                        PropStr += FString::Printf(TEXT("\u2192%s@%s"),
-                            *FormatBool(Events[i].NewValue),
-                            *TrimFloat((double)Events[i].TimeSeconds));
-                    }
-                }
-
-                PropStrings.Add(MoveTemp(PropStr));
-            }
-
-            FString PaddedName = ObjName;
-            while (PaddedName.Len() < 20) PaddedName += TEXT(" ");
-
-            Out += PaddedName
-                + TEXT("| ")
-                + FString::Join(PropStrings, TEXT(" | "))
-                + TEXT("\n");
-        }
-
-        Out += TEXT("\n");
-    }
-
-    return Out;
+    return FString::Printf(
+        TEXT("{\"type\":\"event_batch\","
+             "\"session_id\":\"%s\","
+             "\"t\":%.2f,"
+             "\"events\":[%s]}"),
+        *SessionId, T, *EventsArray
+    );
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -28,7 +29,13 @@ def _bundled_version() -> str:
         return "1.0.0"
 
 
-def write_config(repo_path: str, db: "Database", tracking_active: bool) -> None:
+def write_config(
+    repo_path: str,
+    db: "Database",
+    tracking_active: bool,
+    ws_host: str = "127.0.0.1",
+    ws_port: int = 8420,
+) -> None:
     """Generate and atomically write NytwatchConfig.json into <repo_path>/Saved/Nytwatch/."""
     project_dir = Path(repo_path)
     nytwatch_dir = project_dir / "Saved" / "Nytwatch"
@@ -66,6 +73,11 @@ def write_config(repo_path: str, db: "Database", tracking_active: bool) -> None:
             "paths": abs_paths,
         })
 
+    tracking_ws_url = (
+        f"ws://{ws_host}:{ws_port}/ws/tracking"
+        f"?project_dir={urllib.parse.quote(repo_path, safe='')}"
+    )
+
     payload = {
         "version": _bundled_version(),
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -73,6 +85,7 @@ def write_config(repo_path: str, db: "Database", tracking_active: bool) -> None:
         "armed_systems": systems_payload,
         "object_scan_cap": scan_cap,
         "tick_interval_seconds": tick_interval,
+        "tracking_ws_url": tracking_ws_url,
     }
 
     config_path = nytwatch_dir / "NytwatchConfig.json"

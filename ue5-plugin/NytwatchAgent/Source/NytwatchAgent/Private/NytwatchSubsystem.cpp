@@ -51,9 +51,7 @@ void UNytwatchSubsystem::Deinitialize()
     if (bTrackingActive)
     {
         FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
-        const FString ProjectDir =
-            FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
-        Writer.Close(ProjectDir);
+        Writer.Close(PIEElapsedSeconds);
         bTrackingActive = false;
     }
 
@@ -70,9 +68,10 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
     TrackedObjects.Reset();
-    PIEElapsedSeconds     = 0.f;
-    TimeSinceConfigReload = 0.f;
-    bTrackingActive       = false;
+    PIEElapsedSeconds       = 0.f;
+    TimeSinceConfigReload   = 0.f;
+    ConnectionWaitSeconds   = 0.f;
+    bTrackingActive         = false;
 
     const FString ProjectDir =
         FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
@@ -86,19 +85,23 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
         return;
     }
 
-    // 2. Open session writer (also starts the background writer thread)
-    Writer.Open(Config, ProjectDir);
-    if (!Writer.IsOpen())
+    if (Config.WebSocketUrl.IsEmpty())
     {
-        UE_LOG(LogNytwatchSubsystem, Error,
-            TEXT("[NytwatchAgent] Failed to open session writer — tracking disabled."));
+        UE_LOG(LogNytwatchSubsystem, Warning,
+            TEXT("[NytwatchAgent] No tracking_ws_url in config — tracking disabled."));
         return;
     }
 
-    // 3. Write lock file once, with the session ID already populated.
-    // Writing only once avoids a delete+create on Windows (FFileHelper overwrites
-    // by truncating the existing file, which watchdog reports as two events),
-    // which would cause the server to briefly see the session as ended.
+    // 2. Open WebSocket writer (initiates async connection)
+    Writer.Open(Config);
+    if (!Writer.IsOpen())
+    {
+        UE_LOG(LogNytwatchSubsystem, Error,
+            TEXT("[NytwatchAgent] Failed to open WebSocket writer — tracking disabled."));
+        return;
+    }
+
+    // 3. Write lock file (PIE-active indicator for watchdog crash detection)
     const FString LockPath = FPaths::Combine(
         ProjectDir, TEXT("Saved"), TEXT("Nytwatch"), TEXT("nytwatch.lock"));
     const FString LockJson = FString::Printf(
@@ -110,14 +113,14 @@ void UNytwatchSubsystem::OnBeginPIE(bool /*bIsSimulating*/)
     FFileHelper::SaveStringToFile(LockJson, *LockPath,
         FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
-    // 4. Start tick
+    // 4. Start tick — polling is deferred until Writer.IsReady() is true
     bTrackingActive = true;
     TickHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateUObject(this, &UNytwatchSubsystem::OnTick),
         Config.TickIntervalSeconds);
 
     UE_LOG(LogNytwatchSubsystem, Log,
-        TEXT("[NytwatchAgent] Session started — armed: %d system(s), poll interval: %.1fs."),
+        TEXT("[NytwatchAgent] Session opening — %d system(s) armed, poll interval: %.2fs."),
         Config.ArmedSystems.Num(), Config.TickIntervalSeconds);
 }
 
@@ -130,41 +133,44 @@ void UNytwatchSubsystem::OnEndPIE(bool /*bIsSimulating*/)
     if (!bTrackingActive) return;
 
     FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+    bTrackingActive = false;
 
+    Writer.Close(PIEElapsedSeconds);
+
+    // Delete lock file so the watchdog sees the clean end
     const FString ProjectDir =
         FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
-
-    // Close waits for the background writer thread to flush then stops it.
-    Writer.Close(ProjectDir);
+    const FString LockPath = FPaths::Combine(
+        ProjectDir, TEXT("Saved"), TEXT("Nytwatch"), TEXT("nytwatch.lock"));
+    IFileManager::Get().Delete(*LockPath, false, true);
 
     UE_LOG(LogNytwatchSubsystem, Log,
         TEXT("[NytwatchAgent] Session closed — %d events, %d objects tracked."),
         Writer.GetTotalEventCount(), TrackedObjects.Num());
 
-    bTrackingActive = false;
     TrackedObjects.Reset();
     Tracker.Reset();
     ClassSystemIndexCache.Reset();
 }
 
 // ---------------------------------------------------------------------------
-// OnCrash  (crash-handler thread — keep it simple, no allocations if avoidable)
+// OnCrash  (crash-handler thread — keep it simple)
 // ---------------------------------------------------------------------------
 
 void UNytwatchSubsystem::OnCrash()
 {
     if (!bTrackingActive) return;
 
-    // Ticker is no longer safe to touch from a crash context — just mark
-    // tracking as inactive so any re-entrant path is a no-op.
     bTrackingActive = false;
+    FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
 
-    const FString ProjectDir =
-        FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
-    Writer.EmergencyClose(ProjectDir);
+    Writer.EmergencyClose(PIEElapsedSeconds);
+
+    // Intentionally leave the lock file on disk so the watchdog's crash
+    // poller sees the dead PID and can trigger orphan consolidation.
 
     UE_LOG(LogNytwatchSubsystem, Warning,
-        TEXT("[NytwatchAgent] PIE hard close detected — session file marked as crashed."));
+        TEXT("[NytwatchAgent] PIE hard close detected — session_close (crash) sent."));
 }
 
 // ---------------------------------------------------------------------------
@@ -175,22 +181,16 @@ void UNytwatchSubsystem::RegisterObject(UObject* Obj)
 {
     if (!bTrackingActive || !IsValid(Obj)) return;
 
-    // Eligibility is determined solely by whether the class's header falls
-    // within an armed system's paths.  Any object that explicitly calls
-    // RegisterObject is trusted to want tracking — no interface check here.
     const int32 SysIdx = FindSystemIndexForClass(Obj->GetClass());
-    if (SysIdx == INDEX_NONE) return; // class not in any armed system
+    if (SysIdx == INDEX_NONE) return;
 
-    // Prevent duplicate registrations
     for (const FTrackedObject& T : TrackedObjects)
     {
-        if (T.Object == Obj) return;
+        if (T.Object == Obj) return; // already registered
     }
 
-    // Snapshot initial property values so the first poll has a baseline
     const FNytwatchSystemConfig& System = Config.ArmedSystems[SysIdx];
     Tracker.SnapshotObject(Obj, System);
-
     TrackedObjects.Add({ Obj, SysIdx });
 
     UE_LOG(LogNytwatchSubsystem, Log,
@@ -232,24 +232,14 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
 
     FString HeaderPath;
 #if WITH_EDITOR
-    // Blueprint classes report their Content asset path, not a source header.
-    // Walk up to the nearest native C++ ancestor so the path can be matched
-    // against armed system source directories.
     UClass* NativeClass = Class;
     while (NativeClass && !NativeClass->IsNative())
-    {
         NativeClass = NativeClass->GetSuperClass();
-    }
 
     if (NativeClass)
     {
         if (!FSourceCodeNavigation::FindClassHeaderPath(NativeClass, HeaderPath) || HeaderPath.IsEmpty())
         {
-            // FindClassHeaderPath relies on an async database that may not be ready yet.
-            // Fall back to deriving the path from the class package name — always synchronous.
-            // NOTE: /Script/ packages (all C++ classes) cannot be converted to a file path;
-            // TryConvertLongPackageNameToFilename returns false for them.  Only promote the
-            // result if the conversion actually succeeds, otherwise leave HeaderPath empty.
             const FString PackageName = NativeClass->GetOutermost()->GetName();
             if (FPackageName::IsValidLongPackageName(PackageName))
             {
@@ -288,15 +278,16 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
         if (HeaderPath.IsEmpty())
         {
             UE_LOG(LogNytwatchSubsystem, Verbose,
-                TEXT("[NytwatchAgent] Class '%s' — FSourceCodeNavigation returned no header (skipped)."),
+                TEXT("[NytwatchAgent] Class '%s' — no header path (skipped)."),
                 *Class->GetName());
         }
         else
         {
+
             UE_LOG(LogNytwatchSubsystem, Verbose,
                 TEXT("[NytwatchAgent] Class '%s' — header '%s' matched no armed system (skipped)."),
                 *Class->GetName(), *HeaderPath);
-        }
+        }    
     }
     else
     {
@@ -320,9 +311,52 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
     PIEElapsedSeconds     += DeltaTime;
     TimeSinceConfigReload += DeltaTime;
 
-    // Hot-reload config every 1 second so verbosity changes take effect
-    // without requiring a PIE restart.  Also re-validates registered objects
-    // in case a system was disarmed.
+    // ── Connection management ────────────────────────────────────────────────
+
+    // Connection error: IsOpen() goes false when OnConnectionError fires.
+    if (!Writer.IsOpen())
+    {
+        UE_LOG(LogNytwatchSubsystem, Warning,
+            TEXT("[NytwatchAgent] WebSocket connection failed — tracking disabled for this session."));
+        bTrackingActive = false;
+        return true;
+    }
+
+    // Still waiting for the initial handshake.
+    if (!Writer.IsReady())
+    {
+        ConnectionWaitSeconds += DeltaTime;
+        if (ConnectionWaitSeconds > ConnectionTimeoutSeconds)
+        {
+            UE_LOG(LogNytwatchSubsystem, Warning,
+                TEXT("[NytwatchAgent] WebSocket connection timed out after %.0fs — tracking disabled."),
+                ConnectionWaitSeconds);
+            bTrackingActive = false;
+            Writer.Abort();
+        }
+        return true;
+    }
+    // First tick after connection established: log how many objects are queued
+    // and prevent the hot-reload from firing immediately (TimeSinceConfigReload
+    // accumulated during the connection wait and would flush the class cache on
+    // the very first polling tick, potentially dropping all tracked objects).
+    if (ConnectionWaitSeconds > 0.f)
+    {
+        UE_LOG(LogNytwatchSubsystem, Log,
+            TEXT("[NytwatchAgent] WebSocket connected after %.1fs — %d object(s) queued for tracking."),
+            ConnectionWaitSeconds, TrackedObjects.Num());
+        TimeSinceConfigReload = 0.f;
+    }
+    ConnectionWaitSeconds = 0.f;
+
+    // Reconnect after mid-session drop.
+    if (Writer.NeedsReconnect())
+    {
+        Writer.TryReconnect();
+        return true; // skip polling this tick; wait for OnConnected
+    }
+
+    // ── Config hot-reload ────────────────────────────────────────────────────
     if (TimeSinceConfigReload >= 1.0f)
     {
         TimeSinceConfigReload = 0.f;
@@ -331,9 +365,8 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
         FNytwatchConfig NewConfig = FNytwatchConfig::Load(ProjectDir);
         if (NewConfig.bValid)
         {
+            const int32 CountBefore = TrackedObjects.Num();
             Config = NewConfig;
-
-            // Re-resolve system indices: armed systems may have changed.
             ClassSystemIndexCache.Reset();
             for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
             {
@@ -345,24 +378,34 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
                 }
                 const int32 NewIdx = FindSystemIndexForClass(Obj->GetClass());
                 if (NewIdx == INDEX_NONE)
-                    TrackedObjects.RemoveAtSwap(i); // system was disarmed
+                {
+                    UE_LOG(LogNytwatchSubsystem, Warning,
+                        TEXT("[NytwatchAgent] Hot-reload: '%s' no longer maps to any armed system — dropping."),
+                        *Obj->GetName());
+                    TrackedObjects.RemoveAtSwap(i);
+                }
                 else
                     TrackedObjects[i].SystemIdx = NewIdx;
+            }
+            if (TrackedObjects.Num() != CountBefore)
+            {
+                UE_LOG(LogNytwatchSubsystem, Log,
+                    TEXT("[NytwatchAgent] Hot-reload: %d → %d tracked object(s)."),
+                    CountBefore, TrackedObjects.Num());
             }
         }
     }
 
     if (Writer.IsCapReached()) return true;
 
-    // Poll each registered object for property changes.
-    TArray<FNytwatchEvent> Events;
+    // ── Poll objects and send batch ──────────────────────────────────────────
+    TArray<FNytwatchEvent> BatchEvents;
 
     for (int32 i = TrackedObjects.Num() - 1; i >= 0; --i)
     {
         UObject* Obj = TrackedObjects[i].Object.Get();
         if (!Obj || !IsValid(Obj))
         {
-            // Object was destroyed without calling UnregisterObject
             TrackedObjects.RemoveAtSwap(i);
             continue;
         }
@@ -370,15 +413,17 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
         if (TrackedObjects[i].SystemIdx >= Config.ArmedSystems.Num()) continue;
 
         const FNytwatchSystemConfig& System = Config.ArmedSystems[TrackedObjects[i].SystemIdx];
-        Events.Reset();
+        TArray<FNytwatchEvent> ObjEvents;
+        Tracker.PollObject(Obj, System, PIEElapsedSeconds, ObjEvents);
+        BatchEvents.Append(ObjEvents);
+    }
 
-        Tracker.PollObject(Obj, System, PIEElapsedSeconds, Events);
-
-        for (const FNytwatchEvent& Evt : Events)
-        {
-            Writer.AppendEvent(Evt);
-            if (Writer.IsCapReached()) return true;
-        }
+    if (BatchEvents.Num() > 0)
+    {
+        UE_LOG(LogNytwatchSubsystem, Verbose,
+            TEXT("[NytwatchAgent] Sending batch: %d event(s), t=%.2fs, %d object(s) polled."),
+            BatchEvents.Num(), PIEElapsedSeconds, TrackedObjects.Num());
+        Writer.SendBatch(BatchEvents, PIEElapsedSeconds);
     }
 
     return true; // keep ticking

@@ -24,7 +24,7 @@
 //
 // Every second (configurable via NytwatchConfig.json "tick_interval_seconds")
 // the subsystem polls each registered object for UPROPERTY changes and
-// pushes any changes to the background writer thread.
+// sends them to the Nytwatch server via WebSocket.
 // ---------------------------------------------------------------------------
 UCLASS()
 class NYTWATCHAGENT_API UNytwatchSubsystem : public UEditorSubsystem
@@ -98,6 +98,11 @@ private:
     float PIEElapsedSeconds     = 0.f;
     float TimeSinceConfigReload = 0.f;
     bool  bTrackingActive       = false;
+
+    // Time spent waiting for the WebSocket handshake (seconds).
+    // If this exceeds ConnectionTimeoutSeconds the session is aborted.
+    float ConnectionWaitSeconds = 0.f;
+    static constexpr float ConnectionTimeoutSeconds = 30.f;
 
     // Cache: UClass* → index in Config.ArmedSystems (-1 = no match).
     // Populated lazily on RegisterObject; cleared and re-resolved on

@@ -1,98 +1,105 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "HAL/Runnable.h"
-#include "HAL/ThreadSafeBool.h"
-#include "Containers/Queue.h"
 #include "NytwatchPropertyTracker.h"
 #include "NytwatchConfig.h"
 
-class FRunnableThread;
-class FEvent;
+class IWebSocket;
 
 // ---------------------------------------------------------------------------
-// Writes a PIE session to a .md file on a dedicated background thread.
+// Streams a PIE session to the Nytwatch server over WebSocket.
 //
 // Threading model
 // ───────────────
-// Game thread  — calls Open(), AppendEvent(), Close().
-//   AppendEvent() only enqueues the event and increments the counter; it
-//   does no formatting or I/O.
+// All methods must be called on the game thread.  WebSocket callbacks from
+// IWebSocket are also delivered on the game thread in UE5, so no locking is
+// needed.
 //
-// Writer thread — owns all formatting (BuildFlushBlock) and file I/O
-//   (InternalFlush).  It sleeps on a FEvent and wakes either when the game
-//   thread signals new work or when the 200 ms timeout expires.
+// Lifecycle
+// ─────────
+//   Open()        — generate session ID, connect WebSocket.
+//   (async)       — OnConnected fires → send session_open, set bReady.
+//   SendBatch()   — called each tick; no-op until bReady is true.
+//   Close()       — send session_close with end_reason "normal", close socket.
+//   EmergencyClose() — best-effort send of session_close with end_reason
+//                      "crash" from a crash-handler context.
 //
-// The only shared state that crosses threads is:
-//   • EventQueue  (TQueue SPSC — lock-free by design)
-//   • WorkSignal  (FEvent  — designed for cross-thread use)
-//   • bStopRequested (FThreadSafeBool — written by game thread, read by
-//                     writer thread)
-//
-// All other members (session metadata, TotalEventCount, bCapReached, bIsOpen)
-// are exclusively touched on the game thread.
+// Reconnect
+// ─────────
+// If the WebSocket closes unexpectedly during a session, bNeedsReconnect is
+// set to true.  The subsystem checks NeedsReconnect() on each tick and calls
+// TryReconnect() to re-establish the connection.  Events produced while
+// disconnected are discarded.
 // ---------------------------------------------------------------------------
-class FNytwatchSessionWriter : public FRunnable
+class FNytwatchSessionWriter
 {
 public:
-    // Creates the session file and starts the background writer thread.
-    void Open(const FNytwatchConfig& Config, const FString& ProjectDir);
+    // Generates a new session ID and initiates the WebSocket connection.
+    // Returns immediately; bReady becomes true only after OnConnected fires
+    // and the session_open message has been sent.
+    void Open(const FNytwatchConfig& Config);
 
-    // Enqueues one event and wakes the writer thread.
-    // No-ops when the cap has been reached or the writer is not open.
-    void AppendEvent(const FNytwatchEvent& Event);
+    // Send all events produced in one tick as a single batch message.
+    // No-op if bReady is false (still connecting) or bCapReached is true.
+    void SendBatch(const TArray<FNytwatchEvent>& Events, float PIEElapsedSeconds);
 
-    // Signals the writer thread to flush remaining events and stop,
-    // waits for it to finish, then backfills the header and deletes
-    // the lock file.
-    void Close(const FString& ProjectDir);
+    // Send session_close with end_reason "normal" and close the WebSocket.
+    void Close(float PIEElapsedSeconds);
 
-    // Best-effort close for crash / hard-stop scenarios (called from the
-    // system-error handler).  Signals the writer thread to stop, then
-    // immediately backfills the header with crash metadata without waiting
-    // for the thread — the thread only appends to the end of the file, so
-    // there is no race with the header region.  The lock file is intentionally
-    // left on disk so external tools can detect the abnormal exit.
-    void EmergencyClose(const FString& ProjectDir);
+    // Best-effort close for crash / OnHandleSystemError contexts.
+    // Sends session_close with end_reason "crash" and closes the socket
+    // without waiting for confirmation.
+    void EmergencyClose(float PIEElapsedSeconds);
 
-    bool    IsCapReached()       const { return bCapReached;        }
-    bool    IsOpen()             const { return bIsOpen;            }
-    FString GetSessionId()       const { return SessionId;          }
-    int32   GetTotalEventCount() const { return TotalEventCount;    }
+    // Called by the subsystem tick when NeedsReconnect() is true.
+    // Creates a fresh WebSocket and re-connects using the stored URL.
+    void TryReconnect();
 
-    // FRunnable — executed on the writer thread; do not call directly.
-    virtual uint32 Run()  override;
-    virtual void   Stop() override;
+    // Cleanly abort a pending connection attempt (e.g. on connection timeout).
+    void Abort();
+
+    bool    IsOpen()          const { return bIsOpen;         }
+    bool    IsReady()         const { return bReady;          }
+    bool    IsCapReached()    const { return bCapReached;      }
+    bool    NeedsReconnect()  const { return bNeedsReconnect; }
+    FString GetSessionId()    const { return SessionId;        }
+    int32   GetTotalEventCount() const { return TotalEventCount; }
 
 private:
-    static constexpr int32 EventCap = 50000;
+    // ── WebSocket callbacks (all on game thread) ─────────────────────────────
+    void OnConnected();
+    void OnConnectionError(const FString& Error);
+    void OnClosed(int32 StatusCode, const FString& Reason, bool bWasClean);
+    void OnMessage(const FString& Msg);  // not used; required to bind
 
-    // ── Session metadata (game thread only) ─────────────────────────────────
+    // ── Message builders ─────────────────────────────────────────────────────
+    void    SendSessionOpen();
+    void    SendSessionClose(float DurationSeconds, const FString& EndReason);
+    FString BuildBatchJson(const TArray<FNytwatchEvent>& Events, float T) const;
+
+    static FString EscapeJsonString(const FString& Str);
+
+    // ── WebSocket ────────────────────────────────────────────────────────────
+    void CreateAndConnect();
+
+    TSharedPtr<IWebSocket> WebSocket;
+    FString WebSocketUrl;
+
+    // ── Session metadata (set in Open, stable for session lifetime) ──────────
     FString   SessionId;
-    FString   SessionFilePath;
-    FDateTime StartedAtDT;
     FString   StartedAtStr;
+    FDateTime StartedAtDT;
     FString   UEProjectName;
-    FString   SystemsTrackedJson;
-    int32     TotalEventCount = 0;
-    bool      bCapReached     = false;
-    bool      bIsOpen         = false;
+    FString   ArmedSystemsJson; // JSON array of system name strings
 
-    // ── Cross-thread pipeline ────────────────────────────────────────────────
-    TQueue<FNytwatchEvent, EQueueMode::Spsc> EventQueue;
-    FEvent*          WorkSignal     = nullptr;
-    FRunnableThread* WriterThread   = nullptr;
-    FThreadSafeBool  bStopRequested;   // written: game thread  read: writer thread
+    // ── Counters / flags ─────────────────────────────────────────────────────
+    int32 TotalEventCount   = 0;
+    bool  bIsOpen           = false; // true between Open() and Close/EmergencyClose
+    bool  bReady            = false; // true after WS connected + session_open sent
+    bool  bCapReached       = false;
+    bool  bNeedsReconnect   = false;
+    int32 ReconnectAttempts = 0;
 
-    // ── Writer-thread accumulator (writer thread only after Open()) ─────────
-    // Events are accumulated here during the session and flushed once at Close.
-    TArray<FNytwatchEvent> AccumulatedEvents;
-
-    // ── Writer-thread helpers ────────────────────────────────────────────────
-    void    InternalFlush(const TArray<FNytwatchEvent>& Events);
-    FString BuildFlushBlock(const TArray<FNytwatchEvent>& Events) const;
-
-    static FString StripUEPrefix(const FString& Name);
-    static FString TrimFloat(double Val, int32 Precision = 6);
-    static FString FormatBool(const FString& Val);
+    static constexpr int32 EventCap             = 50000;
+    static constexpr int32 MaxReconnectAttempts = 5;
 };

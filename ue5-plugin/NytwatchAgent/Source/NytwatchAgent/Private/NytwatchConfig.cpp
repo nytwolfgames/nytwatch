@@ -108,6 +108,7 @@ FNytwatchConfig FNytwatchConfig::Load(const FString& ProjectDir)
     // --- Global settings -----------------------------------------------------
     Out.ObjectScanCap       = (int32)Root->GetNumberField(TEXT("object_scan_cap"));
     Out.TickIntervalSeconds = (float)Root->GetNumberField(TEXT("tick_interval_seconds"));
+    Out.WebSocketUrl        = Root->GetStringField(TEXT("tracking_ws_url"));
     if (Out.ObjectScanCap <= 0)       Out.ObjectScanCap       = 2000;
     if (Out.TickIntervalSeconds <= 0) Out.TickIntervalSeconds = 0.1f;
 

@@ -2014,6 +2014,38 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_manager.disconnect(websocket)
 
 
+@router.websocket("/ws/tracking")
+async def tracking_websocket(websocket: WebSocket, project_dir: str = ""):
+    """WebSocket endpoint for the UE5 plugin to stream tracking events.
+
+    The plugin connects here during PIE and sends:
+      • ``session_open``  — once, on BeginPIE
+      • ``event_batch``   — once per tick (only if changes occurred)
+      • ``session_close`` — once, on EndPIE or crash
+
+    ``project_dir`` (query param) identifies which project's DB and session
+    directory to use.  The server writes this URL into NytwatchConfig.json so
+    the plugin always connects with the right value.
+    """
+    from nytwatch.ws_manager import manager as ws_manager
+
+    handler = getattr(websocket.app.state, "tracking_ws_handler", None)
+    if handler is None:
+        await websocket.close(code=1011)
+        return
+
+    db = websocket.app.state.db
+
+    # If the project_dir doesn't match the active project, try to look it up
+    # from the watcher's registered DBs so multi-project setups work.
+    if project_dir:
+        watcher = getattr(websocket.app.state, "watcher", None)
+        if watcher is not None and project_dir in watcher._dbs:
+            db = watcher._dbs[project_dir]
+
+    await handler.handle(websocket, project_dir, ws_manager, db)
+
+
 @router.get("/api/scans/{scan_id}/logs")
 async def api_scan_logs(request: Request, scan_id: str, offset: int = 0):
     db = get_db(request)
