@@ -681,7 +681,7 @@ You should see non-zero values in `pending_count`.
 
 ### Navigate to the findings list
 
-Open http://127.0.0.1:8420/findings in your browser.
+Open http://127.0.0.1:8420/auditor/findings in your browser.
 
 ### Using filters
 
@@ -689,24 +689,24 @@ The findings list supports filtering by these parameters (via URL query params o
 
 | Filter | Values | URL example |
 |---|---|---|
-| status | `pending`, `approved`, `rejected`, `applied`, `verified`, `failed`, `superseded` | `/findings?status=pending` |
-| severity | `critical`, `high`, `medium`, `low`, `info` | `/findings?severity=high` |
-| category | `bug`, `performance`, `ue-antipattern`, `modern-cpp`, `memory`, `readability` | `/findings?category=bug` |
-| confidence | `high`, `medium`, `low` | `/findings?confidence=high` |
-| source | `project`, `plugin` | `/findings?source=project` |
-| file_path | Any substring of the file path | `/findings?file_path=Weapons` |
+| status | `pending`, `approved`, `rejected`, `applied`, `verified`, `failed`, `superseded` | `/auditor/findings?status=pending` |
+| severity | `critical`, `high`, `medium`, `low`, `info` | `/auditor/findings?severity=high` |
+| category | `bug`, `performance`, `ue-antipattern`, `modern-cpp`, `memory`, `readability` | `/auditor/findings?category=bug` |
+| confidence | `high`, `medium`, `low` | `/auditor/findings?confidence=high` |
+| source | `active`, `ignored` | `/auditor/findings?source=active` |
+| file_path | Any substring of the file path | `/auditor/findings?file_path=Weapons` |
 
 Combine multiple filters:
 
 ```
-/findings?severity=high&category=bug&source=project
+/auditor/findings?severity=high&category=bug&source=project
 ```
 
 Findings are sorted by severity (critical first) then by creation date (newest first).
 
 ### Reading a finding detail page
 
-Click any finding title to open its detail page at `/findings/{id}`. Each finding contains:
+Click any finding title to open its detail page at `/auditor/findings/{id}`. Each finding contains:
 
 | Field | Description |
 |---|---|
@@ -733,21 +733,16 @@ On each finding (list or detail view):
 
 The approve/reject actions are immediate and update the finding status in the database.
 
-### What "source: project" vs "source: plugin" means
+### What "source: active" vs "source: ignored" means
 
-When the server starts a scan, it runs **source detection** on the repository. This classifies directories as:
+Every finding has a `source` field set at scan time by matching the finding's file path against the source directory classifications in the database.
 
-| Source type | Meaning |
+| Source value | Meaning |
 |---|---|
-| `project` | First-party game code. Your team wrote this. Findings here are actionable. |
-| `plugin` | Third-party or reusable plugin code. Usually under `Plugins/` or contains `.uplugin`. Findings here may not be yours to fix. |
-| `ignored` | Directories with no C++ code, or UE-generated directories (Intermediate, Saved, Binaries, etc.). |
+| `active` | File belongs to an active source directory — your team's code, findings are actionable. |
+| `ignored` | File belongs to an ignored source directory — skipped during normal scans, findings are surfaced for awareness only. |
 
-Classification happens in two layers:
-1. **Heuristic** (deterministic): Directories under `Plugins/` with `.uplugin` files are plugins. Directories under `Source/` matching the project name are project code.
-2. **AI fallback**: Ambiguous directories are sent to Claude for classification.
-
-You can override any classification in the Settings page.
+You can override any source directory classification in the Settings page.
 
 ---
 
@@ -755,7 +750,7 @@ You can override any classification in the Settings page.
 
 ### Batch-apply approved findings
 
-1. Navigate to the findings list: http://127.0.0.1:8420/findings
+1. Navigate to the findings list: http://127.0.0.1:8420/auditor/findings
 2. Approve all findings you want to apply
 3. Click the **"Apply N approved findings"** button (shown when approved_count > 0)
 4. A batch is created and the pipeline starts in a background thread
@@ -786,9 +781,9 @@ The batch pipeline runs these steps sequentially:
 
 ### Monitor batch progress
 
-Navigate to http://127.0.0.1:8420/batches to see all batches.
+Navigate to the Auditor page (http://127.0.0.1:8420/auditor/findings) and switch to the **Batches** tab.
 
-Click a batch ID to see its detail page at `/batches/{id}`, which shows:
+Click a batch ID to see its detail page at `/auditor/batches/{id}`, which shows:
 
 - Current status
 - Branch name
@@ -855,9 +850,8 @@ Shows all source directories classified as **Project**, **Plugin**, or **Ignored
 
 | Type | Effect |
 |---|---|
-| `project` | Findings from these directories get `source: project`. Primary actionable findings. |
-| `plugin` | Findings from these directories get `source: plugin`. Awareness only — typically not your code to fix. |
-| `ignored` | Directories are skipped entirely during scanning. No findings generated. |
+| `active` | Findings from these directories get `source: active`. Primary actionable findings. |
+| `ignored` | Directories are skipped during scanning. Any findings generated still get `source: ignored`. |
 
 **Change a classification via the dashboard:** Use the dropdown next to each directory entry.
 
@@ -1191,6 +1185,38 @@ nytwatch scan --type incremental
 nytwatch scan --type full --system Combat
 nytwatch scan --type rotation
 nytwatch scan --config ~/custom-config.yaml --type full --system UI
+```
+
+### `nytwatch install-plugin`
+
+Install the NytwatchAgent UE5 plugin into a game project.
+
+| Flag | Required | Default | Description |
+|---|---|---|---|
+| `--project` | Yes | — | Absolute path to the Unreal Engine game project root (the folder containing the `.uproject` file) |
+| `--force` | No | false | Reinstall even if the plugin is already present |
+
+**What it does:**
+1. Locates the bundled `NytwatchAgent` plugin (from the wheel's `share/nytwatch/ue5-plugin/` or the dev repo)
+2. Copies the plugin to `<project>/Plugins/NytwatchAgent/`
+3. Patches the `.uproject` file to add the plugin entry
+
+**Examples:**
+
+```bash
+nytwatch install-plugin --project ~/Projects/DragonRacer
+nytwatch install-plugin --project C:/Games/DragonRacer --force
+```
+
+> **Tip:** The interactive `install-plugin.ps1` (Windows) / `install-plugin.sh` (Unix) scripts wrap this command with a project selection menu populated from `nytwatch list-projects`.
+
+### `nytwatch list-projects`
+
+Print all configured Nytwatch projects as a JSON array. Used by the install scripts for interactive project selection.
+
+```bash
+nytwatch list-projects
+# Output: [{"path": "/path/to/config.yaml", "repo_path": "/path/to/repo", "name": "MyGame"}]
 ```
 
 ---

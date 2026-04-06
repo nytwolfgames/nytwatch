@@ -134,11 +134,11 @@ file_extensions: [".h", ".cpp"]
 
 The web dashboard runs locally on port 8420 and provides:
 
-- **Dashboard home** (`/`) — Overview stats (scoped to active project), severity breakdown, quick actions
-- **Findings list** (`/findings`) — Filterable table of all findings with approve/reject controls
-- **Finding detail** (`/findings/{id}`) — Full view with code snippet, diff preview, test case, and reasoning
-- **Batch status** (`/batches/{id}`) — Real-time pipeline progress (applying → building → testing → verified)
-- **Scan history** (`/scans`) — Past scans with file counts and finding counts
+- **Dashboard home** (`/`) — Overview stats (scoped to active project), severity breakdown, recent sessions and batches
+- **Auditor** (`/auditor/findings`) — Tabbed interface: findings list with approve/reject, batch list, scan history, system configuration
+- **Finding detail** (`/auditor/findings/{id}`) — Full view with code snippet, diff preview, test case, reasoning, and AI chat
+- **Batch detail** (`/auditor/batches/{id}`) — Pipeline progress (applying → building → testing → verified), build/test logs, PR link
+- **Gameplay Tracker** (`/tracker`) — Session list and system arm/disarm controls for the UE5 plugin
 - **Settings** (`/settings`) — Active project card, project switcher, config health, source directory classification (Active/Ignored), system management grouped by source directory, setup wizard
 
 All pages are scoped to the active project. The sidebar shows the active project name on every page.
@@ -156,6 +156,12 @@ nytwatch serve --host 0.0.0.0 --port 9000
 # Run scans directly
 nytwatch scan --type incremental
 nytwatch scan --type full --system Combat
+
+# Install the UE5 plugin into a game project
+nytwatch install-plugin --project /path/to/your/ue5-project
+
+# List all configured projects (used by install scripts)
+nytwatch list-projects
 ```
 
 ### Scanning

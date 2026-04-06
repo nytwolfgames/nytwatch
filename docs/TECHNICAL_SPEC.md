@@ -168,6 +168,8 @@
 | `init` | `repo_path`, `--config` | Creates a default config YAML at the specified path (or `~/.nytwatch/config.yaml` if omitted) |
 | `serve` | `--config`, `--host` (default `127.0.0.1`), `--port` (default `8420`) | Starts FastAPI/uvicorn server. Without `--config`, uses the active project pointer (`~/.nytwatch/.active`). |
 | `scan` | `--config`, `--type` (`incremental`/`full`/`rotation`), `--system` | Runs a scan immediately and exits |
+| `install-plugin` | `--project` (required), `--force` | Installs the bundled NytwatchAgent UE5 plugin into the specified game project. Copies plugin files to `<project>/Plugins/NytwatchAgent/` and patches the `.uproject` to enable it. `--force` reinstalls even if already present. |
+| `list-projects` | (none) | Prints all configured Nytwatch project configs as a JSON array `[{path, repo_path, name}]`. Used by the PowerShell/shell install scripts for interactive project selection. |
 
 **Startup config resolution order (`serve` without `--config`):**
 
@@ -183,6 +185,8 @@
 | `config_path` | `str` | Absolute path to the active config YAML, or `""` if none |
 | `db` | `Database \| None` | Active project SQLite database. `None` when no project is configured (wizard-only mode). |
 | `scheduler` | `BackgroundScheduler` | APScheduler instance (only present if scheduling is enabled) |
+| `tracking_active` | `bool` | Whether UE5 plugin tracking is currently enabled for the active project. Reset to `False` on project switch. |
+| `watcher` | `TrackingWatcher` | Watchdog-based filesystem monitor for `Saved/Nytwatch/` — detects PIE start/end and imports session files. |
 
 ---
 
@@ -624,6 +628,66 @@ Registered on `templates.env.globals` at module load time. All are callables tha
 
 Used in `base.html` to render the sidebar project pill and browser tab title suffix on every page.
 
+### 2.21 `nytwatch/tracking/watcher.py` — Filesystem Session Monitor
+
+| Class/Function | Description |
+|----------------|-------------|
+| `TrackingWatcher` | Watchdog-based observer that monitors `<project_dir>/Saved/Nytwatch/` for plugin events. One observer instance shared across all projects; watches are added/removed per project. |
+| `add_watch(project_dir)` | Start watching the project's Nytwatch saved directory. No-op if already watching. |
+| `remove_watch(project_dir)` | Stop watching. Called on project switch. |
+| `get_pie_state(project_dir)` | Returns `{"running": bool}` — `True` while `nytwatch.lock` is present. |
+| `stop()` | Shutdown the watchdog observer thread. |
+
+**Internal event handlers:**
+- `_on_lock_created` — Lock file appeared → PIE started. Broadcasts `pie_state` WebSocket message.
+- `_on_lock_deleted` — Lock file removed → PIE ended. Waits 1 second (debounce) then calls `_scan_for_new_sessions`.
+- `_on_session_file` — New `.md` file created → calls `import_session_file`, broadcasts `session_imported`.
+- `_scan_for_new_sessions` — Batch import: scans `Sessions/` for `.md` files not yet in DB, imports each one.
+
+### 2.22 `nytwatch/tracking/config_writer.py` — NytwatchConfig.json Generator
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `write_config` | `(project_dir: str, db: Database, tracking_active: bool) -> None` | Reads armed systems from the `systems` table, resolves absolute paths from `SystemDef.paths` + `repo_path`, applies per-file verbosity overrides from `system_file_verbosity`, and writes `<project_dir>/Saved/Nytwatch/NytwatchConfig.json`. Uses atomic write (temp file + rename). Sets `"status": "On"` or `"Off"` based on `tracking_active`. |
+
+Output JSON shape:
+```json
+{
+  "version": "1.0.0",
+  "generated_at": "ISO-8601",
+  "status": "On|Off",
+  "tick_interval_seconds": 0.1,
+  "object_scan_cap": 2000,
+  "armed_systems": [{
+    "name": "Combat",
+    "system_verbosity": "Standard",
+    "absolute_paths": ["/abs/path/to/Source/MyGame/Combat/"],
+    "file_overrides": {"abs/path/File.h": "Critical"}
+  }]
+}
+```
+
+### 2.23 `nytwatch/tracking/plugin_installer.py` — UE5 Plugin Installer
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `install_plugin` | `(project_path: str, force: bool = False) -> int` | Locates the bundled `NytwatchAgent` plugin (wheel `share/nytwatch/ue5-plugin/` or dev layout `ue5-plugin/`), copies it to `<project>/Plugins/NytwatchAgent/`, patches the `.uproject` JSON to add the plugin enable entry. Returns 0 on success, 1 on failure. `force=True` removes the existing plugin directory before copying. |
+
+### 2.24 `nytwatch/tracking/session_parser.py` — Session File Parser
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `parse_session_file` | `(file_path: str) -> dict` | Reads a `.md` session file, extracts the YAML frontmatter block (`---` delimiters), and parses fields: `session_id`, `started_at`, `ended_at`, `ue_project_name`, `plugin_version`, `duration_seconds`, `systems_tracked`, `event_count`. Validates event count by scanning body lines for timestamp pattern `[HH:MM.SS]`. Returns dict with `import_error` key on failure. |
+
+### 2.25 `nytwatch/tracking/session_store.py` — Session Persistence
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `import_session_file` | `(file_path: str, project_dir: str, db: Database) -> dict \| None` | Idempotent — checks `session_exists_for_file` before inserting. Calls `parse_session_file`, then `db.insert_session`. Returns the inserted session dict or `None` if already imported or parse failed. |
+| `rename_session` | `(session_id: str, new_name: str, db: Database) -> None` | Updates `display_name` in the DB. File is never renamed. |
+| `delete_session` | `(session_id: str, db: Database) -> None` | Deletes the `.md` file then the DB row. Raises `ValueError` if the session is bookmarked. |
+| `bookmark_session` | `(session_id: str, bookmarked: bool, db: Database) -> None` | Toggles the `bookmarked` flag. |
+
 ---
 
 ## 3. Database Schema
@@ -651,6 +715,8 @@ CREATE TABLE IF NOT EXISTS findings (
     reasoning       TEXT NOT NULL,
     test_code       TEXT,
     test_description TEXT,
+    include_test    INTEGER NOT NULL DEFAULT 1,
+    locations       TEXT,
     source          TEXT NOT NULL DEFAULT 'project',
     status          TEXT NOT NULL DEFAULT 'pending',
     batch_id        TEXT,
@@ -694,6 +760,60 @@ CREATE TABLE IF NOT EXISTS config (
     key             TEXT PRIMARY KEY,
     value           TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS scan_logs (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id   TEXT NOT NULL,
+    logged_at TEXT NOT NULL,
+    level     TEXT NOT NULL,
+    logger    TEXT NOT NULL,
+    message   TEXT NOT NULL,
+    FOREIGN KEY (scan_id) REFERENCES scans(id)
+);
+
+CREATE TABLE IF NOT EXISTS systems (
+    name               TEXT PRIMARY KEY,
+    source_dir         TEXT NOT NULL DEFAULT '',
+    paths              TEXT NOT NULL DEFAULT '[]',
+    min_confidence     TEXT,
+    file_extensions    TEXT,
+    claude_fast_mode   INTEGER,
+    sort_order         INTEGER NOT NULL DEFAULT 0,
+    tracking_enabled   INTEGER NOT NULL DEFAULT 0,
+    tracking_verbosity TEXT NOT NULL DEFAULT 'Standard'
+);
+
+CREATE TABLE IF NOT EXISTS system_file_verbosity (
+    system_name TEXT NOT NULL,
+    file_path   TEXT NOT NULL,
+    verbosity   TEXT NOT NULL,
+    PRIMARY KEY (system_name, file_path)
+);
+
+CREATE TABLE IF NOT EXISTS nytwatch_sessions (
+    id               TEXT PRIMARY KEY,
+    file_path        TEXT UNIQUE NOT NULL,
+    project_dir      TEXT NOT NULL,
+    started_at       TEXT,
+    ended_at         TEXT,
+    duration_secs    REAL,
+    display_name     TEXT,
+    bookmarked       INTEGER NOT NULL DEFAULT 0,
+    plugin_version   TEXT NOT NULL DEFAULT '',
+    ue_project_name  TEXT NOT NULL DEFAULT '',
+    systems_tracked  TEXT NOT NULL DEFAULT '[]',
+    event_count      INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS finding_chats (
+    id         TEXT PRIMARY KEY,
+    finding_id TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (finding_id) REFERENCES findings(id)
+);
 ```
 
 ### Indexes
@@ -706,6 +826,11 @@ CREATE INDEX IF NOT EXISTS idx_findings_fingerprint  ON findings(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_findings_scan         ON findings(scan_id);
 CREATE INDEX IF NOT EXISTS idx_findings_batch        ON findings(batch_id);
 CREATE INDEX IF NOT EXISTS idx_findings_source       ON findings(source);
+CREATE INDEX IF NOT EXISTS idx_scan_logs_scan        ON scan_logs(scan_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_project      ON nytwatch_sessions(project_dir);
+CREATE INDEX IF NOT EXISTS idx_sessions_bookmarked   ON nytwatch_sessions(bookmarked);
+CREATE INDEX IF NOT EXISTS idx_sessions_started      ON nytwatch_sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_finding_chats_finding ON finding_chats(finding_id);
 ```
 
 ### Column Type Notes
@@ -713,15 +838,22 @@ CREATE INDEX IF NOT EXISTS idx_findings_source       ON findings(source);
 | Column | Storage | Application Type | Notes |
 |--------|---------|------------------|-------|
 | `findings.can_auto_fix` | `INTEGER` | `bool` | Stored as 0/1 |
+| `findings.include_test` | `INTEGER` | `bool` | Whether to include the generated test in batch apply. Toggled per finding. |
+| `findings.locations` | `TEXT` | `list[dict] \| None` | JSON-encoded secondary locations (additional affected code sites). |
 | `findings.severity` | `TEXT` | `Severity` enum | Values: critical, high, medium, low, info |
 | `findings.category` | `TEXT` | `Category` enum | Values: bug, performance, ue-antipattern, modern-cpp, memory, readability |
 | `findings.confidence` | `TEXT` | `Confidence` enum | Values: high, medium, low |
-| `findings.source` | `TEXT` | `FindingSource` enum | Values: active, ignored |
+| `findings.source` | `TEXT` | `FindingSource` enum | Values: `active` (file belongs to an active source directory), `ignored` (file belongs to an ignored source directory) |
 | `findings.status` | `TEXT` | `FindingStatus` enum | Values: pending, approved, rejected, applied, verified, failed, superseded |
 | `scans.scan_type` | `TEXT` | `ScanType` enum | Values: incremental, full (rotation is an alias for full) |
 | `scans.status` | `TEXT` | `ScanStatus` enum | Values: running, completed, failed |
 | `batches.status` | `TEXT` | `BatchStatus` enum | Values: pending, applying, building, testing, verified, failed |
 | `batches.finding_ids` | `TEXT` | `list[str]` | JSON-encoded array of finding IDs |
+| `systems.paths` | `TEXT` | `list[str]` | JSON-encoded array of repo-relative path prefixes |
+| `systems.tracking_enabled` | `INTEGER` | `bool` | Whether this system is armed for UE5 plugin tracking |
+| `systems.tracking_verbosity` | `TEXT` | `ENytwatchVerbosity` str | Default verbosity for the system when armed. Values: Critical, Standard, Verbose, Ignore |
+| `nytwatch_sessions.systems_tracked` | `TEXT` | `list[str]` | JSON-encoded list of system names active during the session |
+| `nytwatch_sessions.bookmarked` | `INTEGER` | `bool` | Bookmarked sessions cannot be deleted via the API |
 
 ### Known Config Keys
 
@@ -729,6 +861,8 @@ CREATE INDEX IF NOT EXISTS idx_findings_source       ON findings(source);
 |-----|-------------|--------|
 | `last_scan_commit` | Git SHA of last scanned commit | `run_incremental_scan` |
 | `rotation_index` | Current index in round-robin system rotation | `get_next_rotation_system` |
+| `tracking_tick_interval` | Tick interval in seconds written to `NytwatchConfig.json` | Arm API |
+| `tracking_object_scan_cap` | Max objects polled per tick written to `NytwatchConfig.json` | Arm API |
 
 ---
 
@@ -786,13 +920,21 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 
 | Method | Path | Handler | Template | Description |
 |--------|------|---------|----------|-------------|
-| GET | `/` | `dashboard` | `dashboard.html` | Dashboard with aggregate stats and recent batches. Redirects to `/settings?setup=1` if `repo_path` or `systems` are empty. |
-| GET | `/findings` | `findings_list` | `findings_list.html` | Filtered findings list with approve/reject actions |
-| GET | `/findings/{finding_id}` | `finding_detail` | `finding_detail.html` | Single finding detail view |
-| GET | `/scans` | `scans_list` | `scans.html` | Scan history list |
+| GET | `/` | `dashboard` | `dashboard.html` | Dashboard with aggregate stats, recent sessions, active batches. Redirects to `/settings?setup=1` if no project configured. |
+| GET | `/auditor` | redirect | — | Redirects to `/auditor/findings` |
+| GET | `/auditor/findings` | `findings_list` | `auditor.html` | Tabbed auditor view — findings list with approve/reject, batch list, scan history, system configuration |
+| GET | `/auditor/findings/{finding_id}` | `finding_detail` | `finding_detail.html` | Single finding detail with code snippet, fix diff, test case, AI chat interface |
+| GET | `/auditor/batches` | redirect | — | Redirects to `/auditor/findings` (batches tab) |
+| GET | `/auditor/batches/{batch_id}` | `batch_detail` | `batch_detail.html` | Batch detail with findings list, build log, test log, PR link |
+| GET | `/auditor/scans` | redirect | — | Redirects to `/auditor/findings` (scans tab) |
+| GET | `/auditor/systems` | redirect | — | Redirects to `/auditor/findings` (systems tab) |
+| GET | `/tracker` | `tracker_page` | `tracker.html` | Gameplay tracking interface — session list and system arm/disarm controls |
+| GET | `/tracker/sessions` | redirect | — | Redirects to `/tracker` (sessions tab) |
+| GET | `/tracker/systems` | redirect | — | Redirects to `/tracker` (systems tab) |
 | GET | `/settings` | `settings_page` | `settings.html` | Active project card, project switcher, config health, source directory classification, setup wizard modal |
-| GET | `/batches` | `batches_list` | `batches.html` | Batch list |
-| GET | `/batches/{batch_id}` | `batch_detail` | `batch_status.html` | Batch detail with associated findings |
+| GET | `/settings/tracking/{system_name}/files` | `file_verbosity_page` | `file_verbosity.html` | Per-file verbosity override configuration for a tracked system |
+
+Legacy redirects: `/findings` → `/auditor/findings`, `/findings/{id}` → `/auditor/findings/{id}`, `/scans` → `/auditor/scans`, `/batches` → `/auditor/batches`, `/batches/{id}` → `/auditor/batches/{id}`
 
 ### Findings List Query Parameters
 
@@ -810,7 +952,7 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| GET | `/findings/export` | `findings_export` | Excel export (.xlsx) with two sheets: "Overview" (config, severity breakdown, scan history) and "Findings" (all columns, color-coded severity, frozen header row). Same query params as findings list. |
+| GET | `/auditor/findings/export` | `findings_export` | Excel export (.xlsx) with two sheets: "Overview" (config, severity breakdown, scan history) and "Findings" (all columns, color-coded severity, frozen header row). Same query params as findings list. |
 
 ### JSON API Endpoints
 
@@ -842,11 +984,66 @@ All pages are scoped to the active project (`app.state.config`, `app.state.db`).
 | POST | `/batch/apply` | `apply_batch` | -- | `{"ok": true, "batch_id": str}` | Creates a batch from all approved findings and runs the pipeline in a background thread. 400 if no approved findings. |
 | GET | `/api/stats` | `api_stats` | -- | `{status_counts, severity_counts, total_scans, total_batches, last_scan, pending_count, approved_count}` | JSON stats for the active project's database. |
 
+**Tracking (UE5 plugin):**
+
+| Method | Path | Handler | Request Body | Response | Description |
+|--------|------|---------|--------------|----------|-------------|
+| GET | `/api/nytwatch/pie-state` | `pie_state` | — | `{"running": bool, "project_dir": str}` | Whether a PIE session is currently active for the project. |
+| POST | `/api/nytwatch/tracking/start` | `tracking_start` | — | `{"ok": true}` | Enables plugin tracking — sets `tracking_active=True`, rewrites `NytwatchConfig.json` with `"status": "On"`. |
+| POST | `/api/nytwatch/tracking/stop` | `tracking_stop` | — | `{"ok": true}` | Disables tracking — sets `tracking_active=False`, rewrites `NytwatchConfig.json` with `"status": "Off"`. |
+| GET | `/api/nytwatch/arm` | `get_arm_config` | — | `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds", "object_scan_cap"}` | Current arm config for all systems. |
+| POST | `/api/nytwatch/arm` | `set_arm_config` | `{"systems": [{name, tracking_enabled, tracking_verbosity}], "tick_interval_seconds", "object_scan_cap"}` | `{"ok": true}` | Arms/disarms systems, updates tick/cap settings, rewrites `NytwatchConfig.json`. |
+| GET | `/api/nytwatch/systems/{system_name}/files` | `get_system_files` | — | `[{file_path, verbosity_override_or_null}]` | All `.h` files under the system's paths with their current verbosity override if set. |
+| POST | `/api/nytwatch/systems/{system_name}/files/verbosity` | `set_file_verbosity` | `{"overrides": [{file_path, verbosity}]}` | `{"ok": true}` | Atomically replaces all per-file verbosity overrides for the system. Rewrites `NytwatchConfig.json`. |
+| GET | `/api/nytwatch/plugin-check` | `plugin_check` | — | `{"installed": bool, "projects": [str]}` | Checks whether the NytwatchAgent plugin is installed in any configured game project. |
+
+**Sessions:**
+
+| Method | Path | Handler | Request Body | Response | Description |
+|--------|------|---------|--------------|----------|-------------|
+| GET | `/api/sessions` | `list_sessions_api` | — | `{"sessions": [...]}` | List sessions. Query params: `bookmarked_only` (bool), `q` (search string), `limit` (int). |
+| GET | `/api/sessions/{session_id}` | `get_session_api` | — | `{session dict}` | Single session metadata. 404 if not found. |
+| GET | `/api/sessions/{session_id}/content` | `session_content` | — | `{"content": str}` | Raw markdown text of the session file for inline preview. |
+| POST | `/api/sessions/{session_id}/rename` | `rename_session_api` | `{"display_name": str}` | `{"ok": true}` | Update session display name (DB only — file is never renamed). |
+| POST | `/api/sessions/{session_id}/bookmark` | `bookmark_session_api` | `{"bookmarked": bool}` | `{"ok": true}` | Toggle session bookmark. Bookmarked sessions cannot be deleted. |
+| DELETE | `/api/sessions/{session_id}` | `delete_session_api` | — | `{"ok": true}` | Delete session DB record and `.md` file. Returns 400 if session is bookmarked. |
+
+**Finding chat:**
+
+| Method | Path | Handler | Request Body | Response | Description |
+|--------|------|---------|--------------|----------|-------------|
+| GET | `/api/findings/{finding_id}/chat` | `get_chat` | — | `{"messages": [{role, content, created_at}]}` | Chat history for a finding. |
+| POST | `/api/findings/{finding_id}/chat` | `post_chat` | `{"message": str}` | `{"role": "assistant", "content": str}` | Send a message; runs `run_finding_chat` via Claude and returns the assistant reply. |
+
+**Finding toggle:**
+
+| Method | Path | Handler | Request Body | Response | Description |
+|--------|------|---------|--------------|----------|-------------|
+| POST | `/findings/{finding_id}/toggle-test` | `toggle_test` | — | `{"ok": true, "include_test": bool}` | Flips the `include_test` flag on a finding. |
+| POST | `/findings/{finding_id}/recheck` | `recheck_finding` | — | `{"ok": true}` | Re-validates a finding via Claude. |
+
+**Additional system/source-dir APIs:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/systems/append` | Add new systems without replacing existing ones |
+| GET | `/api/source-dirs` | Active source directories only |
+| GET | `/api/source-dirs-all` | All source directories including ignored |
+| POST | `/settings/source-dirs/bulk` | Bulk update multiple source directory classifications |
+| POST | `/settings/source-dirs/reclassify` | Re-run source detection and reclassify |
+| DELETE | `/api/projects` | Delete active project config and its database |
+| GET | `/api/git/branches` | List git branches for the active project repo |
+| POST | `/api/config/branch` | Set the target git branch for batch apply |
+| POST | `/api/config/update` | Update configuration fields |
+| GET | `/api/find-uproject` | Find `.uproject` file path in the repo |
+| POST | `/api/open-folder` | Open a folder in the OS file explorer |
+| GET | `/api/suggest-paths` | Suggest paths for a system (Claude agent) |
+
 ### WebSocket
 
 | Path | Description |
 |------|-------------|
-| `/ws` | Real-time push channel. On connect, immediately sends current `scan_status`. Messages types: `scan_status` (running/cancelling/scan), `log` (per-scan log line), `findings_update` (chunk progress per system). |
+| `/ws` | Real-time push channel. On connect, immediately sends current `scan_status`. Message types: `scan_status` (running/cancelling/scan dict), `log` (per-scan log line with level/logger/message), `findings_update` (chunk progress per system during scan), `pie_state` (UE PIE start/end with armed systems and event count), `session_imported` (new session available), `session_deleted` (session removed). |
 
 ### Static Files
 
@@ -856,14 +1053,14 @@ Mounted at `/static` from `src/nytwatch/web/static/`.
 
 Jinja2 templates at `src/nytwatch/web/templates/`:
 
-- `base.html` -- Base layout
-- `dashboard.html` -- Dashboard view
-- `findings_list.html` -- Findings listing
-- `finding_detail.html` -- Finding detail
-- `scans.html` -- Scan history
-- `settings.html` -- Source dir management
-- `batches.html` -- Batch listing
-- `batch_status.html` -- Batch detail
+- `base.html` — Base layout (nav, sidebar, asset includes)
+- `dashboard.html` — Home dashboard with stats cards, severity breakdown, recent sessions and batches
+- `auditor.html` — Tabbed auditor interface (findings / batches / scans / systems tabs)
+- `finding_detail.html` — Single finding detail with code snippet, fix diff, test case, AI chat
+- `batch_detail.html` — Batch detail with findings list, build/test logs, PR link
+- `settings.html` — Project config, source directory classification, setup wizard
+- `tracker.html` — Gameplay tracking interface (sessions list / arm systems tabs)
+- `file_verbosity.html` — Per-file verbosity override configuration for a tracked system
 
 ---
 
