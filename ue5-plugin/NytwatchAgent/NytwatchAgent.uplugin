@@ -1,0 +1,17 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0.0",
+  "FriendlyName": "Nytwatch Agent",
+  "Description": "Runtime gameplay tracking for Nytwatch by Nytwolf Games.",
+  "Category": "Editor",
+  "EnabledByDefault": false,
+  "CanContainContent": false,
+  "Modules": [
+    {
+      "Name": "NytwatchAgent",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
+}
