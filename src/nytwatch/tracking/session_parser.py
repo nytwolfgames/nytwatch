@@ -69,13 +69,23 @@ def parse_session_file(file_path: str) -> dict:
     if not header_done:
         result["import_error"] = "Missing or malformed header block"
 
-    session_id = header.get("session_id", "") or path.stem
+    def _header_val(key: str) -> Optional[str]:
+        """Return the header value, or None if absent or still an unfilled placeholder."""
+        val = header.get(key)
+        if not val:
+            return None
+        # Placeholders written by the plugin look like __FOO__ — treat as absent.
+        if val.startswith("__") and val.endswith("__"):
+            return None
+        return val
+
+    session_id = _header_val("session_id") or path.stem
     result["id"] = session_id
-    result["started_at"] = header.get("started_at", "")
-    result["ended_at"] = header.get("ended_at") or None
-    result["end_reason"] = header.get("end_reason") or None
-    result["ue_project_name"] = header.get("ue_project_name", "")
-    result["plugin_version"] = header.get("plugin_version", "")
+    result["started_at"] = _header_val("started_at") or ""
+    result["ended_at"] = _header_val("ended_at")
+    result["end_reason"] = _header_val("end_reason")
+    result["ue_project_name"] = _header_val("ue_project_name") or ""
+    result["plugin_version"] = _header_val("plugin_version") or ""
 
     try:
         result["duration_secs"] = int(header.get("duration_seconds", 0))
