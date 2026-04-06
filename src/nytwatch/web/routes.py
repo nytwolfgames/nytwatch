@@ -167,10 +167,15 @@ async def dashboard(request: Request):
     })
 
 
-# --- Findings ---
+# --- Auditor ---
 
-@router.get("/findings", response_class=HTMLResponse)
-async def findings_list(  # noqa: C901
+@router.get("/auditor", response_class=HTMLResponse)
+async def auditor_root(request: Request):
+    return RedirectResponse(url="/auditor/findings")
+
+
+@router.get("/auditor/findings", response_class=HTMLResponse)
+async def auditor_findings(  # noqa: C901
     request: Request,
     status: Optional[str] = None,
     severity: Optional[str] = None,
@@ -180,7 +185,6 @@ async def findings_list(  # noqa: C901
     source: Optional[str] = None,
     system: Optional[str] = None,
 ):
-    config = get_config(request)
     db = get_db(request)
     if db is None:
         return RedirectResponse(url="/settings?setup=1")
@@ -219,12 +223,145 @@ async def findings_list(  # noqa: C901
         s for s in db.list_systems()
         if s.get("source_dir", "").replace("\\", "/").rstrip("/") not in ignored_dirs
     ]
-    return templates.TemplateResponse(request, "findings_list.html", {
+    return templates.TemplateResponse(request, "auditor.html", {
+        "active_tab": "findings",
         "findings": findings,
         "filters": filters,
         "approved_count": approved_count,
         "systems": active_systems,
     })
+
+
+@router.get("/auditor/findings/export")
+async def auditor_findings_export(request: Request):
+    qs = str(request.url.query)
+    url = f"/findings/export?{qs}" if qs else "/findings/export"
+    return RedirectResponse(url=url)
+
+
+@router.get("/auditor/findings/{finding_id}", response_class=HTMLResponse)
+async def auditor_finding_detail(request: Request, finding_id: str):
+    db = get_db(request)
+    if db is None:
+        return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
+    finding = db.get_finding(finding_id)
+    if not finding:
+        return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
+    return templates.TemplateResponse(request, "finding_detail.html", {
+        "finding": finding,
+    })
+
+
+@router.get("/auditor/batches", response_class=HTMLResponse)
+async def auditor_batches(request: Request):
+    db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
+    batches = db.list_batches()
+    return templates.TemplateResponse(request, "auditor.html", {
+        "active_tab": "batches",
+        "batches": batches,
+    })
+
+
+@router.get("/auditor/batches/{batch_id}", response_class=HTMLResponse)
+async def auditor_batch_detail(request: Request, batch_id: str):
+    db = get_db(request)
+    if db is None:
+        return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
+    batch = db.get_batch(batch_id)
+    if not batch:
+        return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
+    findings = [db.get_finding(fid) for fid in batch["finding_ids"]]
+    findings = [f for f in findings if f]
+    return templates.TemplateResponse(request, "batch_status.html", {
+        "batch": batch,
+        "findings": findings,
+    })
+
+
+@router.get("/auditor/scans", response_class=HTMLResponse)
+async def auditor_scans(request: Request):
+    db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
+    scans = db.list_scans()
+    log_counts = db.get_scan_log_counts()
+    return templates.TemplateResponse(request, "auditor.html", {
+        "active_tab": "scans",
+        "scans": scans,
+        "log_counts": log_counts,
+    })
+
+
+@router.get("/auditor/systems", response_class=HTMLResponse)
+async def auditor_systems(request: Request):
+    db = get_db(request)
+    if db is None:
+        return RedirectResponse(url="/settings?setup=1")
+
+    db_systems = db.list_systems()
+    all_source_dirs = db.list_source_dirs()
+    source_dir_map = {d["path"]: d["source_type"] for d in all_source_dirs}
+
+    needs_repair = any(not s.get("source_dir") for s in db_systems)
+    if needs_repair and source_dir_map:
+        repaired = _infer_source_dirs(db_systems, set(source_dir_map.keys()))
+        db.replace_systems([
+            {
+                "name": s["name"],
+                "source_dir": s.get("source_dir") or "",
+                "paths": s.get("paths", []),
+                "min_confidence": s.get("min_confidence"),
+                "file_extensions": s.get("file_extensions"),
+                "claude_fast_mode": s.get("claude_fast_mode"),
+            }
+            for s in repaired
+        ])
+        db_systems = db.list_systems()
+
+    sys_by_dir: dict[str, list] = {}
+    for s in db_systems:
+        sd = s.get("source_dir") or ""
+        sys_by_dir.setdefault(sd, []).append({
+            "id": s["id"],
+            "name": s["name"],
+            "source_dir": sd,
+            "count": db.count_findings_for_path_prefixes(s["paths"]),
+            "tracking_enabled": s.get("tracking_enabled", False),
+        })
+
+    sorted_dirs = sorted(
+        sys_by_dir.keys(),
+        key=lambda sd: (1 if source_dir_map.get(sd) == "ignored" else 0, sd.lower()),
+    )
+    grouped_systems = []
+    for sd in sorted_dirs:
+        systems_in_group = sorted(sys_by_dir[sd], key=lambda s: s["name"].lower())
+        grouped_systems.append({
+            "source_dir": sd,
+            "ignored": source_dir_map.get(sd) == "ignored",
+            "systems": systems_in_group,
+        })
+
+    has_grouping = any(g["source_dir"] for g in grouped_systems)
+    systems = [s for g in grouped_systems for s in g["systems"]]
+
+    return templates.TemplateResponse(request, "auditor.html", {
+        "active_tab": "systems",
+        "systems": systems,
+        "grouped_systems": grouped_systems,
+        "has_grouping": has_grouping,
+    })
+
+
+# --- Findings ---
+
+@router.get("/findings", response_class=HTMLResponse)
+async def findings_list(request: Request):
+    qs = str(request.url.query)
+    url = f"/auditor/findings?{qs}" if qs else "/auditor/findings"
+    return RedirectResponse(url=url)
 
 
 @router.post("/findings/clean")
@@ -409,15 +546,7 @@ async def findings_export(
 
 @router.get("/findings/{finding_id}", response_class=HTMLResponse)
 async def finding_detail(request: Request, finding_id: str):
-    db = get_db(request)
-    if db is None:
-        return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
-    finding = db.get_finding(finding_id)
-    if not finding:
-        return HTMLResponse("<h1>Finding not found</h1>", status_code=404)
-    return templates.TemplateResponse(request, "finding_detail.html", {
-        "finding": finding,
-    })
+    return RedirectResponse(url=f"/auditor/findings/{finding_id}")
 
 
 @router.post("/findings/{finding_id}/approve")
@@ -552,15 +681,7 @@ async def post_finding_chat(request: Request, finding_id: str):
 
 @router.get("/scans", response_class=HTMLResponse)
 async def scans_list(request: Request):
-    db = get_db(request)
-    if db is None:
-        return RedirectResponse(url="/settings?setup=1")
-    scans = db.list_scans()
-    log_counts = db.get_scan_log_counts()
-    return templates.TemplateResponse(request, "scans.html", {
-        "scans": scans,
-        "log_counts": log_counts,
-    })
+    return RedirectResponse(url="/auditor/scans")
 
 
 # --- System config API ---
@@ -1706,29 +1827,12 @@ async def bulk_update_source_dirs(request: Request):
 
 @router.get("/batches", response_class=HTMLResponse)
 async def batches_list(request: Request):
-    db = get_db(request)
-    if db is None:
-        return RedirectResponse(url="/settings?setup=1")
-    batches = db.list_batches()
-    return templates.TemplateResponse(request, "batches.html", {
-        "batches": batches,
-    })
+    return RedirectResponse(url="/auditor/batches")
 
 
 @router.get("/batches/{batch_id}", response_class=HTMLResponse)
 async def batch_detail(request: Request, batch_id: str):
-    db = get_db(request)
-    if db is None:
-        return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
-    batch = db.get_batch(batch_id)
-    if not batch:
-        return HTMLResponse("<h1>Batch not found</h1>", status_code=404)
-    findings = [db.get_finding(fid) for fid in batch["finding_ids"]]
-    findings = [f for f in findings if f]
-    return templates.TemplateResponse(request, "batch_status.html", {
-        "batch": batch,
-        "findings": findings,
-    })
+    return RedirectResponse(url=f"/auditor/batches/{batch_id}")
 
 
 @router.post("/batch/apply")
@@ -2063,7 +2167,7 @@ async def api_plugin_check(request: Request):
     return JSONResponse({"installed": _plugin_installed(config.repo_path)})
 
 
-@router.get("/sessions", response_class=HTMLResponse)
+@router.get("/tracker", response_class=HTMLResponse)
 async def sessions_page(request: Request):
     db = get_db(request)
     if db is None:

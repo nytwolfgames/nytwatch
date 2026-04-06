@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -60,7 +62,8 @@ def call_claude(
     (log_dir / f"{call_id}_prompt.txt").write_text(prompt, encoding="utf-8")
 
     def _build_cmd(perms_flag: Optional[str]) -> list[str]:
-        base = ["claude", "-p", "-", "--output-format", "json"]
+        claude_exe = shutil.which("claude") or ("claude.cmd" if sys.platform == "win32" else "claude")
+        base = [claude_exe, "-p", "-", "--output-format", "json"]
         if fast and _FAST_MODEL:
             base.extend(["--model", _FAST_MODEL])
         if use_tools and perms_flag:

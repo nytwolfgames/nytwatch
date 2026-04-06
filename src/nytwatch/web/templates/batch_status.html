@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="mb-6">
-    <a href="/batches" class="link-subtle body-sm">&larr; Back to batches</a>
+    <a href="/auditor/batches" class="link-subtle body-sm">&larr; Back to batches</a>
 </div>
 
 <div class="flex items-center gap-4 mb-8">
@@ -57,7 +57,7 @@
         <div class="flex items-center justify-between" style="background: var(--surface); border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-4);">
             <div class="flex items-center gap-3">
                 <span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span>
-                <a href="/findings/{{ f.id }}" class="body-sm">{{ f.title }}</a>
+                <a href="/auditor/findings/{{ f.id }}" class="body-sm">{{ f.title }}</a>
             </div>
             <span class="mono body-sm text-outline">{{ f.file_path|truncate(30) }}</span>
         </div>

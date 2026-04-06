@@ -913,7 +913,9 @@ async function switchProject(path) {
         });
         const d = await r.json();
         if (d.ok) {
-            location.reload();
+            const url = new URL(location.href);
+            url.searchParams.delete('setup');
+            location.replace(url.toString());
         } else {
             alert(d.error || 'Failed to switch project');
             await loadProjects();

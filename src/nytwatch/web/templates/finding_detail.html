@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="mb-6">
-    <a href="/findings" class="link-subtle body-sm">&larr; Back to findings</a>
+    <a href="/auditor/findings" class="link-subtle body-sm">&larr; Back to findings</a>
 </div>
 
 <div class="flex items-center justify-between mb-6" style="flex-wrap: wrap; gap: var(--sp-4);">
@@ -169,7 +169,7 @@
         {% if finding.batch_id %}
         <div>
             <span class="body-sm text-outline">Batch</span>
-            <div style="margin-top: var(--sp-1);"><a href="/batches/{{ finding.batch_id }}" class="mono">{{ finding.batch_id[:8] }}</a></div>
+            <div style="margin-top: var(--sp-1);"><a href="/auditor/batches/{{ finding.batch_id }}" class="mono">{{ finding.batch_id[:8] }}</a></div>
         </div>
         {% endif %}
     </div>

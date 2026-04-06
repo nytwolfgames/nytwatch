@@ -1,0 +1,1554 @@
+{% extends "base.html" %}
+{% block title %}Auditor - Nytwatch{% endblock %}
+
+{% block content %}
+<style>
+  .auditor-tab {
+    display: inline-block;
+    padding: 8px 20px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--on-surface-variant);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color .15s, border-color .15s;
+  }
+  .auditor-tab:hover { color: var(--on-surface); }
+  .auditor-tab-active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+  #systems-table .sys-row:hover { background: rgba(0,74,198,0.03) !important; }
+  #systems-table .sys-row:hover .sys-edit-btn { opacity: 1 !important; }
+  #systems-table .sys-group-row {
+    background: rgba(0,74,198,0.05) !important;
+    cursor: pointer;
+    user-select: none;
+  }
+  #systems-table .sys-group-row td {
+    box-shadow: inset 3px 0 0 rgba(0,74,198,0.35);
+  }
+  #systems-table .sys-group-row:hover { background: rgba(0,74,198,0.09) !important; }
+  #systems-table .sys-group-row.sys-group-ignored {
+    background: rgba(180,83,9,0.06) !important;
+  }
+  #systems-table .sys-group-row.sys-group-ignored td {
+    box-shadow: inset 3px 0 0 rgba(180,83,9,0.45);
+  }
+  #systems-table .sys-group-row.sys-group-ignored:hover { background: rgba(180,83,9,0.11) !important; }
+  #systems-table .sys-group-row.sys-group-ignored .group-arrow { color: var(--severity-medium, #b45309) !important; }
+  #systems-table .sys-row td:first-child { padding-left: 28px; }
+  #systems-table .sys-row-ignored td { opacity: 0.65; }
+  .badge-source-ignored {
+    background: var(--severity-medium, #b45309) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em;
+  }
+</style>
+
+<div class="flex items-center justify-between mb-6">
+    <h1 class="headline-lg">Auditor</h1>
+    {% if active_tab == 'findings' and approved_count > 0 %}
+    <div class="flex items-center gap-3">
+        <button onclick="applyBatch()" id="apply-btn" class="btn btn-primary">
+            Apply {{ approved_count }} Approved
+        </button>
+        <button onclick="cleanFindings(this)" class="btn btn-danger btn-sm">Clean</button>
+        <a href="/auditor/findings/export?{{ request.query_string.decode() }}" class="btn btn-secondary btn-sm">Export</a>
+    </div>
+    {% elif active_tab == 'findings' %}
+    <div class="flex items-center gap-3">
+        <button onclick="cleanFindings(this)" class="btn btn-danger btn-sm">Clean</button>
+        <a href="/auditor/findings/export?{{ request.query_string.decode() }}" class="btn btn-secondary btn-sm">Export</a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Tab bar -->
+<div style="border-bottom:2px solid var(--outline-variant);margin-bottom:var(--sp-6);">
+    <a href="/auditor/findings" class="auditor-tab {% if active_tab == 'findings' %}auditor-tab-active{% endif %}">Findings</a>
+    <a href="/auditor/batches" class="auditor-tab {% if active_tab == 'batches' %}auditor-tab-active{% endif %}">Batches</a>
+    <a href="/auditor/scans"   class="auditor-tab {% if active_tab == 'scans'   %}auditor-tab-active{% endif %}">Scans</a>
+    <a href="/auditor/systems" class="auditor-tab {% if active_tab == 'systems' %}auditor-tab-active{% endif %}">Systems</a>
+</div>
+
+{# ── Findings tab ─────────────────────────────────────────────────────────── #}
+{% if active_tab == 'findings' %}
+
+<form method="GET" action="/auditor/findings" id="filter-form" class="card mb-6">
+    <div class="flex gap-3 flex-wrap items-center">
+        <select name="status" class="input" onchange="this.form.submit()">
+            <option value="">All statuses</option>
+            {% for s in ['pending', 'approved', 'rejected', 'applied', 'verified', 'failed'] %}
+            <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s|title }}</option>
+            {% endfor %}
+        </select>
+        <select name="severity" class="input" onchange="this.form.submit()">
+            <option value="">All severities</option>
+            {% for s in ['critical', 'high', 'medium', 'low', 'info'] %}
+            <option value="{{ s }}" {% if filters.severity == s %}selected{% endif %}>{{ s|title }}</option>
+            {% endfor %}
+        </select>
+        <select name="category" class="input" onchange="this.form.submit()">
+            <option value="">All categories</option>
+            {% for c in ['bug', 'performance', 'ue-antipattern', 'modern-cpp', 'memory', 'readability'] %}
+            <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+        <select name="confidence" class="input" onchange="this.form.submit()">
+            <option value="">All confidence</option>
+            {% for c in ['high', 'medium', 'low'] %}
+            <option value="{{ c }}" {% if filters.confidence == c %}selected{% endif %}>{{ c|title }}</option>
+            {% endfor %}
+        </select>
+        <select name="system" class="input" onchange="this.form.submit()">
+            <option value="">All systems</option>
+            {% for source_dir, dir_systems in systems | groupby('source_dir') %}
+            <optgroup label="{{ source_dir or 'Unassigned' }}">
+                {% for s in dir_systems %}
+                <option value="{{ s.name }}" {% if filters.system == s.name %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </optgroup>
+            {% endfor %}
+        </select>
+        <input type="text" name="file_path" value="{{ filters.file_path or '' }}" placeholder="Filter by file path..." class="input" style="min-width: 12rem;">
+        <a href="/auditor/findings" class="link-subtle body-sm">Clear</a>
+    </div>
+</form>
+
+{% if findings %}
+<div class="card" style="padding: 0;">
+    <div class="table-scroll">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width: 7%;">Severity</th>
+                <th style="width: 32%;">Title</th>
+                <th style="width: 16%;">File</th>
+                <th style="width: 10%;">System</th>
+                <th style="width: 7%;">Category</th>
+                <th style="width: 8%;">Confidence</th>
+                <th style="width: 7%;">Status</th>
+                <th style="width: 5%;" title="Include a test case when applying this fix">Test</th>
+                <th style="width: 8%;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in findings %}
+            <tr>
+                <td><span class="badge badge-{{ f.severity }}">{{ f.severity|upper }}</span></td>
+                <td><a href="/auditor/findings/{{ f.id }}">{{ f.title }}</a></td>
+                <td class="mono cell-truncate" style="font-size: 0.75rem;" title="{{ f.file_path }}:{{ f.line_start }}{% if f.locations_extra %} (+{{ f.locations_extra }} more){% endif %}">{{ f.file_path }}:{{ f.line_start }}{% if f.locations_extra %} <span class="badge" style="font-size:0.65rem;padding:1px 5px;vertical-align:middle;">+{{ f.locations_extra }}</span>{% endif %}</td>
+                <td class="body-sm cell-truncate" title="{{ f.system_name or '' }}">{{ f.system_name or '—' }}</td>
+                <td><span class="badge badge-category">{{ f.category }}</span></td>
+                <td class="body-sm text-variant">{{ f.confidence }}</td>
+                <td><span class="badge status-{{ f.status }}">{{ f.status }}</span></td>
+                <td style="text-align:center;">
+                    <input type="checkbox" class="test-toggle"
+                           data-id="{{ f.id }}"
+                           {% if f.include_test != 0 %}checked{% endif %}
+                           title="Include test case when applying fix"
+                           onchange="toggleTest(this)">
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if f.status in ('pending', 'approved', 'rejected') %}
+                    <button onclick="recheckFromList(this, '{{ f.id }}')" class="action-recheck" title="Recheck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg></button>
+                    {% endif %}
+                    {% if f.status == 'pending' %}
+                    <button onclick="postAction('/findings/{{ f.id }}/approve')" class="action-approve" title="Approve"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg></button>
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" title="Reject"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
+                    {% elif f.status == 'approved' %}
+                    <button onclick="postAction('/findings/{{ f.id }}/reject')" class="action-reject" title="Unapprove"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:var(--sp-10);">
+    <div style="font-size:2rem;margin-bottom:var(--sp-3);">🔎</div>
+    {% if not filters.status and not filters.severity and not filters.category and not filters.system and not filters.file_path %}
+    <div class="headline-md mb-2">No findings yet</div>
+    <p class="body-md text-variant mb-4">Run a scan to start discovering issues in your codebase.</p>
+    <a href="/auditor/scans" class="btn btn-primary">Go to Scans</a>
+    {% else %}
+    <div class="headline-md mb-2">No findings match your filters</div>
+    <p class="body-md text-variant mb-4">Try adjusting or clearing your filters.</p>
+    <a href="/auditor/findings" class="btn btn-primary">Clear filters</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{# ── Batches tab ──────────────────────────────────────────────────────────── #}
+{% elif active_tab == 'batches' %}
+
+{% if batches %}
+<div class="card" style="padding: 0;">
+    <div class="table-scroll">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Batch</th>
+                <th>Findings</th>
+                <th>Status</th>
+                <th>Branch</th>
+                <th>PR</th>
+                <th>Created</th>
+                <th>Completed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for batch in batches %}
+            <tr>
+                <td><a href="/auditor/batches/{{ batch.id }}" class="mono">{{ batch.id[:8] }}</a></td>
+                <td>{{ batch.finding_ids|length }}</td>
+                <td><span class="badge status-{{ batch.status }}">{{ batch.status }}</span></td>
+                <td class="mono" style="font-size: 0.75rem; color: var(--on-surface-variant);">{{ batch.branch_name or '-' }}</td>
+                <td>
+                    {% if batch.pr_url %}
+                    <a href="{{ batch.pr_url }}" target="_blank" class="body-sm">View PR</a>
+                    {% else %}<span class="text-outline">-</span>{% endif %}
+                </td>
+                <td class="body-sm text-variant">{{ batch.created_at[:10] }} {{ batch.created_at[11:16] }}</td>
+                <td class="body-sm text-variant">{{ (batch.completed_at[:10] ~ ' ' ~ batch.completed_at[11:16] if batch.completed_at else '-') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:var(--sp-10);">
+    <div style="font-size:2rem;margin-bottom:var(--sp-3);">📦</div>
+    <div class="headline-md mb-2">No batches yet</div>
+    <p class="body-md text-variant mb-4">Approve some findings, then click "Apply" on the Dashboard to create your first batch.</p>
+    <a href="/auditor/findings?status=pending" class="btn btn-primary">View pending findings</a>
+</div>
+{% endif %}
+
+{# ── Scans tab ────────────────────────────────────────────────────────────── #}
+{% elif active_tab == 'scans' %}
+
+{% if scans %}
+<div class="card" style="padding: 0;">
+    <table class="data-table" style="width: 100%;">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>System</th>
+                <th>Files</th>
+                <th>Findings</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Log</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for scan in scans %}
+            <tr id="scan-row-{{ scan.id }}">
+                <td class="mono" style="font-size: 0.75rem; color: var(--on-surface-variant);">{{ scan.id[:8] }}</td>
+                <td><span class="badge badge-category">{{ scan.scan_type }}</span></td>
+                <td class="body-sm">{{ scan.system_name or 'All' }}</td>
+                <td class="body-sm">{{ scan.files_scanned }}</td>
+                <td>
+                    {% if scan.findings_count > 0 %}
+                    <a href="/auditor/findings?scan_id={{ scan.id }}">{{ scan.findings_count }}</a>
+                    {% else %}
+                    <span class="text-outline">0</span>
+                    {% endif %}
+                </td>
+                <td><span class="badge status-{{ scan.status }}">{{ scan.status }}</span></td>
+                <td class="body-sm text-variant">{{ scan.started_at[:10] }} {{ scan.started_at[11:16] }}</td>
+                <td class="body-sm text-variant">{{ (scan.completed_at[:10] ~ ' ' ~ scan.completed_at[11:16] if scan.completed_at else '-') }}</td>
+                <td>
+                    {% if scan.status == 'running' or log_counts.get(scan.id, 0) > 0 %}
+                    <button class="btn btn-sm scan-safe" onclick="showLog('{{ scan.id }}', '{{ scan.status }}')">Show Log</button>
+                    {% else %}
+                    <span class="body-sm text-outline">No log</span>
+                    {% endif %}
+                </td>
+                <td style="white-space: nowrap;">
+                    {% if scan.status == 'running' %}
+                    <button class="btn btn-sm btn-danger scan-safe" onclick="stopScan('{{ scan.id }}')">Stop</button>
+                    {% else %}
+                    <button class="btn btn-sm btn-danger scan-safe" onclick="deleteScan('{{ scan.id }}')">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:var(--sp-10);">
+    <div style="font-size:2rem;margin-bottom:var(--sp-3);">🔍</div>
+    <div class="headline-md mb-2">No scans yet</div>
+    <p class="body-md text-variant mb-4">Head to the Systems tab and click "Trigger Scan" to run your first scan.</p>
+    <a href="/auditor/systems" class="btn btn-primary">Go to Systems</a>
+</div>
+{% endif %}
+
+<!-- Log Modal -->
+<div id="log-modal" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.55); align-items:center; justify-content:center;">
+    <div style="background:var(--surface, #1e1e2e); border:1px solid var(--outline, #3f3f5a); border-radius:10px; width:min(900px,95vw); max-height:80vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.5);">
+        <div style="display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--outline, #3f3f5a); gap:10px;">
+            <span id="log-modal-title" style="font-weight:600; font-size:0.95rem; flex:1;">Scan Log</span>
+            <span id="log-live-badge" style="display:none; font-size:0.75rem; background:#1d4ed8; color:#fff; padding:2px 8px; border-radius:4px; font-weight:500;">LIVE</span>
+            <button onclick="downloadLog()" id="log-download-btn" class="btn btn-sm scan-safe" style="font-size:0.78rem;">⬇ Download</button>
+            <button onclick="closeLog()" class="scan-safe" style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant,#aaa);font-size:1.2rem;line-height:1;padding:2px 6px;">&times;</button>
+        </div>
+        <div id="log-content" style="flex:1; overflow-y:auto; padding:14px 18px; font-family:monospace; font-size:0.78rem; line-height:1.6; white-space:pre-wrap; word-break:break-all; background:var(--surface-container, #13131f); max-height:calc(80vh - 60px);">
+            <span style="color:var(--on-surface-variant,#888);">Loading…</span>
+        </div>
+        <div id="log-footer" style="padding:8px 18px; border-top:1px solid var(--outline, #3f3f5a); font-size:0.75rem; color:var(--on-surface-variant,#888); display:flex; gap:12px; align-items:center;">
+            <span id="log-count"></span>
+            <label style="margin-left:auto; display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="log-autoscroll" checked> Auto-scroll
+            </label>
+        </div>
+    </div>
+</div>
+
+{# ── Systems tab ──────────────────────────────────────────────────────────── #}
+{% elif active_tab == 'systems' %}
+
+{% if systems %}
+<div class="card mb-8" style="padding: 0; overflow: hidden;">
+    <div style="padding: var(--sp-4) var(--sp-5); display:flex; align-items:center; gap: var(--sp-2);">
+        <span class="label-lg" style="flex:1;">Systems</span>
+        <button class="btn btn-sm scan-safe" onclick="openDrawer(null)">+ Add System</button>
+        <button class="btn btn-sm" onclick="triggerScan(null, 'incremental')">Incremental All</button>
+        <button class="btn btn-sm btn-primary" onclick="triggerScan(null, 'full')">Full Scan All</button>
+    </div>
+
+    <table id="systems-table" class="data-table">
+        <thead>
+            <tr>
+                <th>System</th>
+                <th style="width:72px;">Tracked</th>
+                <th style="width:80px;">Findings</th>
+                <th style="width:210px; text-align:right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for group in grouped_systems %}
+            {% set group_key = loop.index0 %}
+
+            {% if has_grouping %}
+            <tr class="sys-group-row{% if group.ignored %} sys-group-ignored{% endif %}"
+                data-group-header="{{ group_key }}"
+                data-source-dir="{{ group.source_dir | e }}"
+                onclick="toggleGroup('{{ group_key }}', this.dataset.sourceDir)">
+                <td colspan="4" style="padding: 10px var(--sp-5) 7px; border-top: 1px solid var(--outline-variant);">
+                    <div style="display:flex; align-items:center; gap:var(--sp-2);">
+                        <span class="group-arrow" style="font-size:0.9rem; color:var(--primary); transition:transform 0.15s; flex-shrink:0; opacity:0.7;">▾</span>
+                        <span class="mono" style="font-size:0.83rem; font-weight:600; color:var(--on-surface); flex:1; letter-spacing:-0.01em; margin-left:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                              title="{{ group.source_dir if group.source_dir else 'Ungrouped' }}">
+                            {{ group.source_dir if group.source_dir else 'Ungrouped' }}
+                        </span>
+                        {% if group.ignored %}
+                        <span class="badge badge-source-ignored">ignored</span>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endif %}
+
+            {% for system in group.systems %}
+            <tr class="sys-row{% if group.ignored %} sys-row-ignored{% endif %}" data-system="{{ system.id }}" data-system-name="{{ system.name }}" data-group="{{ group_key }}">
+                <td>
+                    <div style="display:flex; align-items:center; gap:var(--sp-2);">
+                        <span onclick="location.href='/auditor/findings?system={{ system.name | urlencode }}'"
+                              style="color:var(--on-surface); font-weight:500; cursor:pointer;">{{ system.name }}</span>
+                        <button onclick="openDrawer({{ system.id }})" class="sys-edit-btn scan-safe" title="Edit system"
+                                style="background:none; border:none; cursor:pointer; color:var(--outline);
+                                       padding:2px 4px; opacity:0; transition:opacity 0.15s; display:flex;
+                                       align-items:center; border-radius:var(--radius-sm);">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
+                            </svg>
+                        </button>
+                        <span class="system-scan-badge badge"
+                              style="display:none; background:var(--status-approved-bg); color:var(--status-approved-fg);"></span>
+                    </div>
+                </td>
+                <td>
+                    {% if system.tracking_enabled %}
+                    <a href="/settings" title="Armed for tracking"
+                       style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:var(--primary);display:inline-block;flex-shrink:0;"></span>
+                        <span class="body-sm" style="color:var(--primary);font-weight:600;">Armed</span>
+                    </a>
+                    {% else %}
+                    <span class="text-outline">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if system.count > 0 %}
+                    <a href="/auditor/findings?system={{ system.name }}"
+                       style="font-weight:600; color:var(--on-surface); text-decoration:none;">{{ system.count }}</a>
+                    {% else %}
+                    <span class="text-outline">0</span>
+                    {% endif %}
+                </td>
+                <td style="text-align:right;">
+                    {% if not group.ignored %}
+                    <span class="system-actions">
+                        <button class="btn btn-sm" onclick="triggerScan({{ system.id }}, 'incremental')">Incremental</button>
+                        <button class="btn btn-sm btn-primary" onclick="triggerScan({{ system.id }}, 'full')"
+                                style="margin-left:var(--sp-2);">Full Scan</button>
+                    </span>
+                    {% endif %}
+                    <button class="btn btn-sm btn-danger system-stop-btn scan-safe"
+                            onclick="cancelScan()" style="display:none;">Stop</button>
+                </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card empty-state">
+    No systems configured yet. Click "+ Add System" to get started.
+    <div style="margin-top:var(--sp-4);">
+        <button class="btn btn-primary scan-safe" onclick="openDrawer(null)">+ Add System</button>
+    </div>
+</div>
+{% endif %}
+
+<!-- System editor drawer -->
+<div id="drawer-backdrop" onclick="closeDrawer()"
+     style="display:none;position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.45);"></div>
+
+<aside id="system-drawer"
+       style="display:none;position:fixed;right:0;top:0;bottom:0;width:460px;z-index:1600;
+              background:var(--surface);border-left:1px solid var(--outline);
+              flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3);">
+    <div style="display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--outline);flex-shrink:0;">
+        <span id="drawer-title" style="font-weight:600;font-size:0.95rem;flex:1;"></span>
+        <button onclick="closeDrawer()" class="scan-safe"
+                style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);font-size:1.3rem;line-height:1;padding:2px 8px;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px;">
+        <div id="drawer-src-row" style="margin-bottom:20px;">
+            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Source Directory</label>
+            <select id="drawer-source-dir" class="input" style="width:100%;font-family:monospace;font-size:0.82rem;"
+                    onchange="onDrawerSrcDirChange()">
+                <option value="">(none / ungrouped)</option>
+            </select>
+            <div class="body-sm text-variant" style="margin-top:3px;">
+                The source directory this system's paths live under.
+            </div>
+        </div>
+        <div style="margin-bottom:20px;">
+            <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Name</label>
+            <input id="drawer-name" type="text" class="input" style="width:100%;"
+                   placeholder="e.g. Campaign-Core" oninput="syncDrawerName()">
+        </div>
+        <div>
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+                <label class="body-sm text-outline" style="flex:1;">Paths</label>
+                <button id="drawer-suggest-btn" onclick="suggestDrawerPaths(this)" class="btn btn-sm scan-safe"
+                        style="font-size:0.75rem;padding:2px 8px;">✨ Suggest with Claude</button>
+            </div>
+            <div id="drawer-suggest-status" style="display:none;font-size:0.78rem;color:var(--on-surface-variant);margin-bottom:6px;"></div>
+            <div id="drawer-paths"></div>
+            <button onclick="addBlankPath(this)" class="btn btn-sm scan-safe" style="margin-top:8px;">+ Add Path</button>
+        </div>
+        <div style="margin-top:18px;border-top:1px solid var(--outline);padding-top:14px;">
+            <details id="drawer-advanced" ontoggle="document.getElementById('drawer-adv-arrow').style.transform=this.open?'rotate(90deg)':''">
+                <summary style="cursor:pointer;font-size:0.8rem;color:var(--on-surface-variant);
+                                padding:2px 0;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
+                    <span id="drawer-adv-arrow" style="font-size:0.7rem;transition:transform .15s;">▶</span>
+                    Per-system overrides
+                </summary>
+                <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px;">
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Min Confidence</label>
+                        <select id="drawer-confidence" class="input input-sm" onchange="syncAdvanced()" style="width:100%;">
+                            <option value="">Inherit global default</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                        <div class="body-sm text-variant" style="margin-top:3px;">Overrides global min_confidence for this system only.</div>
+                    </div>
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">Fast Mode</label>
+                        <select id="drawer-fast-mode" class="input input-sm" onchange="syncAdvanced()" style="width:100%;">
+                            <option value="">Inherit global default</option>
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="body-sm text-outline" style="display:block;margin-bottom:6px;">File Extensions</label>
+                        <input id="drawer-extensions" type="text" class="input input-sm" style="width:100%;"
+                            placeholder="e.g. .h, .cpp  (blank = inherit global)"
+                            oninput="syncAdvanced()">
+                        <div class="body-sm text-variant" style="margin-top:3px;">Comma-separated. Overrides global file_extensions.</div>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--outline);display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;">
+        <button id="drawer-delete-btn" onclick="deleteCurrentSystem()" class="btn btn-sm btn-danger scan-safe">Delete</button>
+        <span id="drawer-err" style="flex:1;min-width:0;color:#ef4444;font-size:0.78rem;line-height:1.3;"></span>
+        <button onclick="closeDrawer()" class="btn btn-sm scan-safe">Cancel</button>
+        <button onclick="saveDrawer()" class="btn btn-sm btn-primary scan-safe">Save</button>
+    </div>
+</aside>
+
+<!-- Path browser popup -->
+<div id="path-picker"
+     style="display:none;position:fixed;z-index:1700;background:var(--surface);
+            border:1px solid var(--outline);border-radius:8px;
+            box-shadow:0 8px 24px rgba(0,0,0,.35);width:400px;
+            flex-direction:column;overflow:hidden;max-height:340px;">
+    <div id="picker-breadcrumb"
+         style="padding:9px 14px;border-bottom:1px solid var(--outline);
+                font-size:0.78rem;flex-shrink:0;line-height:1.8;"></div>
+    <div id="picker-entries" style="flex:1;overflow-y:auto;"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--outline);flex-shrink:0;">
+        <button id="picker-select-btn" onclick="selectPickerCurrent()" class="btn btn-sm btn-primary scan-safe"
+                style="width:100%;"></button>
+    </div>
+</div>
+
+<!-- Move-to popup -->
+<div id="move-menu"
+     style="display:none;position:fixed;z-index:1700;background:var(--surface);
+            border:1px solid var(--outline);border-radius:8px;
+            box-shadow:0 4px 16px rgba(0,0,0,.3);width:220px;
+            max-height:280px;overflow-y:auto;padding:4px;"></div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if active_tab == 'findings' %}
+// ── Findings scripts ──────────────────────────────────────────────────────────
+
+async function recheckFromList(btn, findingId) {
+    const row = btn.closest('tr');
+    const siblings = row ? row.querySelectorAll('button') : [];
+    siblings.forEach(b => b.disabled = true);
+    btn.style.animation = 'spin 1s linear infinite';
+    try {
+        const res = await fetch(`/findings/${findingId}/recheck`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+            alert('Recheck failed: ' + data.error);
+            return;
+        }
+        if (!data.still_valid) {
+            if (row) row.remove();
+        }
+    } catch (e) {
+        alert('Recheck failed: ' + e.message);
+    } finally {
+        btn.style.animation = '';
+        siblings.forEach(b => b.disabled = false);
+    }
+}
+
+async function toggleTest(checkbox) {
+    const id = checkbox.dataset.id;
+    checkbox.disabled = true;
+    try {
+        const res = await fetch(`/findings/${id}/toggle-test`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            checkbox.checked = !checkbox.checked;
+        }
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+async function cleanFindings(btn) {
+    const count = document.querySelectorAll('.data-table tbody tr').length;
+    const filterDesc = window.location.search ? 'matching the current filters' : '(no filters — ALL findings)';
+    if (!confirm(`Delete ${count} finding(s) ${filterDesc}?\n\nThis cannot be undone.`)) return;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Cleaning…';
+    try {
+        const res = await fetch('/findings/clean' + window.location.search, { method: 'POST' });
+        window.location.href = '/auditor/findings' + window.location.search;
+    } catch (e) {
+        alert('Clean failed: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = orig;
+    }
+}
+
+async function applyBatch() {
+    const btn = document.getElementById('apply-btn');
+    btn.disabled = true;
+    btn.textContent = 'Creating batch...';
+    try {
+        const res = await fetch('/batch/apply', { method: 'POST' });
+        const data = await res.json();
+        if (data.batch_id) {
+            window.location.href = '/auditor/batches/' + data.batch_id;
+        } else {
+            alert(data.error || 'Failed to create batch');
+        }
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Apply Findings';
+    }
+}
+
+// ── Live findings streaming ───────────────────────────────────────────────────
+
+const _activeFilters = {
+    status:     {{ ('"' ~ filters.status ~ '"') | safe if filters.status else 'null' }},
+    severity:   {{ ('"' ~ filters.severity ~ '"') | safe if filters.severity else 'null' }},
+    category:   {{ ('"' ~ filters.category ~ '"') | safe if filters.category else 'null' }},
+    confidence: {{ ('"' ~ filters.confidence ~ '"') | safe if filters.confidence else 'null' }},
+    file_path:  {{ ('"' ~ filters.file_path ~ '"') | safe if filters.file_path else 'null' }},
+};
+
+let _streamScanId = null;
+let _streamOffset = 0;
+
+function _matchesFilters(f) {
+    if (_activeFilters.status     && f.status     !== _activeFilters.status)     return false;
+    if (_activeFilters.severity   && f.severity   !== _activeFilters.severity)   return false;
+    if (_activeFilters.category   && f.category   !== _activeFilters.category)   return false;
+    if (_activeFilters.confidence && f.confidence !== _activeFilters.confidence) return false;
+    if (_activeFilters.file_path  && !(f.file_path || '').includes(_activeFilters.file_path)) return false;
+    return true;
+}
+
+function _severityBadge(sev) {
+    return `<span class="badge badge-${sev}">${sev.toUpperCase()}</span>`;
+}
+
+function _extraLocs(f) {
+    if (!f.locations) return [];
+    if (Array.isArray(f.locations)) return f.locations;
+    try { return JSON.parse(f.locations) || []; } catch { return []; }
+}
+
+function _escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _buildRow(f) {
+    const checked = (f.include_test === undefined || f.include_test) ? 'checked' : '';
+    const _svgTick    = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,8 6,12 14,4"/></svg>`;
+    const _svgCross   = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
+    const _svgRefresh = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>`;
+    const recheckBtn = ['pending','approved','rejected'].includes(f.status)
+        ? `<button onclick="recheckFromList(this,'${_escHtml(f.id)}')" class="action-recheck scan-safe" title="Recheck">${_svgRefresh}</button>`
+        : '';
+    const approveReject = f.status === 'pending'
+        ? `<button onclick="postAction('/findings/${f.id}/approve')" class="action-approve scan-safe" title="Approve">${_svgTick}</button><button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" title="Reject">${_svgCross}</button>`
+        : f.status === 'approved'
+        ? `<button onclick="postAction('/findings/${f.id}/reject')" class="action-reject scan-safe" title="Unapprove">${_svgCross}</button>`
+        : '';
+    const actions = recheckBtn + approveReject;
+    return `<tr data-finding-id="${_escHtml(f.id)}">
+        <td>${_severityBadge(f.severity)}</td>
+        <td><a href="/auditor/findings/${_escHtml(f.id)}">${_escHtml(f.title)}</a></td>
+        <td class="mono cell-truncate" style="font-size:.75rem" title="${_escHtml(f.file_path)}:${f.line_start}${_extraLocs(f).length ? ` (+${_extraLocs(f).length} more)` : ''}">${_escHtml(f.file_path)}:${f.line_start}${_extraLocs(f).length ? ` <span class="badge" style="font-size:0.65rem;padding:1px 5px;vertical-align:middle;">+${_extraLocs(f).length}</span>` : ''}</td>
+        <td class="body-sm cell-truncate" title="${_escHtml(f.system_name||'')}">${_escHtml(f.system_name||'—')}</td>
+        <td><span class="badge badge-category">${_escHtml(f.category)}</span></td>
+        <td class="body-sm text-variant">${_escHtml(f.confidence)}</td>
+        <td><span class="badge status-${_escHtml(f.status)}">${_escHtml(f.status)}</span></td>
+        <td style="text-align:center;"><input type="checkbox" class="test-toggle" data-id="${_escHtml(f.id)}" ${checked} title="Include test case when applying fix" onchange="toggleTest(this)"></td>
+        <td>${actions}</td>
+    </tr>`;
+}
+
+function _ensureTable() {
+    const empty = document.querySelector('.empty-state');
+    if (empty) {
+        empty.outerHTML = `
+        <div class="card" style="padding:0;">
+          <table class="data-table" style="width:100%;">
+            <thead><tr>
+              <th style="width:7%">Severity</th>
+              <th style="width:32%">Title</th>
+              <th style="width:16%">File</th>
+              <th style="width:10%">System</th>
+              <th style="width:7%">Category</th>
+              <th style="width:8%">Confidence</th>
+              <th style="width:7%">Status</th>
+              <th style="width:5%" title="Include a test case when applying this fix">Test</th>
+              <th style="width:8%">Actions</th>
+            </tr></thead>
+            <tbody id="findings-tbody"></tbody>
+          </table>
+        </div>`;
+    }
+    return document.querySelector('.data-table tbody');
+}
+
+async function _fetchAndAppend(scanId) {
+    try {
+        const res = await fetch(`/api/findings/stream?scan_id=${scanId}&offset=${_streamOffset}`);
+        const data = await res.json();
+        if (!data.findings || data.findings.length === 0) return;
+        _streamOffset += data.findings.length;
+        const matching = data.findings.filter(_matchesFilters);
+        if (matching.length === 0) return;
+        const tbody = _ensureTable();
+        if (!tbody) return;
+        tbody.insertAdjacentHTML('beforeend', matching.map(_buildRow).join(''));
+    } catch (e) {}
+}
+
+onWsMessage('findings_update', (data) => {
+    if (!_streamScanId) {
+        _streamScanId = data.scan_id;
+        _streamOffset = 0;
+    }
+    if (data.chunk_findings > 0) {
+        _fetchAndAppend(data.scan_id);
+    }
+});
+
+onWsMessage('scan_status', (data) => {
+    if (!data.running) {
+        _streamScanId = null;
+        _streamOffset = 0;
+    }
+});
+
+{% elif active_tab == 'scans' %}
+// ── Scans scripts ─────────────────────────────────────────────────────────────
+
+let _logScanId = null;
+let _logPolling = null;
+let _logOffset = 0;
+
+const LEVEL_COLORS = {
+    'DEBUG':    'color:#6b7280',
+    'INFO':     'color:#60a5fa',
+    'WARNING':  'color:#fbbf24',
+    'ERROR':    'color:#f87171',
+    'CRITICAL': 'color:#f43f5e; font-weight:700',
+};
+
+function renderLines(logs) {
+    return logs.map(r => {
+        const ts = r.logged_at ? r.logged_at.replace('T', ' ').slice(0, 19) : '';
+        const style = LEVEL_COLORS[r.level] || '';
+        const lvl = (r.level || '').padEnd(8);
+        const logger = r.logger || '';
+        const msg = r.message || '';
+        return `<span style="color:#6b7280">${ts}</span> <span style="${style}">${lvl}</span> <span style="color:#9ca3af">${logger}:</span> ${escHtml(msg)}`;
+    }).join('\n');
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function downloadLog() {
+    if (!_logScanId) return;
+    const btn = document.getElementById('log-download-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Fetching…';
+    try {
+        let all = [], offset = 0;
+        while (true) {
+            const res = await fetch(`/api/scans/${_logScanId}/logs?offset=${offset}`);
+            const data = await res.json();
+            if (!data.logs.length) break;
+            all = all.concat(data.logs);
+            offset += data.logs.length;
+            if (!data.running || data.logs.length < 2000) break;
+        }
+        const lines = all.map(r => {
+            const ts  = (r.logged_at || '').replace('T', ' ').slice(0, 19);
+            const lvl = (r.level || '').padEnd(8);
+            const log = r.logger || '';
+            const msg = r.message || '';
+            return `${ts} ${lvl} ${log}: ${msg}`;
+        }).join('\n');
+        const blob = new Blob([lines], {type: 'text/plain'});
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `scan-${_logScanId.slice(0, 8)}.log.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert('Download failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇ Download';
+    }
+}
+
+async function showLog(scanId, status) {
+    _logScanId = scanId;
+    _logOffset = 0;
+
+    const modal = document.getElementById('log-modal');
+    const content = document.getElementById('log-content');
+    const title = document.getElementById('log-modal-title');
+    const liveBadge = document.getElementById('log-live-badge');
+    const countEl = document.getElementById('log-count');
+
+    title.textContent = `Scan Log — ${scanId.slice(0, 8)}`;
+    content.innerHTML = '<span style="color:var(--on-surface-variant,#888)">Loading…</span>';
+    countEl.textContent = '';
+    modal.style.display = 'flex';
+    liveBadge.style.display = 'none';
+
+    await fetchLogs(true);
+
+    if (status === 'running') {
+        liveBadge.style.display = '';
+        startLogPolling();
+    }
+}
+
+async function fetchLogs(initial = false) {
+    if (!_logScanId) return;
+    try {
+        const res = await fetch(`/api/scans/${_logScanId}/logs?offset=${_logOffset}`);
+        const data = await res.json();
+        const content = document.getElementById('log-content');
+        const countEl = document.getElementById('log-count');
+        const liveBadge = document.getElementById('log-live-badge');
+        const autoScroll = document.getElementById('log-autoscroll').checked;
+
+        if (initial) {
+            content.innerHTML = data.logs.length
+                ? renderLines(data.logs)
+                : '<span style="color:var(--on-surface-variant,#888)">No log entries yet.</span>';
+            _logOffset = data.logs.length;
+        } else if (data.logs.length > 0) {
+            if (content.innerHTML.includes('No log entries')) {
+                content.innerHTML = '';
+            }
+            content.innerHTML += (content.innerHTML ? '\n' : '') + renderLines(data.logs);
+            _logOffset += data.logs.length;
+        }
+
+        countEl.textContent = `${_logOffset} line${_logOffset !== 1 ? 's' : ''}`;
+
+        if (!data.running) {
+            liveBadge.style.display = 'none';
+        }
+
+        if (autoScroll) content.scrollTop = content.scrollHeight;
+    } catch (e) {}
+}
+
+onWsMessage('log', (data) => {
+    if (!_logScanId || data.scan_id !== _logScanId) return;
+    const content = document.getElementById('log-content');
+    const countEl = document.getElementById('log-count');
+    const autoScroll = document.getElementById('log-autoscroll').checked;
+
+    if (content.innerHTML.includes('No log entries')) content.innerHTML = '';
+    content.innerHTML += (content.innerHTML ? '\n' : '') + renderLines([data.entry]);
+    _logOffset += 1;
+    countEl.textContent = `${_logOffset} line${_logOffset !== 1 ? 's' : ''}`;
+    if (autoScroll) content.scrollTop = content.scrollHeight;
+});
+
+onWsMessage('scan_status', (data) => {
+    if (!_logScanId) return;
+    if (!data.running) {
+        document.getElementById('log-live-badge').style.display = 'none';
+    }
+});
+
+function startLogPolling() { /* no-op: WS handles live updates */ }
+function stopLogPolling() { /* no-op */ }
+
+function closeLog() {
+    stopLogPolling();
+    _logScanId = null;
+    _logOffset = 0;
+    document.getElementById('log-modal').style.display = 'none';
+    document.getElementById('log-content').innerHTML = '';
+}
+
+document.getElementById('log-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeLog();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLog();
+});
+
+async function deleteScan(scanId) {
+    if (!confirm('Delete this scan record and all its logs?')) return;
+    try {
+        const res = await fetch(`/scans/${scanId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById(`scan-row-${scanId}`)?.remove();
+        } else {
+            alert(data.error || 'Failed to delete scan');
+        }
+    } catch (e) {
+        alert('Failed to delete scan: ' + e.message);
+    }
+}
+
+async function stopScan(scanId) {
+    try {
+        const res = await fetch('/scans/cancel', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) alert(data.error || 'Failed to stop scan');
+    } catch (e) {
+        alert('Failed to stop scan: ' + e.message);
+    }
+}
+
+{% elif active_tab == 'systems' %}
+// ── Systems scripts ───────────────────────────────────────────────────────────
+
+let _sys = [];
+let _srcDirs = [];
+let _editIdx = -1;
+let _origSys = null;
+let _pickerForPath = -1;
+let _pickerCurrent = '';
+let _pickerRoot = '';
+
+let _sysReady = false;
+(async () => {
+    try {
+        const [sysRes, sdRes] = await Promise.all([
+            fetch('/api/systems'),
+            fetch('/api/source-dirs'),
+        ]);
+        if (sysRes.ok) _sys = (await sysRes.json()).systems || [];
+        if (sdRes.ok)  _srcDirs = (await sdRes.json()).source_dirs || [];
+    } catch (e) {
+        console.warn('Failed to load systems/source-dirs from API:', e.message);
+    } finally {
+        _sysReady = true;
+    }
+})();
+
+async function openDrawer(idOrNull) {
+    if (!_sysReady) {
+        const waited = await new Promise(resolve => {
+            let tries = 0;
+            const t = setInterval(() => {
+                if (_sysReady || ++tries > 20) { clearInterval(t); resolve(_sysReady); }
+            }, 100);
+        });
+        if (!waited) { alert('Systems not loaded yet — please try again.'); return; }
+    }
+
+    try {
+        _origSys = JSON.parse(JSON.stringify(_sys));
+        const isNew = idOrNull === null;
+        if (isNew) {
+            _sys.push({ name: '', paths: [], source_dir: '' });
+            _editIdx = _sys.length - 1;
+        } else {
+            _editIdx = _sys.findIndex(s => s.id === idOrNull);
+            if (_editIdx < 0) {
+                alert('System not found (id=' + idOrNull + ')');
+                return;
+            }
+        }
+        document.getElementById('drawer-title').textContent = isNew ? 'New System' : 'Edit System';
+        document.getElementById('drawer-delete-btn').style.display = isNew ? 'none' : '';
+        document.getElementById('drawer-name').value = _sys[_editIdx].name;
+
+        const sdSel = document.getElementById('drawer-source-dir');
+        const currentSrcDir = (_sys[_editIdx].source_dir || '').replace(/\\/g, '/');
+        if (sdSel) {
+            if (isNew) {
+                sdSel.innerHTML =
+                    `<option value="" disabled selected>— select a source directory —</option>` +
+                    _srcDirs.map(d =>
+                        `<option value="${escH(d.path)}">${escH(d.path)}</option>`
+                    ).join('');
+                sdSel.disabled = false;
+            } else {
+                sdSel.innerHTML = currentSrcDir
+                    ? `<option value="${escH(currentSrcDir)}" selected>${escH(currentSrcDir)}</option>`
+                    : `<option value="">(none / ungrouped)</option>`;
+                sdSel.disabled = true;
+            }
+            document.getElementById('drawer-src-row').style.display = _srcDirs.length ? '' : 'none';
+        }
+
+        renderPaths();
+
+        const sys = _sys[_editIdx];
+        const confEl = document.getElementById('drawer-confidence');
+        const fmEl = document.getElementById('drawer-fast-mode');
+        const extEl = document.getElementById('drawer-extensions');
+        if (confEl) confEl.value = sys.min_confidence || '';
+        if (fmEl) fmEl.value = sys.claude_fast_mode === null || sys.claude_fast_mode === undefined
+            ? '' : String(sys.claude_fast_mode);
+        if (extEl) extEl.value = sys.file_extensions ? sys.file_extensions.join(', ') : '';
+
+        const suggestStatus = document.getElementById('drawer-suggest-status');
+        if (suggestStatus) { suggestStatus.textContent = ''; suggestStatus.style.display = 'none'; }
+        const drawerErr = document.getElementById('drawer-err');
+        if (drawerErr) drawerErr.textContent = '';
+
+        document.getElementById('drawer-backdrop').style.display = '';
+        document.getElementById('system-drawer').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    } catch (e) {
+        console.error('openDrawer failed:', e);
+        alert('Could not open system editor: ' + e.message);
+    }
+}
+
+function onDrawerSrcDirChange() {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].source_dir = document.getElementById('drawer-source-dir')?.value || '';
+    _sys[_editIdx].paths = [];
+    closePicker();
+    renderPaths();
+}
+
+function closeDrawer() {
+    closePicker(); closeMoveMenu();
+    if (_origSys) { _sys = _origSys; _origSys = null; }
+    _editIdx = -1;
+    const sdSel = document.getElementById('drawer-source-dir');
+    if (sdSel) sdSel.disabled = false;
+    document.getElementById('drawer-backdrop').style.display = 'none';
+    document.getElementById('system-drawer').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function syncDrawerName() {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].name = document.getElementById('drawer-name').value;
+}
+
+function syncAdvanced() {
+    if (_editIdx < 0) return;
+    const conf = document.getElementById('drawer-confidence')?.value || null;
+    const fm = document.getElementById('drawer-fast-mode')?.value;
+    const exts = document.getElementById('drawer-extensions')?.value.trim();
+    _sys[_editIdx].min_confidence = conf || null;
+    _sys[_editIdx].claude_fast_mode = fm === '' ? null : fm === 'true';
+    _sys[_editIdx].file_extensions = exts
+        ? exts.split(',').map(e => e.trim()).filter(Boolean)
+        : null;
+}
+
+async function suggestDrawerPaths(btn) {
+    if (_editIdx < 0) return;
+    const name    = (document.getElementById('drawer-name')?.value || '').trim();
+    const srcDir  = (document.getElementById('drawer-source-dir')?.value || '').trim();
+    if (!srcDir) { alert('Select a source directory first.'); return; }
+    if (!name)   { alert('Enter a system name first.'); return; }
+
+    const statusEl = document.getElementById('drawer-suggest-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Detecting…';
+    if (statusEl) { statusEl.textContent = 'Asking Claude to suggest paths…'; statusEl.style.display = ''; }
+
+    try {
+        const r = await fetch('/api/suggest-paths', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ system_name: name, source_dir: srcDir }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) {
+            if (statusEl) { statusEl.textContent = '✗ ' + (d.error || 'Failed'); statusEl.style.color = 'var(--error,#f87171)'; }
+            return;
+        }
+        const paths = (d.paths || []).filter(p => p.trim());
+        if (!paths.length) {
+            if (statusEl) { statusEl.textContent = '✗ No paths returned.'; statusEl.style.color = 'var(--error,#f87171)'; }
+            return;
+        }
+        _sys[_editIdx].paths = paths;
+        closePicker();
+        renderPaths();
+        if (statusEl) {
+            statusEl.style.color = 'var(--on-surface-variant)';
+            statusEl.textContent = `✓ Suggested ${paths.length} path${paths.length > 1 ? 's' : ''}`;
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = '✗ ' + e.message; statusEl.style.color = 'var(--error,#f87171)'; }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✨ Auto-detect';
+    }
+}
+
+function renderPaths() {
+    if (_editIdx < 0) return;
+    const { name, paths } = _sys[_editIdx];
+    document.getElementById('drawer-paths').innerHTML = paths.map((p, i) => {
+        const owners = subOwners(p, name);
+        const ownerHtml = Object.keys(owners).length
+            ? `<div style="font-size:0.71rem;color:var(--on-surface-variant);padding:2px 0 0 2px;">
+                 ↳ sub-paths owned by: ${Object.keys(owners).map(k => `<strong>${escH(k)}</strong>`).join(', ')}
+               </div>`
+            : '';
+        return `<div style="margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button data-path-idx="${i}" onclick="openPicker(${i},this)" class="scan-safe"
+                    style="flex:1;text-align:left;background:var(--surface-container);border:1px solid var(--outline);
+                           border-radius:6px;padding:7px 10px;cursor:pointer;font-size:0.8rem;font-family:monospace;
+                           color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="${escH(p)}">📁 ${escH(p) || '<span style="opacity:.5">click to browse</span>'}</button>
+                <button onclick="openMoveMenu(${i},this)" class="btn btn-sm scan-safe"
+                    title="Move to another system" style="padding:4px 8px;font-size:0.78rem;flex-shrink:0;">→</button>
+                <button onclick="removePath(${i})" class="scan-safe"
+                    style="background:none;border:none;cursor:pointer;color:var(--on-surface-variant);
+                           font-size:1.1rem;padding:2px 6px;flex-shrink:0;" title="Remove">&times;</button>
+            </div>${ownerHtml}
+        </div>`;
+    }).join('');
+}
+
+function addBlankPath(addBtnEl) {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].paths.push('');
+    renderPaths();
+    const newIdx = _sys[_editIdx].paths.length - 1;
+    const btn = document.querySelector(`[data-path-idx="${newIdx}"]`);
+    openPicker(newIdx, btn || addBtnEl);
+}
+
+function removePath(i) {
+    if (_editIdx < 0) return;
+    _sys[_editIdx].paths.splice(i, 1);
+    closePicker(); closeMoveMenu();
+    renderPaths();
+}
+
+function subOwners(path, systemName) {
+    if (!path) return {};
+    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    const result = {};
+    for (const s of _sys) {
+        if (s.name === systemName) continue;
+        for (const p of s.paths) {
+            const np = p.replace(/\\/g, '/').replace(/\/?$/, '/');
+            if (np.startsWith(norm) && np !== norm)
+                (result[s.name] = result[s.name] || []).push(p);
+        }
+    }
+    return result;
+}
+
+async function openPicker(pathIdx, anchorEl) {
+    closeMoveMenu();
+    _pickerForPath = pathIdx;
+    const current = (_sys[_editIdx]?.paths[pathIdx] || '').replace(/\\/g, '/').replace(/\/?$/, '');
+    _pickerRoot = (document.getElementById('drawer-source-dir')?.value || '').replace(/\\/g, '/').replace(/\/?$/, '');
+    const startPath = current || _pickerRoot;
+    await navigatePicker(startPath);
+    popup(document.getElementById('path-picker'), anchorEl, 'flex');
+}
+
+async function navigatePicker(path) {
+    let norm = path.replace(/\\/g, '/').replace(/\/?$/, '');
+    if (_pickerRoot && norm !== _pickerRoot && !norm.startsWith(_pickerRoot + '/')) {
+        norm = _pickerRoot;
+    }
+    _pickerCurrent = norm;
+    const el = document.getElementById('picker-entries');
+    el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);">Loading…</div>';
+    try {
+        const r = await fetch('/api/browse?path=' + encodeURIComponent(_pickerCurrent));
+        if (!r.ok) throw new Error();
+        renderPickerData(await r.json());
+    } catch {
+        el.innerHTML = '<div style="padding:10px 14px;font-size:0.82rem;color:var(--error,#f87171);">Failed to load</div>';
+    }
+}
+
+function renderPickerData(data) {
+    const entryNames = (data.entries || []).map(e => e.name.toLowerCase());
+    const isModuleRoot = entryNames.includes('public') && entryNames.includes('private');
+
+    const curLower = _pickerCurrent.toLowerCase();
+    const isAtPubPrivLevel    = curLower.endsWith('/public') || curLower.endsWith('/private');
+    const isDeepInsidePubPriv = !isAtPubPrivLevel && /\/(?:public|private)\//i.test(_pickerCurrent);
+    const isInsidePubPriv     = isAtPubPrivLevel || isDeepInsidePubPriv;
+    const _mirrorSide  = isDeepInsidePubPriv ? (/\/Public\//i.test(_pickerCurrent) ? 'Private' : 'Public') : null;
+    const _moduleRoot  = isInsidePubPriv ? _pickerCurrent.replace(/\/(?:Public|Private)(\/.*)?$/i, '') : null;
+
+    const rootParts  = _pickerRoot ? _pickerRoot.split('/').filter(Boolean) : [];
+    const rootLabel  = rootParts.length ? rootParts[rootParts.length - 1] : 'repo';
+    const rootTitle  = _pickerRoot || 'repo root';
+
+    const relPath = _pickerRoot
+        ? _pickerCurrent.slice(_pickerRoot.length).replace(/^\//, '')
+        : _pickerCurrent;
+    const relParts = relPath ? relPath.split('/').filter(Boolean) : [];
+
+    let crumb = `<span onclick="navigatePicker('${_pickerRoot}')"
+                       title="${escH(rootTitle)}"
+                       style="cursor:pointer;color:var(--primary);">${escH(rootLabel)}</span>`;
+    let cum = _pickerRoot;
+    for (const p of relParts) {
+        cum += (cum ? '/' : '') + p;
+        const cp = cum;
+        crumb += ` <span style="color:var(--on-surface-variant);">/</span>`
+               + ` <span onclick="navigatePicker('${cp}')" style="cursor:pointer;color:var(--primary);">${escH(p)}</span>`;
+    }
+    document.getElementById('picker-breadcrumb').innerHTML = crumb;
+
+    let bannerHtml = '';
+    if (isAtPubPrivLevel) {
+        bannerHtml = `<div style="padding:7px 14px;background:rgba(180,83,9,0.1);border-bottom:1px solid rgba(180,83,9,0.2);
+                                  font-size:0.78rem;color:var(--severity-medium,#b45309);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span>⚠ Selecting here only covers this subfolder.</span>
+            <span onclick="navigatePicker('${_moduleRoot}')"
+                  style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Go to module root</span>
+        </div>`;
+    } else if (isDeepInsidePubPriv) {
+        bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
+                                  font-size:0.78rem;color:var(--primary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="flex:1;">📂 Mirrored — selecting also adds the <strong>${_mirrorSide}</strong> counterpart automatically.</span>
+            <span onclick="navigatePicker('${_moduleRoot}')"
+                  style="cursor:pointer;text-decoration:underline;font-weight:500;white-space:nowrap;">← Module root</span>
+        </div>`;
+    } else if (isModuleRoot) {
+        bannerHtml = `<div style="padding:7px 14px;background:rgba(0,74,198,0.07);border-bottom:1px solid rgba(0,74,198,0.15);
+                                  font-size:0.78rem;color:var(--primary);display:flex;align-items:center;gap:6px;">
+            <span>✓ Module root — selecting covers both <strong>Public</strong> &amp; <strong>Private</strong>.</span>
+        </div>`;
+    }
+
+    const curSysName = _sys[_editIdx]?.name || '';
+    const el = document.getElementById('picker-entries');
+    if (!data.entries?.length) {
+        el.innerHTML = bannerHtml + '<div style="padding:10px 14px;font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;">No subdirectories</div>';
+    } else {
+        el.innerHTML = bannerHtml + data.entries.map(e => {
+            const np = e.path.replace(/\\/g, '/').replace(/\/?$/, '/');
+            const owner = _sys.find(s => s.name !== curSysName &&
+                s.paths.some(p => p.replace(/\\/g, '/').replace(/\/?$/, '/') === np));
+            const badge = owner
+                ? ` <span style="font-size:0.68rem;color:var(--on-surface-variant);margin-left:4px;">(${escH(owner.name)})</span>`
+                : '';
+            return `<div style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid var(--outline-variant,rgba(255,255,255,.05));"
+                         onmouseenter="this.style.background='var(--surface-container)'"
+                         onmouseleave="this.style.background=''">
+                <span onclick="navigatePicker('${e.path}')"
+                      style="flex:1;font-size:0.8rem;cursor:pointer;font-family:monospace;">📁 ${escH(e.name)}${badge}</span>
+                <button onclick="event.stopPropagation();selectPickerPath('${e.path}')" class="scan-safe"
+                    style="background:none;border:1px solid var(--outline);border-radius:4px;padding:2px 8px;
+                           font-size:0.72rem;cursor:pointer;color:var(--on-surface-variant);white-space:nowrap;">Select</button>
+            </div>`;
+        }).join('');
+    }
+
+    let selectLabel;
+    if (isModuleRoot) {
+        selectLabel = relParts.length
+            ? `Select module "${relParts.join('/')}/" (Public + Private)`
+            : `Select "${rootLabel}/" as module root`;
+    } else if (isDeepInsidePubPriv) {
+        selectLabel = relParts.length
+            ? `Select "${relParts.join('/')}/" (+ ${_mirrorSide} mirror)`
+            : `Select "${rootLabel}/" (+ ${_mirrorSide} mirror)`;
+    } else {
+        selectLabel = relParts.length
+            ? `Select "${relParts.join('/')}/"`
+            : `Select "${rootLabel}/" (root)`;
+    }
+    document.getElementById('picker-select-btn').textContent = selectLabel;
+}
+
+function _pubPrivMirror(path) {
+    const norm = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    const m = norm.match(/^(.+\/)(Public|Private)(\/(.+))$/i);
+    if (!m) return null;
+    const opposite = m[2].toLowerCase() === 'public' ? 'Private' : 'Public';
+    return m[1] + opposite + m[3];
+}
+
+function selectPickerPath(path) {
+    if (_pickerForPath < 0 || _editIdx < 0) return;
+    let p = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+
+    const pTrimmed = p.replace(/\/$/, '').toLowerCase();
+    if (pTrimmed.endsWith('/public') || pTrimmed.endsWith('/private')) {
+        p = p.replace(/[^/]+\/$/, '');
+        _sys[_editIdx].paths[_pickerForPath] = p;
+        closePicker();
+        renderPaths();
+        return;
+    }
+
+    const mirror = _pubPrivMirror(p);
+    if (mirror && mirror !== p) {
+        _sys[_editIdx].paths[_pickerForPath] = p;
+        const normMirror = mirror.replace(/\\/g, '/').replace(/\/?$/, '/');
+        const alreadyHas = _sys[_editIdx].paths.some(
+            ep => ep.replace(/\\/g, '/').replace(/\/?$/, '/') === normMirror
+        );
+        if (!alreadyHas) _sys[_editIdx].paths.push(mirror);
+        closePicker();
+        renderPaths();
+        return;
+    }
+
+    _sys[_editIdx].paths[_pickerForPath] = p;
+    closePicker();
+    renderPaths();
+}
+
+function selectPickerCurrent() {
+    selectPickerPath(_pickerCurrent + '/');
+}
+
+function closePicker() {
+    document.getElementById('path-picker').style.display = 'none';
+    _pickerForPath = -1;
+}
+
+function openMoveMenu(pathIdx, anchorEl) {
+    closePicker();
+    const currentSrcDir = _sys[_editIdx]?.source_dir || '';
+    const others = _sys.filter((s, i) => i !== _editIdx && (s.source_dir || '') === currentSrcDir);
+    if (!others.length) { alert('No other systems in the same source directory to move to.'); return; }
+    const menu = document.getElementById('move-menu');
+    menu.innerHTML =
+        `<div style="padding:5px 10px 6px;font-size:0.72rem;color:var(--on-surface-variant);border-bottom:1px solid var(--outline);">Move to:</div>` +
+        others.map(s =>
+            `<div onclick="movePathTo(${pathIdx},'${s.name.replace(/'/g,"\\'")}')"
+                  style="padding:7px 12px;cursor:pointer;font-size:0.82rem;border-radius:4px;"
+                  onmouseenter="this.style.background='var(--surface-container)'"
+                  onmouseleave="this.style.background=''">${escH(s.name)}</div>`
+        ).join('');
+    popup(menu, anchorEl, 'block');
+}
+
+function movePathTo(pathIdx, targetName) {
+    const path = _sys[_editIdx].paths[pathIdx];
+    _sys[_editIdx].paths.splice(pathIdx, 1);
+    const target = _sys.find(s => s.name === targetName);
+    if (target) target.paths.push(path);
+    closeMoveMenu();
+    renderPaths();
+}
+
+function closeMoveMenu() {
+    document.getElementById('move-menu').style.display = 'none';
+}
+
+async function saveDrawer() {
+    const errEl = document.getElementById('drawer-err');
+    if (errEl) errEl.textContent = '';
+
+    const name = document.getElementById('drawer-name').value.trim();
+    if (!name) { _drawerError('System name is required.'); return; }
+    const srcDir = document.getElementById('drawer-source-dir')?.value || '';
+    const sdSel = document.getElementById('drawer-source-dir');
+    if (sdSel && !sdSel.disabled && _srcDirs.length && !srcDir) {
+        _drawerError('Please select a source directory for this system.');
+        sdSel.focus();
+        return;
+    }
+    const paths = (_sys[_editIdx]?.paths || []).filter(p => p.trim());
+    if (!paths.length) { _drawerError('Add at least one path.'); return; }
+
+    _sys[_editIdx].name = name;
+    _sys[_editIdx].paths = paths;
+    _sys[_editIdx].source_dir = srcDir;
+
+    const sysErrors = _validateSystems(_sys);
+    if (sysErrors.length) { _drawerError(sysErrors[0]); return; }
+
+    _origSys = null;
+    closeDrawer();
+    await commitSystems();
+}
+
+function deleteCurrentSystem() {
+    const name = _sys[_editIdx]?.name || 'this system';
+    if (!confirm(`Delete "${name}"? Existing findings remain but won't be linked to a system.`)) return;
+    _sys.splice(_editIdx, 1);
+    _origSys = null;
+    closeDrawer();
+    commitSystems();
+}
+
+async function commitSystems() {
+    try {
+        const r = await fetch('/api/systems', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ systems: _sys }),
+        });
+        const d = await r.json();
+        if (d.ok) location.reload();
+        else alert(d.error || 'Failed to save');
+    } catch (e) {
+        alert('Failed: ' + e.message);
+    }
+}
+
+function popup(el, anchor, display) {
+    el.style.display = display;
+    const ar = anchor.getBoundingClientRect();
+    const eh = el.offsetHeight || 340, ew = el.offsetWidth || 400;
+    let top = ar.bottom + 6;
+    if (top + eh > window.innerHeight - 10) top = Math.max(10, ar.top - eh - 6);
+    let left = ar.left;
+    if (left + ew > window.innerWidth - 10) left = window.innerWidth - ew - 10;
+    el.style.top = top + 'px';
+    el.style.left = left + 'px';
+}
+
+function escH(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _validateSystems(systems) {
+    const errors = [];
+    const seenNames = Object.create(null);
+    const seenPaths = Object.create(null);
+    for (const s of systems) {
+        const name = (s.name || '').trim();
+        if (!name) continue;
+        if (seenNames[name]) {
+            const msg = `Duplicate system name: "${name}"`;
+            if (!errors.includes(msg)) errors.push(msg);
+        } else {
+            seenNames[name] = true;
+        }
+        for (const p of (s.paths || [])) {
+            if (!p.trim()) continue;
+            const norm = p.replace(/\\/g, '/').replace(/\/?$/, '/');
+            const owner = seenPaths[norm];
+            if (owner && owner !== name) {
+                const msg = `Duplicate path: "${p}" is used by both "${owner}" and "${name}"`;
+                if (!errors.includes(msg)) errors.push(msg);
+            } else if (!owner) {
+                seenPaths[norm] = name;
+            }
+        }
+    }
+    return errors;
+}
+
+function _drawerError(msg) {
+    const el = document.getElementById('drawer-err');
+    if (el) el.textContent = msg;
+    else alert(msg);
+}
+
+document.addEventListener('click', e => {
+    const picker = document.getElementById('path-picker');
+    const menu = document.getElementById('move-menu');
+    if (picker?.style.display !== 'none' && !picker.contains(e.target) && !e.target.closest('[data-path-idx]') && !e.target.closest('#drawer-paths button'))
+        closePicker();
+    if (menu?.style.display !== 'none' && !menu.contains(e.target))
+        closeMoveMenu();
+}, true);
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('path-picker')?.style.display !== 'none') { closePicker(); return; }
+    if (document.getElementById('move-menu')?.style.display !== 'none') { closeMoveMenu(); return; }
+});
+
+function highlightScannedSystem(data) {
+    const activeSystem = data.running && data.scan ? data.scan.system_name : null;
+    document.querySelectorAll('#systems-table tbody tr').forEach(row => {
+        const badge = row.querySelector('.system-scan-badge');
+        const actions = row.querySelector('.system-actions');
+        const stopBtn = row.querySelector('.system-stop-btn');
+        if (!badge) return;
+        if (activeSystem && activeSystem === row.dataset.systemName) {
+            const label = data.cancelling ? 'cancelling' : (data.scan.scan_type || 'scanning');
+            badge.textContent = label;
+            badge.style.display = '';
+            row.style.background = 'var(--surface-container-high, rgba(29,78,216,.12))';
+            if (actions) actions.style.display = 'none';
+            stopBtn.style.display = '';
+            stopBtn.disabled = data.cancelling;
+            stopBtn.textContent = data.cancelling ? 'Cancelling…' : 'Stop';
+        } else {
+            badge.style.display = 'none';
+            row.style.background = '';
+            if (actions) actions.style.display = '';
+            stopBtn.style.display = 'none';
+        }
+    });
+}
+onWsMessage('scan_status', highlightScannedSystem);
+
+async function triggerScan(systemId, scanType) {
+    try {
+        const r = await fetch('/scans/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ system_id: systemId, scan_type: scanType }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) alert(d.error || 'Failed to start scan');
+    } catch (e) {
+        alert('Failed to trigger scan: ' + e.message);
+    }
+}
+
+function toggleGroup(groupKey, sourceDir) {
+    const headerRow = document.querySelector(`#systems-table tr[data-group-header="${groupKey}"]`);
+    const rows      = document.querySelectorAll(`#systems-table tr[data-group="${groupKey}"]`);
+    const arrow     = headerRow?.querySelector('.group-arrow');
+    const willCollapse = headerRow?.dataset.collapsed !== '1';
+
+    rows.forEach(r => { r.style.display = willCollapse ? 'none' : ''; });
+    if (headerRow) headerRow.dataset.collapsed = willCollapse ? '1' : '0';
+    if (arrow) arrow.style.transform = willCollapse ? 'rotate(-90deg)' : '';
+
+    try {
+        const stored = JSON.parse(localStorage.getItem('sys-group-collapsed') || '{}');
+        if (willCollapse) stored[sourceDir] = 1;
+        else delete stored[sourceDir];
+        localStorage.setItem('sys-group-collapsed', JSON.stringify(stored));
+    } catch {}
+}
+
+(function restoreGroupCollapsed() {
+    try {
+        const stored = JSON.parse(localStorage.getItem('sys-group-collapsed') || '{}');
+        document.querySelectorAll('#systems-table tr[data-group-header]').forEach(headerRow => {
+            const sourceDir = headerRow.dataset.sourceDir || '';
+            if (!stored[sourceDir]) return;
+            const groupKey = headerRow.dataset.groupHeader;
+            const rows = document.querySelectorAll(`#systems-table tr[data-group="${groupKey}"]`);
+            const arrow = headerRow.querySelector('.group-arrow');
+            rows.forEach(r => { r.style.display = 'none'; });
+            headerRow.dataset.collapsed = '1';
+            if (arrow) arrow.style.transform = 'rotate(-90deg)';
+        });
+    } catch {}
+})();
+
+{% endif %}
+</script>
+{% endblock %}

@@ -1,20 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Sessions — Nytwatch{% endblock %}
+{% block title %}Tracker — Nytwatch{% endblock %}
 
 {% block content %}
 <div class="flex items-center gap-3 mb-5">
-    <h1 class="headline-lg" style="flex:1;">Sessions</h1>
+    <h1 class="headline-lg" style="flex:1;">Tracker</h1>
 </div>
 
 <!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
 <div style="display:flex;gap:0;border-bottom:2px solid var(--outline-variant);margin-bottom:var(--sp-6);">
-    <a id="tab-sessions" href="/sessions?tab=sessions"
+    <a id="tab-sessions" href="/tracker?tab=sessions"
        style="padding:8px 20px;font-size:0.875rem;font-weight:500;text-decoration:none;
               border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;
               {% if active_tab != 'tracking' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
         Sessions
     </a>
-    <a id="tab-tracking" href="/sessions?tab=tracking"
+    <a id="tab-tracking" href="/tracker?tab=tracking"
        style="padding:8px 20px;font-size:0.875rem;font-weight:500;text-decoration:none;
               border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;
               {% if active_tab == 'tracking' %}border-color:var(--primary);color:var(--primary);{% else %}color:var(--on-surface-variant);{% endif %}">
@@ -78,7 +78,7 @@
     <p class="body-md text-variant mb-4">
         Arm systems in the Tracking tab, then start a PIE session to record gameplay data.
     </p>
-    <a href="/sessions?tab=tracking" class="btn btn-primary">Configure Systems</a>
+    <a href="/tracker?tab=tracking" class="btn btn-primary">Configure Systems</a>
 </div>
 {% else %}
 <div class="sessions-layout">
@@ -429,7 +429,7 @@ async function selectSession(id) {
         if (!d.session) return;
         _activeData = d.session;
         renderDetail(d.session);
-        history.replaceState(null, '', `/sessions?tab=sessions&highlight=${id}`);
+        history.replaceState(null, '', `/tracker?tab=sessions&highlight=${id}`);
     } catch (e) {
         console.error('Failed to load session', e);
     }
