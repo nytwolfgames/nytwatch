@@ -222,6 +222,10 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
         UObject* Obj = *It;
         if (!PassesBasicFilter(Obj)) continue;
 
+        // Restrict to PIE game world — skip editor-world and transient objects
+        UWorld* World = Obj->GetWorld();
+        if (!World || !World->IsGameWorld()) continue;
+
         const int32 SysIdx = FindSystemIndexForClass(Obj->GetClass());
         if (SysIdx == INDEX_NONE) continue;
 

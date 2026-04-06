@@ -27,6 +27,37 @@ def _find_plugin_source() -> Path:
     )
 
 
+def _patch_uproject(uproject_path: Path) -> None:
+    """
+    Ensure the .uproject file has the NytwatchAgent plugin entry enabled.
+    Writes atomically via a .tmp file.
+    """
+    text = uproject_path.read_text(encoding="utf-8")
+    data = json.loads(text)
+
+    plugins: list[dict] = data.setdefault("Plugins", [])
+
+    # Check if entry already exists
+    for entry in plugins:
+        if entry.get("Name") == "NytwatchAgent":
+            if not entry.get("Enabled", False):
+                entry["Enabled"] = True
+                print("   Enabled existing NytwatchAgent entry in .uproject.")
+            else:
+                print("   NytwatchAgent already enabled in .uproject.")
+            break
+    else:
+        plugins.append({"Name": "NytwatchAgent", "Enabled": True})
+        print("   Added NytwatchAgent to .uproject Plugins list.")
+
+    # Atomic write
+    tmp_path = uproject_path.with_suffix(".uproject.tmp")
+    tmp_path.write_text(
+        json.dumps(data, indent="\t") + "\n", encoding="utf-8"
+    )
+    tmp_path.replace(uproject_path)
+
+
 def install_plugin(project_path: str, force: bool = False) -> int:
     """
     Install the NytwatchAgent UE5 plugin into a game project.
@@ -43,7 +74,8 @@ def install_plugin(project_path: str, force: bool = False) -> int:
         )
         return 1
 
-    project_name = uproject_files[0].stem
+    uproject_file = uproject_files[0]
+    project_name = uproject_file.stem
     print(f"Found project: {project_name}")
 
     try:
@@ -64,6 +96,7 @@ def install_plugin(project_path: str, force: bool = False) -> int:
                 f"Already installed at current version ({bundled_version}). "
                 "Use --force to reinstall."
             )
+            _patch_uproject(uproject_file)
             return 0
         elif existing_version != bundled_version:
             print(f"Upgrading from {existing_version} to {bundled_version}.")
@@ -81,12 +114,13 @@ def install_plugin(project_path: str, force: bool = False) -> int:
     }
     (dest / ".nytwatch_install").write_text(json.dumps(manifest, indent=2))
 
+    _patch_uproject(uproject_file)
+
     print(f"\nNytwatchAgent plugin installed successfully.")
     print(f"\nLocation : {dest}/")
     print(f"Version  : {bundled_version}")
     print(f"\nNext steps:")
     print(f"  1. Open your project in the Unreal Editor")
-    print(f'  2. Enable "Nytwatch Agent" in Edit > Plugins')
-    print(f"  3. Recompile the project")
-    print(f"  4. Start the Nytwatch server and arm systems from Settings")
+    print(f"  2. Recompile the project when prompted")
+    print(f"  3. Start the Nytwatch server and arm systems from Settings")
     return 0

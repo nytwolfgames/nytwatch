@@ -6,6 +6,8 @@
 #include "Misc/DateTime.h"
 #include "Misc/App.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
@@ -310,11 +312,22 @@ void FNytwatchSessionWriter::FlushBuffer()
     const FString Block = BuildFlushBlock();
     if (!Block.IsEmpty())
     {
-        FFileHelper::SaveStringToFile(
-            Block, *SessionFilePath,
-            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
-            &IFileManager::Get(),
-            FILEWRITE_Append | FILEWRITE_AllowRead);
+        // FFileHelper::SaveStringToFile does not support append mode.
+        // Use IFileManager directly to open with FILEWRITE_Append.
+        IFileHandle* Handle = IFileManager::Get().CreateFileWriter(
+            *SessionFilePath, FILEWRITE_Append | FILEWRITE_AllowRead);
+        if (Handle)
+        {
+            FTCHARToUTF8 Utf8(*Block);
+            Handle->Write(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
+            delete Handle;
+        }
+        else
+        {
+            UE_LOG(LogNytwatchWriter, Warning,
+                TEXT("[NytwatchAgent] Failed to open session file for append: %s"),
+                *SessionFilePath);
+        }
     }
 
     Buffer.Reset();

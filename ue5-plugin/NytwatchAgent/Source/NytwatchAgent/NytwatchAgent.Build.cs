@@ -15,7 +15,8 @@ public class NytwatchAgent : ModuleRules
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
-            "UnrealEd",          // FEditorDelegates, FSourceCodeNavigation
+            "UnrealEd",          // FEditorDelegates
+            "SourceCodeAccess",  // FSourceCodeNavigation (FindClassHeaderPath)
             "Json",              // TJsonReader / TJsonWriter
             "JsonUtilities",     // FJsonObjectConverter
             "Slate",             // FSlateNotificationManager
