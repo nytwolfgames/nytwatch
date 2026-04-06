@@ -8,7 +8,7 @@
 #include "NytwatchConfig.h"
 
 class FRunnableThread;
-struct FEvent;
+class FEvent;
 
 // ---------------------------------------------------------------------------
 // Writes a PIE session to a .md file on a dedicated background thread.

@@ -238,13 +238,17 @@ int32 UNytwatchSubsystem::FindSystemIndexForClass(UClass* Class)
     if (Result == INDEX_NONE)
     {
         if (HeaderPath.IsEmpty())
+        {
             UE_LOG(LogNytwatchSubsystem, Verbose,
                 TEXT("[NytwatchAgent] Class '%s' — FSourceCodeNavigation returned no header (skipped)."),
                 *Class->GetName());
+        }
         else
+        {
             UE_LOG(LogNytwatchSubsystem, Verbose,
                 TEXT("[NytwatchAgent] Class '%s' — header '%s' matched no armed system (skipped)."),
                 *Class->GetName(), *HeaderPath);
+        }
     }
     else
     {
