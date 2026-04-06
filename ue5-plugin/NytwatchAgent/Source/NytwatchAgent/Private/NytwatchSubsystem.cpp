@@ -229,6 +229,13 @@ bool UNytwatchSubsystem::OnTick(float DeltaTime)
         const int32 SysIdx = FindSystemIndexForClass(Obj->GetClass());
         if (SysIdx == INDEX_NONE) continue;
 
+        // Respect per-instance toggle when the object implements INytwatchTrackable.
+        if (Obj->GetClass()->ImplementsInterface(UNytwatchTrackable::StaticClass()))
+        {
+            if (!INytwatchTrackable::Execute_IsNytwatchTrackingEnabled(Obj))
+                continue;
+        }
+
         if (Tracker.HasSeen(Obj))
             Seen.Add({Obj, SysIdx});
         else

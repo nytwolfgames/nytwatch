@@ -150,7 +150,7 @@ for idx in "${selected_indices[@]}"; do
     path="${project_paths[$idx]}"
     step "Installing into: $name"
     info "$path"
-    if "$NYW_CMD" install-plugin --project "$path"; then
+    if "$NYW_CMD" install-plugin --project "$path" --force; then
         ok "Done: $name"
     else
         warn "Installation failed for: $name"

@@ -140,7 +140,7 @@ foreach ($idx in $selectedIndices) {
     Write-Step "Installing into: $($p.name)"
     Write-Info $p.repo_path
 
-    & $nywCmd install-plugin --project $p.repo_path
+    & $nywCmd install-plugin --project $p.repo_path --force
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Installation failed for: $($p.name)"
         $failed += $p.name

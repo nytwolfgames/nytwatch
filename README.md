@@ -205,6 +205,29 @@ Scan Scheduler --> Analysis Engine --> Findings Store (SQLite)
                   Notification (closure)
 ```
 
+### UE5 plugin — per-instance tracking toggle
+
+Any class tracked via `NytwatchVerbosity` can implement `INytwatchTrackable` to gain a per-instance enable/disable toggle:
+
+```cpp
+UCLASS(meta=(NytwatchVerbosity="Standard"))
+class AMyActor : public AActor, public INytwatchTrackable
+{
+    GENERATED_BODY()
+
+public:
+    UPROPERTY(EditAnywhere, Category = "Nytwatch")
+    bool bEnableNytwatchTrack = true;
+
+    virtual bool IsNytwatchTrackingEnabled_Implementation() const override
+    {
+        return bEnableNytwatchTrack;
+    }
+};
+```
+
+`bEnableNytwatchTrack` is editable per instance in the Details panel. Blueprint classes can also implement `INytwatchTrackable` and override `IsNytwatchTrackingEnabled`. Classes that do not implement the interface are always tracked — existing behaviour is unchanged.
+
 ### Key design decisions
 
 - **System-based scanning**: Code is split by game system (Combat, Character, AI, etc.), not by finding category. One comprehensive prompt per system finds all issue types in a single pass. Fewer CLI calls, better contextual understanding.

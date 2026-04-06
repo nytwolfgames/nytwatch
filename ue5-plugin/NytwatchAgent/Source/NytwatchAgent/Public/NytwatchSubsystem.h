@@ -6,6 +6,7 @@
 #include "NytwatchConfig.h"
 #include "NytwatchPropertyTracker.h"
 #include "NytwatchSessionWriter.h"
+#include "NytwatchTrackable.h"
 
 #include "NytwatchSubsystem.generated.h"
 
