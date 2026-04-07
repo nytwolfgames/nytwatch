@@ -1969,7 +1969,67 @@ async def apply_batch(request: Request):
     return JSONResponse({"ok": True, "batch_id": batch.id})
 
 
+@router.post("/batches/{batch_id}/retry")
+async def retry_batch(request: Request, batch_id: str):
+    config = get_config(request)
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+
+    old_batch = db.get_batch(batch_id)
+    if not old_batch:
+        return JSONResponse({"error": "Batch not found"}, status_code=404)
+    if old_batch["status"] != "failed":
+        return JSONResponse({"error": "Only failed batches can be retried"}, status_code=400)
+
+    # Reset findings back to approved so the new batch picks them up
+    for fid in old_batch["finding_ids"]:
+        db.update_finding_status(fid, FindingStatus.APPROVED)
+        db.set_finding_batch(fid, None)
+
+    from nytwatch.models import Batch, new_id
+    new_batch = Batch(
+        id=new_id(),
+        finding_ids=old_batch["finding_ids"],
+    )
+    db.insert_batch(new_batch)
+    for fid in old_batch["finding_ids"]:
+        db.set_finding_batch(fid, new_batch.id)
+
+    db_path = db.db_path
+    new_batch_id = new_batch.id
+
+    def _run():
+        from nytwatch.database import Database
+        from nytwatch.pipeline.batch import run_batch_pipeline
+        thread_db = Database(db_path)
+        try:
+            run_batch_pipeline(config, thread_db, new_batch_id)
+        except Exception:
+            logger.exception("Batch pipeline failed for %s", new_batch_id)
+            thread_db.update_batch(new_batch_id, status=BatchStatus.FAILED)
+        finally:
+            thread_db.close()
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+    logger.info("Retrying batch %s as new batch %s", batch_id, new_batch_id)
+    return JSONResponse({"ok": True, "batch_id": new_batch_id})
+
+
 # --- API ---
+
+@router.get("/api/batches/{batch_id}/status")
+async def api_batch_status(request: Request, batch_id: str):
+    db = get_db(request)
+    if db is None:
+        return JSONResponse({"error": "No project configured"}, status_code=400)
+    batch = db.get_batch(batch_id)
+    if not batch:
+        return JSONResponse({"error": "Batch not found"}, status_code=404)
+    return JSONResponse({"status": batch["status"]})
+
 
 @router.get("/api/stats")
 async def api_stats(request: Request):

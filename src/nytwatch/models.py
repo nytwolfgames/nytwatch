@@ -70,6 +70,7 @@ class ScanStatus(str, Enum):
 class BatchStatus(str, Enum):
     PENDING = "pending"
     APPLYING = "applying"
+    COMMITTING = "committing"
     BUILDING = "building"
     TESTING = "testing"
     VERIFIED = "verified"

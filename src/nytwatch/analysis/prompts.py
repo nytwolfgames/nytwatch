@@ -319,9 +319,7 @@ def build_batch_apply_prompt(
     return f"""\
 You are an Unreal Engine C++ analyst applying approved fixes.
 
-Use the Read tool to read the current contents of each file listed below, then produce a single unified diff that applies ALL findings together.
-
-## Files to Read
+## Files to Edit
 
 {paths_block}
 
@@ -335,20 +333,17 @@ Use the Read tool to read the current contents of each file listed below, then p
 
 ## Instructions
 
-1. Read every file in the list above before producing any output.
-2. Apply every finding's `suggested_fix` to the current file contents.
-3. When multiple findings affect the same file, merge them correctly — watch for overlapping line ranges.
+1. Read every file in the list above before making any edits.
+2. Apply every finding's `suggested_fix` directly to the file using the Edit tool.
+3. When multiple findings affect the same file, apply them in order from top to bottom (lowest line number first) to avoid offset errors.
 4. Preserve all existing code that is not part of a fix.
-5. Produce one unified diff covering all changes across all files.
-6. Use standard unified diff format (--- a/path, +++ b/path, @@ line ranges @@).
 
 ## Output Format
 
-Return a JSON object:
+After applying all edits, return a JSON object:
 
 ```json
 {{
-  "unified_diff": "<the complete unified diff as a string>",
   "files_modified": ["<list of file paths that were changed>"],
   "notes": "<any warnings about conflicts, overlapping fixes, or manual steps needed>"
 }}

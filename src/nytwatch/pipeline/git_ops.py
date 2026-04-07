@@ -97,17 +97,17 @@ def apply_patch(repo_path: str, patch_content: str) -> tuple[bool, str]:
     # Write to the system temp dir, NOT inside the repo, so git status/apply
     # never accidentally picks up the patch file as an untracked change.
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".patch", delete=False, dir=tempfile.gettempdir()
+        mode="w", suffix=".patch", delete=False, dir=tempfile.gettempdir(), newline="\n"
     ) as f:
         f.write(patch_content)
         patch_path = f.name
 
     try:
-        check = _run(["git", "apply", "--check", patch_path], cwd=repo_path)
+        check = _run(["git", "apply", "--check", "--recount", patch_path], cwd=repo_path)
         if check.returncode != 0:
             return False, check.stderr.strip()
 
-        apply = _run(["git", "apply", patch_path], cwd=repo_path)
+        apply = _run(["git", "apply", "--recount", patch_path], cwd=repo_path)
         if apply.returncode != 0:
             return False, apply.stderr.strip()
 
@@ -117,8 +117,11 @@ def apply_patch(repo_path: str, patch_content: str) -> tuple[bool, str]:
         Path(patch_path).unlink(missing_ok=True)
 
 
-def commit_changes(repo_path: str, message: str) -> str:
-    _run(["git", "add", "-A"], cwd=repo_path)
+def commit_changes(repo_path: str, message: str, files: list[str] | None = None) -> str:
+    if files:
+        _run(["git", "add", "--"] + files, cwd=repo_path)
+    else:
+        _run(["git", "add", "-A"], cwd=repo_path)
     result = _run(["git", "commit", "-m", message], cwd=repo_path)
     if result.returncode != 0:
         raise RuntimeError(f"Commit failed: {result.stderr.strip()}")

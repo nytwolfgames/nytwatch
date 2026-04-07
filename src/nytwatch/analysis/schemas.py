@@ -37,6 +37,6 @@ class ScanResult(BaseModel):
 
 
 class BatchApplyResult(BaseModel):
-    unified_diff: str
     files_modified: list[str] = Field(default_factory=list)
     notes: str = ""
+    unified_diff: str = ""  # informational only; Claude applies changes via tools

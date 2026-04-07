@@ -9,30 +9,53 @@
 <div class="flex items-center gap-4 mb-8">
     <h1 class="headline-lg">Batch #{{ batch.id[:8] }}</h1>
     <span class="badge status-{{ batch.status }}">{{ batch.status|upper }}</span>
+    {% if batch.status == 'failed' %}
+    <button class="btn btn-primary" onclick="retryBatch('{{ batch.id }}')">Retry</button>
+    {% endif %}
 </div>
 
 {% set steps = [
-    ('applying', 'Fixes Applied', 'Code patches applied to branch'),
-    ('building', 'UE Build', 'Unreal Engine compilation'),
-    ('testing', 'Tests Passing', 'Automated test verification'),
-    ('verified', 'PR Created', 'Pull request created and dev notified'),
+    ('applying',   'Applying Fixes', 'Claude edits files directly'),
+    ('committing', 'Committing',     'Staging and committing changed files'),
+    ('verified',   'Done',           'Changes committed to repository'),
 ] %}
 
-{% set status_order = {'pending': 0, 'applying': 1, 'building': 2, 'testing': 3, 'verified': 4, 'failed': -1} %}
-{% set current = status_order.get(batch.status, 0) %}
+{#
+  active_step: the step currently in progress (or that failed).
+  For failed batches: if commit_sha exists the apply succeeded so committing failed;
+  otherwise applying failed.
+#}
+{% if batch.status == 'applying' %}
+  {% set active_step = 'applying' %}
+{% elif batch.status == 'committing' %}
+  {% set active_step = 'committing' %}
+{% elif batch.status == 'verified' %}
+  {% set active_step = 'verified' %}
+{% elif batch.status == 'failed' %}
+  {% set active_step = 'committing' if batch.commit_sha else 'applying' %}
+{% else %}
+  {% set active_step = '' %}
+{% endif %}
+
+{% set step_order = {'applying': 1, 'committing': 2, 'verified': 3} %}
+{% set active_num = step_order.get(active_step, 0) %}
 
 <div class="card mb-6">
     <div class="label-lg mb-4">Pipeline Progress</div>
-    <div style="display: flex; flex-direction: column; gap: var(--sp-4);">
+    <div style="display: flex; flex-direction: column; gap: var(--sp-2);">
         {% for step_key, step_name, step_desc in steps %}
-        {% set step_num = status_order.get(step_key, 0) %}
-        <div>
+        {% set step_num = step_order.get(step_key, 0) %}
+        {% set is_active = (step_key == active_step and batch.status in ['applying', 'committing']) %}
+        {% set is_failed = (step_key == active_step and batch.status == 'failed') %}
+        {% set is_done   = (step_num < active_num) or (batch.status == 'verified') %}
+        <div style="border-radius: var(--radius-md); padding: var(--sp-3) var(--sp-4);
+                    {% if is_active %}background: var(--surface-variant);{% elif is_failed %}background: var(--status-failed-bg, #fff0f0);{% endif %}">
             <div class="flex items-center gap-3">
-                {% if batch.status == 'failed' and step_num >= current and current > 0 and loop.index == (current + 1) %}
+                {% if is_failed %}
                 <div class="step-circle step-failed">!</div>
-                {% elif step_num <= current and current > 0 %}
+                {% elif is_done %}
                 <div class="step-circle step-done">&#10003;</div>
-                {% elif step_num == current + 1 and batch.status not in ['failed', 'verified', 'pending'] %}
+                {% elif is_active %}
                 <div class="step-circle step-active">{{ loop.index }}</div>
                 {% else %}
                 <div class="step-circle step-pending">{{ loop.index }}</div>
@@ -42,7 +65,7 @@
                     <span class="body-sm text-outline" style="margin-left: var(--sp-2);">{{ step_desc }}</span>
                 </div>
             </div>
-            {% if step_num == current + 1 and batch.status not in ['failed', 'verified', 'pending'] %}
+            {% if is_active %}
             <div class="scanning-pulse" style="margin-top: var(--sp-2); margin-left: 2.25rem;"></div>
             {% endif %}
         </div>
@@ -65,27 +88,11 @@
     </div>
 </div>
 
-{% if batch.pr_url %}
-<div class="card mb-6" style="background: var(--status-verified-bg);">
-    <div class="label-lg" style="color: var(--status-verified-fg); margin-bottom: var(--sp-2);">Pull Request</div>
-    <a href="{{ batch.pr_url }}" target="_blank" style="color: var(--status-verified-fg); font-weight: 500;">{{ batch.pr_url }}</a>
-</div>
-{% endif %}
-
 {% if batch.build_log %}
 <details class="card mb-6">
-    <summary style="cursor: pointer;" class="label-lg">Build Log</summary>
+    <summary style="cursor: pointer;" class="label-lg">Error Log</summary>
     <div class="code-block" style="margin-top: var(--sp-3);">
         <pre style="max-height: 24rem; overflow-y: auto;">{{ batch.build_log }}</pre>
-    </div>
-</details>
-{% endif %}
-
-{% if batch.test_log %}
-<details class="card mb-6">
-    <summary style="cursor: pointer;" class="label-lg">Test Log</summary>
-    <div class="code-block" style="margin-top: var(--sp-3);">
-        <pre style="max-height: 24rem; overflow-y: auto;">{{ batch.test_log }}</pre>
     </div>
 </details>
 {% endif %}
@@ -96,10 +103,6 @@
         <div>
             <span class="body-sm text-outline">Batch ID</span>
             <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ batch.id }}</div>
-        </div>
-        <div>
-            <span class="body-sm text-outline">Branch</span>
-            <div class="mono" style="margin-top: var(--sp-1); color: var(--on-surface-variant);">{{ batch.branch_name or '-' }}</div>
         </div>
         <div>
             <span class="body-sm text-outline">Commit</span>
@@ -118,7 +121,46 @@
     </div>
 </div>
 
-{% if batch.status in ['applying', 'building', 'testing'] %}
-<script>setTimeout(() => location.reload(), 5000);</script>
+{% if batch.status not in ['verified', 'failed'] %}
+<script>
+(function() {
+    const TERMINAL = ['verified', 'failed'];
+    const batchId = '{{ batch.id }}';
+    const currentStatus = '{{ batch.status }}';
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch(`/api/batches/${batchId}/status`);
+            const data = await res.json();
+            if (data.status !== currentStatus) {
+                clearInterval(interval);
+                location.reload();
+            }
+        } catch (_) {}
+    }, 3000);
+})();
+</script>
 {% endif %}
+
+<script>
+async function retryBatch(batchId) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Retrying...';
+    try {
+        const res = await fetch(`/batches/${batchId}/retry`, { method: 'POST' });
+        const data = await res.json();
+        if (data.batch_id) {
+            window.location.href = '/auditor/batches/' + data.batch_id;
+        } else {
+            alert(data.error || 'Retry failed');
+            btn.disabled = false;
+            btn.textContent = 'Retry';
+        }
+    } catch (e) {
+        alert('Retry failed');
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+    }
+}
+</script>
 {% endblock %}

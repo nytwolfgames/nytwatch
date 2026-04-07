@@ -196,8 +196,7 @@
                 <th>Batch</th>
                 <th>Findings</th>
                 <th>Status</th>
-                <th>Branch</th>
-                <th>PR</th>
+                <th>Commit</th>
                 <th>Created</th>
                 <th>Completed</th>
             </tr>
@@ -208,12 +207,7 @@
                 <td><a href="/auditor/batches/{{ batch.id }}" class="mono">{{ batch.id[:8] }}</a></td>
                 <td>{{ batch.finding_ids|length }}</td>
                 <td><span class="badge status-{{ batch.status }}">{{ batch.status }}</span></td>
-                <td class="mono" style="font-size: 0.75rem; color: var(--on-surface-variant);">{{ batch.branch_name or '-' }}</td>
-                <td>
-                    {% if batch.pr_url %}
-                    <a href="{{ batch.pr_url }}" target="_blank" class="body-sm">View PR</a>
-                    {% else %}<span class="text-outline">-</span>{% endif %}
-                </td>
+                <td class="mono" style="font-size: 0.75rem; color: var(--on-surface-variant);">{{ batch.commit_sha[:8] if batch.commit_sha else '-' }}</td>
                 <td class="body-sm text-variant">{{ batch.created_at[:10] }} {{ batch.created_at[11:16] }}</td>
                 <td class="body-sm text-variant">{{ (batch.completed_at[:10] ~ ' ' ~ batch.completed_at[11:16] if batch.completed_at else '-') }}</td>
             </tr>
