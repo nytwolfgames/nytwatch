@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -248,7 +250,9 @@ def run():
             config = AuditorConfig()
 
         app = create_app(config, config_path=resolved_config_path)
-        logger.info("Starting Nytwatch on http://%s:%d", host, port)
+        url = f"http://{host}:{port}"
+        logger.info("Starting Nytwatch on %s", url)
+        threading.Timer(1.0, webbrowser.open, args=[url]).start()
         uvicorn.run(app, host=host, port=port, log_level="info")
         return
 
