@@ -19,11 +19,31 @@ if [ -n "$BRANCH" ]; then
     done
 fi
 
-# Current sprint (find most recent sprint file)
-LATEST_SPRINT=$(ls -t production/sprints/sprint-*.md 2>/dev/null | head -1)
-if [ -n "$LATEST_SPRINT" ]; then
+# Current sprint — walk the Previous Sprint chain to find the active open sprint.
+# Active sprint = Status: open AND (Previous Sprint: none OR previous sprint is closed).
+ACTIVE_SPRINT=""
+for sprint_file in $(ls production/sprints/sprint-*.md 2>/dev/null | sort); do
+    STATUS=$(grep -im1 "^\*\*Status\*\*:" "$sprint_file" | sed 's/.*: *//' | tr -d ' \r')
+    if [ "$(echo "$STATUS" | tr '[:upper:]' '[:lower:]')" = "open" ]; then
+        PREV=$(grep -im1 "^\*\*Previous Sprint\*\*:" "$sprint_file" | sed 's/.*: *//' | tr -d ' \r')
+        if [ -z "$PREV" ] || [ "$(echo "$PREV" | tr '[:upper:]' '[:lower:]')" = "none" ]; then
+            ACTIVE_SPRINT="$sprint_file"
+            break
+        fi
+        PREV_FILE="production/sprints/${PREV}.md"
+        if [ -f "$PREV_FILE" ]; then
+            PREV_STATUS=$(grep -im1 "^\*\*Status\*\*:" "$PREV_FILE" | sed 's/.*: *//' | tr -d ' \r')
+            if [ "$(echo "$PREV_STATUS" | tr '[:upper:]' '[:lower:]')" = "closed" ]; then
+                ACTIVE_SPRINT="$sprint_file"
+                break
+            fi
+        fi
+    fi
+done
+if [ -n "$ACTIVE_SPRINT" ]; then
     echo ""
     echo "Active sprint: $(basename "$LATEST_SPRINT" .md)"
+    echo "Active sprint: $(basename "$ACTIVE_SPRINT" .md)"
 fi
 
 # Current milestone

@@ -42,6 +42,8 @@ For `new`:
 ```markdown
 # Sprint [N] -- [Start Date] to [End Date]
 
+**Status**: open
+**Previous Sprint**: sprint-[N-1]  <!-- set to "none" if this is the first sprint -->
 **Goal**: [One sentence describing what this sprint achieves toward the milestone]
 **Weeks**: [e.g. Weeks 1–2]
 

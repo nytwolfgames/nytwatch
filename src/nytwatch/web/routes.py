@@ -2655,6 +2655,7 @@ async def api_pm_create_task(request: Request, sprint_n: int):
         "estimate_days":        body.get("estimate_days", 0),
         "dependencies":         body.get("dependencies", ""),
         "acceptance_criteria":  body.get("acceptance_criteria", ""),
+        "sub_tasks":            body.get("sub_tasks", []),
         "priority":             body.get("priority", "should-have"),
         "status":               body.get("status", "backlog"),
         "sprint":               sprint_n,
@@ -2685,6 +2686,7 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
             "estimate_days":       body.get("estimate_days", 0),
             "dependencies":        body.get("dependencies", ""),
             "acceptance_criteria": body.get("acceptance_criteria", ""),
+            "sub_tasks":           body.get("sub_tasks", []),
             "priority":            body.get("priority", "should-have"),
             "status":              body.get("status", "backlog"),
             "sprint":              sprint_n,
@@ -2712,6 +2714,7 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
         "estimate_days":       body.get("estimate_days", 0),
         "dependencies":        body.get("dependencies", ""),
         "acceptance_criteria": body.get("acceptance_criteria", ""),
+        "sub_tasks":           body.get("sub_tasks", []),
         "priority":            body.get("priority", "should-have"),
         "status":              body.get("status", "backlog"),
         "sprint":              sprint_n,
@@ -2721,6 +2724,26 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
     }
     update_task_in_sprint(studio, sprint_n, task, old_name=old_name)
     return JSONResponse({"ok": True})
+
+
+@router.post("/api/pm/subtask-status")
+async def api_pm_subtask_status(request: Request):
+    """Toggle a single sub-task marker without touching any other field.
+    Uses a flat POST URL to avoid conflict with the {task_id:path} task route."""
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    from nytwatch.pm.writer import set_subtask_done_in_sprint
+    ok = set_subtask_done_in_sprint(
+        studio,
+        int(body.get("sprint_n", 0)),
+        body.get("task_id", ""),
+        body.get("task_name", ""),
+        body.get("subtask_id", ""),
+        bool(body.get("done", False)),
+    )
+    return JSONResponse({"ok": ok})
 
 
 @router.delete("/api/pm/tasks/{sprint_n}/{task_id:path}")

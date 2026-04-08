@@ -86,6 +86,46 @@ def _find_task_line_index(lines: list[str], task_id: str, task_name: str) -> int
     return -1
 
 
+def set_subtask_done_in_sprint(studio_path: Path, sprint_n: int,
+                               task_id: str, task_name: str,
+                               subtask_id: str, done: bool) -> bool:
+    """
+    Toggle a single sub-task's [ ] / [x] marker in a checklist sprint file
+    without touching anything else in the file.
+    """
+    p = _sprint_path(studio_path, sprint_n)
+    if not p.exists():
+        return False
+    content = p.read_text(encoding='utf-8')
+    if not _is_checklist(content):
+        return False
+
+    lines = content.splitlines(keepends=True)
+    flat  = [l.rstrip('\n') for l in lines]
+
+    task_start = _find_task_line_index(flat, task_id, task_name)
+    if task_start == -1:
+        return False
+
+    sub_pat = re.compile(
+        rf'^\s+- \[[^\]]*\]\s+{re.escape(subtask_id)}[:\s]', re.IGNORECASE
+    )
+    marker = 'x' if done else ' '
+
+    for i in range(task_start + 1, len(lines)):
+        if not flat[i].startswith('  '):
+            break  # left the indented block
+        if sub_pat.match(flat[i]):
+            lines[i] = re.sub(
+                r'^(\s+- \[)[^\]]*(\])', rf'\g<1>{marker}\g<2>',
+                lines[i], count=1,
+            )
+            p.write_text(''.join(lines), encoding='utf-8')
+            return True
+
+    return False
+
+
 def set_task_status_in_sprint(studio_path: Path, sprint_n: int, task_id: str,
                                task_name: str, new_status: str) -> bool:
     """
@@ -358,13 +398,57 @@ def close_sprint_file(studio_path: Path, sprint_n: int,
 
 
 def _make_checklist_item(task: dict) -> str:
-    """Build a `- [backlog] **ID**: name` checklist line for a new task."""
+    """Build a checklist line for a task, with optional indented sub-tasks."""
     marker = _STATUS_TO_MARKER.get(task.get('status', 'backlog'), 'backlog')
     tid  = task.get('id', '')
     name = task.get('name', '')
-    if tid:
-        return f"- [{marker}] **{tid}**: {name}\n"
-    return f"- [{marker}] {name}\n"
+    sub_tasks = task.get('sub_tasks', [])
+
+    line = f"- [{marker}] **{tid}**: {name}\n" if tid else f"- [{marker}] {name}\n"
+
+    for st in sub_tasks:
+        if not st.get('name', '').strip():
+            continue
+        st_marker = 'x' if st.get('done') else ' '
+        st_id     = st.get('id', '')
+        st_name   = st.get('name', '').strip()
+        if st_id:
+            line += f"  - [{st_marker}] {st_id}: {st_name}\n"
+        else:
+            line += f"  - [{st_marker}] {st_name}\n"
+
+    return line
+
+
+def _replace_task_block(studio_path: Path, sprint_n: int, task: dict,
+                         old_name: str = "") -> bool:
+    """
+    Replace the entire task block (task line + its indented sub-task lines) in a
+    checklist-format sprint file with a freshly serialised block from `task`.
+    """
+    p = _sprint_path(studio_path, sprint_n)
+    if not p.exists():
+        return False
+    content = p.read_text(encoding='utf-8')
+    if not _is_checklist(content):
+        return False
+
+    lines = content.splitlines(keepends=True)
+    flat  = [l.rstrip('\n') for l in lines]
+
+    start = _find_task_line_index(flat, task['id'], old_name or task.get('name', ''))
+    if start == -1:
+        return False
+
+    # Consume all immediately-following indented lines (the old sub-task block)
+    end = start + 1
+    while end < len(lines) and flat[end].startswith('  '):
+        end += 1
+
+    new_block = _make_checklist_item(task).splitlines(keepends=True)
+    lines[start:end] = new_block
+    p.write_text(''.join(lines), encoding='utf-8')
+    return True
 
 
 def _make_row(task: dict) -> str:
@@ -470,12 +554,14 @@ def update_task_in_sprint(studio_path: Path, sprint_n: int, task: dict,
     new_status = task.get('status', 'backlog')
 
     if _is_checklist(content):
+        # Full block replace when sub_tasks are explicitly provided
+        if 'sub_tasks' in task:
+            return _replace_task_block(studio_path, sprint_n, task, old_name)
+        # Otherwise do lightweight field-by-field updates
         changed = False
-        # Update status marker
         if set_task_status_in_sprint(studio_path, sprint_n, task_id,
                                       old_name or task_name, new_status):
             changed = True
-        # Update name if it changed
         if old_name and old_name != task_name:
             if _update_checklist_task_name(studio_path, sprint_n, task_id,
                                             old_name, task_name):

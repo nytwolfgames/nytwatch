@@ -37,6 +37,9 @@ STATUS_LABELS = {
 
 PRIORITY_ORDER = {"must-have": 0, "should-have": 1, "nice-to-have": 2}
 
+# Sub-task ID pattern: T1, T2, B.1, S1, etc.
+_SUBTASK_ID_RE = re.compile(r'^([A-Za-z]\d+(?:\.\d+)?)[:\s]+(.+)$')
+
 # Marker ↔ status mapping for [{status}] checklist format
 # Supports both legacy [ ]/[x] and new named-status markers
 _MARKER_TO_STATUS: dict[str, str] = {
@@ -66,6 +69,13 @@ MILESTONE_STATUSES = ["planned", "in progress", "complete", "at risk", "on hold"
 # ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass
+class SubTask:
+    id: str
+    name: str
+    done: bool = False
+
+
+@dataclass
 class Task:
     id: str
     name: str
@@ -79,6 +89,7 @@ class Task:
     blocker: str = ""
     completed: str = ""
     file: str = ""
+    sub_tasks: list = field(default_factory=list)  # list[SubTask]
 
 
 @dataclass
@@ -224,14 +235,24 @@ def _parse_checklist_tasks(content: str, sprint_n: int) -> list[Task]:
                 task_id = f"{orig_id}-{dup}"
             seen_ids.add(task_id)
 
-            # Collect indented sub-items as acceptance criteria
-            sub_items: list[str] = []
+            # Collect indented sub-items as structured SubTask objects
+            sub_tasks: list[SubTask] = []
             j = i + 1
             while j < len(lines):
                 sub_line = lines[j]
-                sub_m = re.match(r'^\s+- \[[^\]]*\] (.+)$', sub_line)
+                sub_m = re.match(r'^\s+- \[([^\]]*)\] (.+)$', sub_line)
                 if sub_m:
-                    sub_items.append(sub_m.group(1).strip())
+                    sub_marker = sub_m.group(1).strip()
+                    sub_done = sub_marker in ('x', 'X', 'done')
+                    sub_text = sub_m.group(2).strip()
+                    id_m = _SUBTASK_ID_RE.match(sub_text)
+                    if id_m:
+                        sub_id   = id_m.group(1)
+                        sub_name = id_m.group(2).strip()
+                    else:
+                        sub_id   = f"T{len(sub_tasks) + 1}"
+                        sub_name = sub_text
+                    sub_tasks.append(SubTask(id=sub_id, name=sub_name, done=sub_done))
                     j += 1
                 elif sub_line.startswith('  ') or not sub_line.strip():
                     j += 1
@@ -244,7 +265,7 @@ def _parse_checklist_tasks(content: str, sprint_n: int) -> list[Task]:
                 priority=priority,
                 status=status,
                 sprint=sprint_n,
-                acceptance_criteria='; '.join(sub_items) if sub_items else '',
+                sub_tasks=sub_tasks,
             ))
             i = j
 
@@ -451,6 +472,7 @@ def task_to_dict(t: Task) -> dict:
         "blocker": t.blocker,
         "completed": t.completed,
         "file": t.file,
+        "sub_tasks": [{"id": st.id, "name": st.name, "done": st.done} for st in t.sub_tasks],
     }
 
 

@@ -197,6 +197,46 @@
 /* Legacy — kept so JS title-setter works; visually overridden by .modal-header-title */
 .modal-title  { display: none; }
 .modal-actions { display: none; }
+
+/* Sub-task checklist */
+.subtask-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; min-height: 0; }
+.subtask-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; background: #F4F5F7; border-radius: 3px;
+  border: 1px solid #DFE1E6; transition: border-color .1s;
+}
+.subtask-item:focus-within { border-color: #4C9AFF; background: #fff; }
+.subtask-item input[type="checkbox"] {
+  width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; accent-color: #0052CC;
+}
+.subtask-id {
+  font-size: 0.7rem; font-weight: 700; color: #0052CC;
+  min-width: 28px; flex-shrink: 0; font-family: 'Space Grotesk', monospace;
+  letter-spacing: .02em;
+}
+.subtask-name-input {
+  flex: 1; border: none; background: transparent; color: #172B4D;
+  font-size: 0.875rem; font-family: inherit; outline: none; padding: 0; min-width: 0;
+}
+.subtask-name-input::placeholder { color: #97A0AF; }
+.subtask-name-input.done { text-decoration: line-through; color: #6B778C; }
+.subtask-del {
+  width: 20px; height: 20px; border: none; background: transparent; cursor: pointer;
+  color: #97A0AF; border-radius: 2px; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0; padding: 0; transition: background .1s, color .1s;
+}
+.subtask-del:hover { background: #FFEBE6; color: #DE350B; }
+.subtask-add-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 7px 10px; background: transparent; border: 1px dashed #C1C7D0;
+  border-radius: 3px; color: #6B778C; font-size: 0.8125rem; cursor: pointer;
+  font-family: inherit; transition: background .1s, border-color .1s, color .1s;
+}
+.subtask-add-btn:hover { background: #E9F2FF; border-color: #0052CC; color: #0052CC; }
+.subtask-progress {
+  font-size: 0.7rem; color: #6B778C; font-weight: 600;
+  margin-left: auto; white-space: nowrap;
+}
 </style>
 
 <!-- ── Header ──────────────────────────────────────────────────────────────── -->
@@ -331,7 +371,17 @@
       </div>
       <div class="frow"><label>Sprint</label><select id="tm-move-sprint"></select></div>
       <div class="frow"><label>Dependencies</label><input type="text" id="tm-deps" placeholder="T-001, T-002"></div>
-      <div class="frow"><label>Acceptance Criteria</label><textarea id="tm-ac" rows="3" placeholder="How do we know this is done?"></textarea></div>
+      <div class="frow">
+        <label style="display:flex;align-items:center;gap:6px;">
+          Sub-tasks
+          <span id="tm-subtask-progress" class="subtask-progress"></span>
+        </label>
+        <div id="tm-subtasks" class="subtask-list"></div>
+        <button type="button" class="subtask-add-btn" onclick="addSubTask()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add sub-task
+        </button>
+      </div>
       <div class="frow" id="tm-blocker-row" style="display:none;">
         <label>Blocker</label>
         <textarea id="tm-blocker" rows="2" placeholder="What is blocking this task?"></textarea>
@@ -709,6 +759,94 @@ async function deleteSprint(n) {
   toast(`Sprint ${n} deleted`);
 }
 
+// ── Sub-task helpers ──────────────────────────────────────────────────────────
+let _subtaskCounter = 0;
+
+function _updateSubtaskProgress() {
+  const rows  = document.querySelectorAll('#tm-subtasks .subtask-item');
+  const total = rows.length;
+  const done  = Array.from(rows).filter(r => r.querySelector('input[type="checkbox"]').checked).length;
+  const el    = document.getElementById('tm-subtask-progress');
+  el.textContent = total ? `${done}/${total} done` : '';
+}
+
+function _makeSubTaskRow(id, name, done) {
+  const row = document.createElement('div');
+  row.className = 'subtask-item';
+  row.dataset.stId = id;
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!done;
+  cb.addEventListener('change', () => {
+    nameInput.classList.toggle('done', cb.checked);
+    _updateSubtaskProgress();
+    // Persist immediately when editing an existing task
+    const mode    = document.getElementById('tm-mode').value;
+    const taskId  = document.getElementById('tm-orig-id').value;
+    const sprintN = parseInt(document.getElementById('tm-sprint-n').value);
+    const taskName = document.getElementById('tm-name').value;
+    if (mode === 'edit' && taskId && sprintN) {
+      api('POST', '/api/pm/subtask-status', {
+        sprint_n:   sprintN,
+        task_id:    taskId,
+        task_name:  taskName,
+        subtask_id: id,
+        done:       cb.checked,
+      });
+    }
+  });
+
+  const idSpan = document.createElement('span');
+  idSpan.className = 'subtask-id';
+  idSpan.textContent = id;
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'subtask-name-input' + (done ? ' done' : '');
+  nameInput.value = name;
+  nameInput.placeholder = 'Sub-task description…';
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'subtask-del';
+  delBtn.title = 'Remove';
+  delBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  delBtn.addEventListener('click', () => { row.remove(); _updateSubtaskProgress(); });
+
+  row.append(cb, idSpan, nameInput, delBtn);
+  return row;
+}
+
+function renderSubTasks(subtasks) {
+  const container = document.getElementById('tm-subtasks');
+  container.innerHTML = '';
+  // Seed counter from highest existing numeric T-id
+  const nums = subtasks.map(st => /^T(\d+)$/.exec(st.id)).filter(Boolean).map(m => parseInt(m[1]));
+  _subtaskCounter = nums.length ? Math.max(...nums) : 0;
+  subtasks.forEach(st => container.appendChild(_makeSubTaskRow(st.id, st.name, st.done)));
+  _updateSubtaskProgress();
+}
+
+function addSubTask() {
+  _subtaskCounter += 1;
+  const id  = `T${_subtaskCounter}`;
+  const row = _makeSubTaskRow(id, '', false);
+  document.getElementById('tm-subtasks').appendChild(row);
+  row.querySelector('.subtask-name-input').focus();
+  _updateSubtaskProgress();
+}
+
+function collectSubTasks() {
+  return Array.from(document.querySelectorAll('#tm-subtasks .subtask-item'))
+    .map(row => ({
+      id:   row.dataset.stId,
+      name: row.querySelector('.subtask-name-input').value.trim(),
+      done: row.querySelector('input[type="checkbox"]').checked,
+    }))
+    .filter(st => st.name);
+}
+
 // ── Task CRUD ─────────────────────────────────────────────────────────────────
 function openTaskModal(sn, task, defStatus) {
   closeCtx();
@@ -727,8 +865,8 @@ function openTaskModal(sn, task, defStatus) {
     document.getElementById('tm-priority').value      = task.priority||'should-have';
     document.getElementById('tm-status').value        = task.status||'backlog';
     document.getElementById('tm-deps').value          = task.dependencies||'';
-    document.getElementById('tm-ac').value            = task.acceptance_criteria||'';
     document.getElementById('tm-blocker').value       = task.blocker||'';
+    renderSubTasks(task.sub_tasks || []);
     ms.value = sn;
   } else {
     document.getElementById('tm-title').textContent   = 'New Task';
@@ -744,8 +882,8 @@ function openTaskModal(sn, task, defStatus) {
     document.getElementById('tm-priority').value      = 'should-have';
     document.getElementById('tm-status').value        = defStatus||'backlog';
     document.getElementById('tm-deps').value          = '';
-    document.getElementById('tm-ac').value            = '';
     document.getElementById('tm-blocker').value       = '';
+    renderSubTasks([]);
     ms.value = sn;
   }
   const sv = document.getElementById('tm-status').value;
@@ -769,7 +907,7 @@ async function saveTask() {
     priority:             document.getElementById('tm-priority').value,
     status:               document.getElementById('tm-status').value,
     dependencies:         document.getElementById('tm-deps').value.trim(),
-    acceptance_criteria:  document.getElementById('tm-ac').value.trim(),
+    sub_tasks:            collectSubTasks(),
     blocker:              document.getElementById('tm-blocker').value.trim(),
     sprint: origSn,
   };
