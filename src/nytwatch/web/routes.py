@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from io import BytesIO
 from datetime import datetime
@@ -2500,3 +2501,285 @@ async def api_delete_session(request: Request, session_id: str):
     if watcher is not None:
         watcher._ws.push_session_deleted(session_id)
     return JSONResponse({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Project Management
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _pm_studio_path(request: Request) -> Optional[Path]:
+    """Locate the studio root (dir containing production/) for the active project."""
+    config = get_config(request)
+    if not config or not getattr(config, "repo_path", ""):
+        return None
+    from nytwatch.pm.parser import find_studio_path
+    return find_studio_path(config.repo_path)
+
+
+# ── Pages ─────────────────────────────────────────────────────────────────────
+
+@router.get("/pm", response_class=HTMLResponse)
+async def pm_root(request: Request):
+    return RedirectResponse(url="/pm/board")
+
+
+@router.get("/pm/board", response_class=HTMLResponse)
+async def pm_board(request: Request, sprint: Optional[int] = None):
+    from nytwatch.pm.parser import load_sprints, load_milestones, sprint_to_dict, milestone_to_dict
+    studio = _pm_studio_path(request)
+
+    if studio is None:
+        return templates.TemplateResponse(request, "project_management.html", {
+            "active_tab": "board",
+            "studio_path": None,
+            "sprints": [],
+            "active_sprint": None,
+            "milestones": [],
+        })
+
+    sprints = load_sprints(studio)
+    milestones = load_milestones(studio)
+
+    if sprint is not None:
+        active = next((s for s in sprints if s.number == sprint), None)
+    else:
+        # Default: most recent non-fully-done sprint, or just the last one
+        active = None
+        for s in reversed(sprints):
+            done = all(t.status == "done" for t in s.tasks) if s.tasks else False
+            if not done:
+                active = s
+                break
+        if active is None and sprints:
+            active = sprints[-1]
+
+    return templates.TemplateResponse(request, "project_management.html", {
+        "active_tab": "board",
+        "studio_path": str(studio),
+        "sprints": [sprint_to_dict(s) for s in sprints],
+        "active_sprint": sprint_to_dict(active) if active else None,
+        "milestones": [milestone_to_dict(m) for m in milestones],
+    })
+
+
+@router.get("/pm/milestones", response_class=HTMLResponse)
+async def pm_milestones_page(request: Request):
+    from nytwatch.pm.parser import load_sprints, load_milestones, sprint_to_dict, milestone_to_dict
+    studio = _pm_studio_path(request)
+
+    if studio is None:
+        return templates.TemplateResponse(request, "project_management.html", {
+            "active_tab": "milestones",
+            "studio_path": None,
+            "sprints": [],
+            "active_sprint": None,
+            "milestones": [],
+        })
+
+    sprints = load_sprints(studio)
+    milestones = load_milestones(studio)
+
+    return templates.TemplateResponse(request, "project_management.html", {
+        "active_tab": "milestones",
+        "studio_path": str(studio),
+        "sprints": [sprint_to_dict(s) for s in sprints],
+        "active_sprint": None,
+        "milestones": [milestone_to_dict(m) for m in milestones],
+    })
+
+
+# ── Sprint API ────────────────────────────────────────────────────────────────
+
+@router.post("/api/pm/sprints")
+async def api_pm_create_sprint(request: Request):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    sprint_n   = int(body.get("sprint_n", 1))
+    goal       = body.get("goal", "")
+    start_date = body.get("start_date", "")
+    end_date   = body.get("end_date", "")
+    from nytwatch.pm.writer import create_sprint_file
+    from nytwatch.pm.parser import load_sprints, sprint_to_dict
+    create_sprint_file(studio, sprint_n, goal, start_date, end_date)
+    sprints = load_sprints(studio)
+    created = next((s for s in sprints if s.number == sprint_n), None)
+    return JSONResponse({"ok": True, "sprint": sprint_to_dict(created) if created else None})
+
+
+@router.patch("/api/pm/sprints/{sprint_n}")
+async def api_pm_update_sprint(request: Request, sprint_n: int):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    from nytwatch.pm.writer import update_sprint_metadata
+    ok = update_sprint_metadata(
+        studio, sprint_n,
+        goal=body.get("goal", ""),
+        start_date=body.get("start_date", ""),
+        end_date=body.get("end_date", ""),
+    )
+    return JSONResponse({"ok": ok})
+
+
+@router.delete("/api/pm/sprints/{sprint_n}")
+async def api_pm_delete_sprint(request: Request, sprint_n: int):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    from nytwatch.pm.writer import delete_sprint_file
+    ok = delete_sprint_file(studio, sprint_n)
+    return JSONResponse({"ok": ok})
+
+
+# ── Task API ──────────────────────────────────────────────────────────────────
+
+@router.post("/api/pm/sprints/{sprint_n}/tasks")
+async def api_pm_create_task(request: Request, sprint_n: int):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    task = {
+        "id":                   body.get("id", ""),
+        "name":                 body.get("name", ""),
+        "owner":                body.get("owner", ""),
+        "estimate_days":        body.get("estimate_days", 0),
+        "dependencies":         body.get("dependencies", ""),
+        "acceptance_criteria":  body.get("acceptance_criteria", ""),
+        "priority":             body.get("priority", "should-have"),
+        "status":               body.get("status", "backlog"),
+        "sprint":               sprint_n,
+        "blocker":              "",
+        "completed":            "",
+        "file":                 "",
+    }
+    from nytwatch.pm.writer import add_task_to_sprint, upsert_task_in_yaml
+    add_task_to_sprint(studio, sprint_n, task)
+    upsert_task_in_yaml(studio, sprint_n, task)
+    return JSONResponse({"ok": True, "task": task})
+
+
+@router.patch("/api/pm/tasks/{sprint_n}/{task_id:path}")
+async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    from nytwatch.pm.writer import (
+        update_task_status, update_task_in_sprint,
+        upsert_task_in_yaml, move_task_between_sprints,
+    )
+
+    move_to = body.get("move_to_sprint")
+
+    if move_to is not None and int(move_to) != sprint_n:
+        # Rebuild full task dict from body for the move
+        task = {
+            "id":                  task_id,
+            "name":                body.get("name", ""),
+            "owner":               body.get("owner", ""),
+            "estimate_days":       body.get("estimate_days", 0),
+            "dependencies":        body.get("dependencies", ""),
+            "acceptance_criteria": body.get("acceptance_criteria", ""),
+            "priority":            body.get("priority", "should-have"),
+            "status":              body.get("status", "backlog"),
+            "sprint":              sprint_n,
+        }
+        move_task_between_sprints(studio, task, sprint_n, int(move_to))
+        return JSONResponse({"ok": True, "moved_to": move_to})
+
+    # Status-only update (e.g. drag between Kanban columns)
+    if "status" in body and len(body) <= 2:
+        new_status = body["status"]
+        blocker = body.get("blocker", "")
+        found = update_task_status(studio, task_id, new_status, blocker)
+        if not found:
+            # Task not in yaml yet — add it with minimal info
+            upsert_task_in_yaml(studio, sprint_n, {
+                "id": task_id, "status": new_status, "blocker": blocker,
+                "sprint": sprint_n,
+            })
+        return JSONResponse({"ok": True})
+
+    # Full task update
+    task = {
+        "id":                  task_id,
+        "name":                body.get("name", ""),
+        "owner":               body.get("owner", ""),
+        "estimate_days":       body.get("estimate_days", 0),
+        "dependencies":        body.get("dependencies", ""),
+        "acceptance_criteria": body.get("acceptance_criteria", ""),
+        "priority":            body.get("priority", "should-have"),
+        "status":              body.get("status", "backlog"),
+        "sprint":              sprint_n,
+        "blocker":             body.get("blocker", ""),
+        "completed":           body.get("completed", ""),
+        "file":                body.get("file", ""),
+    }
+    update_task_in_sprint(studio, sprint_n, task)
+    upsert_task_in_yaml(studio, sprint_n, task)
+    return JSONResponse({"ok": True})
+
+
+@router.delete("/api/pm/tasks/{sprint_n}/{task_id:path}")
+async def api_pm_delete_task(request: Request, sprint_n: int, task_id: str):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    from nytwatch.pm.writer import remove_task_from_sprint, remove_task_from_yaml
+    remove_task_from_sprint(studio, sprint_n, task_id)
+    remove_task_from_yaml(studio, task_id)
+    return JSONResponse({"ok": True})
+
+
+# ── Milestone API ─────────────────────────────────────────────────────────────
+
+@router.post("/api/pm/milestones")
+async def api_pm_create_milestone(request: Request):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    slug        = re.sub(r'[^a-z0-9-]', '-', body.get("name", "milestone").lower()).strip('-')
+    name        = body.get("name", "")
+    target_date = body.get("target_date", "")
+    goal        = body.get("goal", "")
+    sprints     = [int(n) for n in body.get("sprints", [])]
+    status      = body.get("status", "Planned")
+    from nytwatch.pm.writer import create_milestone
+    from nytwatch.pm.parser import load_milestones, milestone_to_dict
+    create_milestone(studio, slug, name, target_date, goal, sprints, status)
+    ms = load_milestones(studio)
+    created = next((m for m in ms if m.slug == slug), None)
+    return JSONResponse({"ok": True, "milestone": milestone_to_dict(created) if created else None})
+
+
+@router.patch("/api/pm/milestones/{slug}")
+async def api_pm_update_milestone(request: Request, slug: str):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    from nytwatch.pm.writer import update_milestone
+    ok = update_milestone(
+        studio, slug,
+        name=body.get("name", ""),
+        target_date=body.get("target_date", ""),
+        goal=body.get("goal", ""),
+        sprints=[int(n) for n in body.get("sprints", [])],
+        status=body.get("status", "Planned"),
+    )
+    return JSONResponse({"ok": ok})
+
+
+@router.delete("/api/pm/milestones/{slug}")
+async def api_pm_delete_milestone(request: Request, slug: str):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    from nytwatch.pm.writer import delete_milestone
+    ok = delete_milestone(studio, slug)
+    return JSONResponse({"ok": ok})

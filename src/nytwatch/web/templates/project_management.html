@@ -1,0 +1,785 @@
+{% extends "base.html" %}
+{% block title %}Projects — Nytwatch{% endblock %}
+
+{% block content %}
+<style>
+/* ── PM-specific styles ───────────────────────────────────────────────────── */
+.pm-tab {
+  padding: 8px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color .15s, border-color .15s;
+  color: var(--on-surface-variant);
+}
+.pm-tab.active { border-color: var(--primary); color: var(--primary); }
+
+.sprint-tab {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.sprint-tab:hover { background: var(--surface-container); }
+.sprint-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Kanban */
+.kanban-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; align-items: flex-start; min-height: 480px; }
+.kanban-col {
+  flex: 0 0 220px; width: 220px; border-radius: var(--radius-lg);
+  background: var(--surface-container-low); border: 1px solid var(--outline-variant);
+  display: flex; flex-direction: column; transition: background .15s, outline .1s;
+}
+.kanban-col.drag-over { background: var(--surface-container); outline: 2px dashed var(--primary); outline-offset: -2px; }
+.kanban-col-header {
+  padding: 10px 12px 8px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; border-bottom: 1px solid var(--outline-variant);
+  display: flex; align-items: center; gap: 6px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.col-count {
+  background: rgba(0,0,0,.08); border-radius: 999px;
+  padding: 1px 7px; font-size: 0.68rem; font-weight: 600; margin-left: auto;
+}
+.kanban-col-body { padding: 8px; flex: 1; min-height: 80px; display: flex; flex-direction: column; gap: 6px; }
+.kanban-add {
+  padding: 6px 8px; margin: 0 8px 8px; background: transparent;
+  border: 1px dashed var(--outline-variant); border-radius: var(--radius-md);
+  color: var(--on-surface-variant); font-size: 0.75rem; cursor: pointer;
+  width: calc(100% - 16px); text-align: center; transition: background .15s, border-color .15s, color .15s;
+}
+.kanban-add:hover { background: var(--surface-container); border-color: var(--primary); color: var(--primary); }
+
+/* Task card */
+.task-card {
+  background: var(--surface-container-lowest); border: 1px solid var(--outline-variant);
+  border-left-width: 3px; border-radius: var(--radius-md); padding: 8px 10px;
+  cursor: grab; position: relative; transition: box-shadow .15s; user-select: none;
+}
+.task-card:active { cursor: grabbing; }
+.task-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+.task-card.dragging { opacity: 0.35; }
+.card-id { font-size: 0.63rem; font-weight: 600; color: var(--on-surface-variant); letter-spacing: .04em; margin-bottom: 3px; font-family: 'Space Grotesk', monospace; }
+.card-name { font-size: 0.8125rem; font-weight: 500; line-height: 1.35; margin-bottom: 5px; }
+.card-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.card-menu {
+  position: absolute; top: 5px; right: 5px; opacity: 0; transition: opacity .15s;
+  background: var(--surface-container-lowest); border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm); padding: 1px 5px; font-size: 0.7rem; cursor: pointer;
+  color: var(--on-surface-variant); z-index: 1; line-height: 1.6;
+}
+.task-card:hover .card-menu { opacity: 1; }
+.priority-must   { border-left-color: #dc2626; }
+.priority-should { border-left-color: var(--primary); }
+.priority-nice   { border-left-color: var(--outline); }
+.pb { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 2px; }
+.pb-must   { background: rgba(220,38,38,.12); color: #dc2626; }
+.pb-should { background: rgba(0,74,198,.1);  color: var(--primary); }
+.pb-nice   { background: var(--surface-container-high); color: var(--on-surface-variant); }
+.owner-chip { font-size: 0.67rem; background: var(--surface-container); border-radius: 3px; padding: 1px 5px; color: var(--on-surface-variant); }
+.est-chip   { font-size: 0.67rem; color: var(--on-surface-variant); }
+
+/* Milestone cards */
+.ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.ms-badge { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 999px; }
+.ms-planned     { background: var(--surface-container-high); color: var(--on-surface-variant); }
+.ms-in-progress { background: #dbeafe; color: #1e40af; }
+.ms-complete    { background: #d1fae5; color: #065f46; }
+.ms-at-risk     { background: #fef3c7; color: #92400e; }
+.ms-on-hold     { background: #f3e8ff; color: #6b21a8; }
+
+/* Context menu */
+.ctx-menu {
+  position: fixed; background: var(--surface-container-lowest); border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md); box-shadow: 0 4px 16px rgba(0,0,0,.15); z-index: 900;
+  min-width: 140px; padding: 4px 0;
+}
+.ctx-item { padding: 7px 14px; font-size: 0.8rem; cursor: pointer; transition: background .1s; color: var(--on-surface); display: block; }
+.ctx-item:hover { background: var(--surface-container); }
+.ctx-item.danger { color: #dc2626; }
+.ctx-sep { border: none; border-top: 1px solid var(--outline-variant); margin: 4px 0; }
+
+/* Modal */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 800;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-box {
+  background: var(--surface-container-lowest); border-radius: var(--radius-lg);
+  border: 1px solid var(--outline-variant); padding: 24px; width: 100%; max-width: 520px;
+  max-height: 90vh; overflow-y: auto; box-shadow: 0 16px 48px rgba(0,0,0,.2);
+}
+.modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 600; margin-bottom: 18px; }
+.frow { margin-bottom: 14px; }
+.frow label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+.frow input, .frow select, .frow textarea {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--outline-variant); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--on-surface); font-size: 0.875rem; font-family: inherit; transition: border-color .15s;
+}
+.frow input:focus, .frow select:focus, .frow textarea:focus { outline: none; border-color: var(--primary); }
+.frow textarea { resize: vertical; min-height: 68px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid-id { display: grid; grid-template-columns: 130px 1fr; gap: 12px; }
+</style>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+  <h1 class="headline-lg" style="flex:1;">Project Management</h1>
+  {% if studio_path %}
+  <button class="btn btn-sm btn-secondary" onclick="openSprintModal()">+ New Sprint</button>
+  <button class="btn btn-sm btn-secondary" onclick="openMilestoneModal()">+ New Milestone</button>
+  {% endif %}
+</div>
+
+<!-- ── Page tabs ───────────────────────────────────────────────────────────── -->
+<div style="display:flex;gap:0;border-bottom:2px solid var(--outline-variant);margin-bottom:var(--sp-6);">
+  <a href="/pm/board"      class="pm-tab {% if active_tab == 'board'      %}active{% endif %}">Board</a>
+  <a href="/pm/milestones" class="pm-tab {% if active_tab == 'milestones' %}active{% endif %}">Milestones</a>
+</div>
+
+{% if not studio_path %}
+<!-- ── No studio found ──────────────────────────────────────────────────────── -->
+<div class="card" style="text-align:center;padding:60px 20px;">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+       style="margin:0 auto 16px;display:block;opacity:.3;color:var(--on-surface-variant);">
+    <rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="11" rx="1"/><rect x="17" y="3" width="4" height="15" rx="1"/>
+  </svg>
+  <div style="font-size:1rem;font-weight:600;margin-bottom:8px;">No production directory found</div>
+  <div style="font-size:0.85rem;color:var(--on-surface-variant);max-width:420px;margin:0 auto;line-height:1.6;">
+    Set up <strong>claude-nytwatch-studio</strong> in your project, or ensure your project has a
+    <code style="background:var(--surface-container);padding:1px 5px;border-radius:3px;">production/sprints/</code> directory.
+    Agents will create sprint and milestone files there automatically.
+  </div>
+</div>
+
+{% elif active_tab == 'board' %}
+<!-- ══════════════════════════════════════════════════════════════════════════
+     BOARD TAB
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+  <div id="sprint-tab-bar" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;flex:1;padding-bottom:2px;scrollbar-width:thin;"></div>
+</div>
+<div id="sprint-header" style="margin-bottom:16px;"></div>
+<div class="kanban-board" id="kanban-board"></div>
+
+{% elif active_tab == 'milestones' %}
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MILESTONES TAB
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="ms-grid" id="ms-grid"></div>
+<div id="ms-empty" style="display:none;text-align:center;padding:60px 20px;">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+       style="margin:0 auto 12px;display:block;opacity:.3;color:var(--on-surface-variant);">
+    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+  </svg>
+  <div style="font-size:0.9rem;font-weight:600;color:var(--on-surface);">No milestones yet</div>
+  <div style="font-size:0.8rem;color:var(--on-surface-variant);margin-top:6px;">
+    Click <strong>+ New Milestone</strong> or run <code>/sprint-plan</code> in claude-nytwatch-studio.
+  </div>
+</div>
+{% endif %}
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODALS
+     ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Sprint Modal -->
+<div id="sprint-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('sprint-modal')">
+  <div class="modal-box">
+    <div class="modal-title" id="sm-title">New Sprint</div>
+    <input type="hidden" id="sm-mode" value="create">
+    <input type="hidden" id="sm-orig" value="">
+    <div class="grid3">
+      <div class="frow"><label>Sprint #</label><input type="number" id="sm-n" min="1" value="1"></div>
+      <div class="frow"><label>Start Date</label><input type="date" id="sm-start"></div>
+      <div class="frow"><label>End Date</label><input type="date" id="sm-end"></div>
+    </div>
+    <div class="frow"><label>Sprint Goal</label><textarea id="sm-goal" rows="2" placeholder="What does this sprint achieve?"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('sprint-modal')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveSprint()">Save Sprint</button>
+    </div>
+  </div>
+</div>
+
+<!-- Task Modal -->
+<div id="task-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('task-modal')">
+  <div class="modal-box">
+    <div class="modal-title" id="tm-title">New Task</div>
+    <input type="hidden" id="tm-mode" value="create">
+    <input type="hidden" id="tm-orig-id" value="">
+    <input type="hidden" id="tm-sprint-n" value="">
+    <div class="grid-id">
+      <div class="frow"><label>Task ID</label><input type="text" id="tm-id" placeholder="T-001"></div>
+      <div class="frow"><label>Task Name</label><input type="text" id="tm-name" placeholder="Implement feature"></div>
+    </div>
+    <div class="grid3">
+      <div class="frow"><label>Owner</label><input type="text" id="tm-owner" placeholder="gameplay-programmer"></div>
+      <div class="frow"><label>Est. Days</label><input type="number" id="tm-est" min="0" step="0.5" value="1"></div>
+      <div class="frow">
+        <label>Priority</label>
+        <select id="tm-priority">
+          <option value="must-have">Must Have</option>
+          <option value="should-have" selected>Should Have</option>
+          <option value="nice-to-have">Nice to Have</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="frow">
+        <label>Status</label>
+        <select id="tm-status" onchange="document.getElementById('tm-blocker-row').style.display=this.value==='blocked'?'block':'none'">
+          <option value="backlog">Backlog</option>
+          <option value="ready-for-dev">Ready for Dev</option>
+          <option value="in-progress">In Progress</option>
+          <option value="review">Review</option>
+          <option value="done">Done</option>
+          <option value="blocked">Blocked</option>
+        </select>
+      </div>
+      <div class="frow"><label>Move to Sprint</label><select id="tm-move-sprint"></select></div>
+    </div>
+    <div class="frow"><label>Dependencies</label><input type="text" id="tm-deps" placeholder="T-001, T-002"></div>
+    <div class="frow"><label>Acceptance Criteria</label><textarea id="tm-ac" rows="2" placeholder="How do we know this is done?"></textarea></div>
+    <div class="frow" id="tm-blocker-row" style="display:none;">
+      <label>Blocker</label>
+      <textarea id="tm-blocker" rows="1" placeholder="What is blocking this task?"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('task-modal')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveTask()">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- Milestone Modal -->
+<div id="ms-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('ms-modal')">
+  <div class="modal-box">
+    <div class="modal-title" id="msm-title">New Milestone</div>
+    <input type="hidden" id="msm-mode" value="create">
+    <input type="hidden" id="msm-orig-slug" value="">
+    <div class="grid2">
+      <div class="frow"><label>Milestone Name</label><input type="text" id="msm-name" placeholder="Alpha Release"></div>
+      <div class="frow"><label>Target Date</label><input type="date" id="msm-date"></div>
+    </div>
+    <div class="grid2">
+      <div class="frow">
+        <label>Status</label>
+        <select id="msm-status">
+          <option value="Planned">Planned</option>
+          <option value="In Progress">In Progress</option>
+          <option value="At Risk">At Risk</option>
+          <option value="Complete">Complete</option>
+          <option value="On Hold">On Hold</option>
+        </select>
+      </div>
+      <div class="frow"><label>Sprints (e.g. 1, 2, 3)</label><input type="text" id="msm-sprints" placeholder="1, 2, 3"></div>
+    </div>
+    <div class="frow"><label>Goal</label><textarea id="msm-goal" rows="3" placeholder="What does this milestone deliver?"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('ms-modal')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveMilestone()">Save Milestone</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div id="del-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('del-modal')">
+  <div class="modal-box" style="max-width:360px;">
+    <div class="modal-title" style="color:#dc2626;">Confirm Delete</div>
+    <p id="del-msg" style="font-size:0.875rem;color:var(--on-surface-variant);margin-bottom:20px;"></p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('del-modal')">Cancel</button>
+      <button id="del-ok" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none;">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div id="ctx" class="ctx-menu" style="display:none;"></div>
+
+
+<script>
+// ── Data (server-rendered) ────────────────────────────────────────────────────
+let SPRINTS    = {{ sprints    | tojson }};
+let MILESTONES = {{ milestones | tojson }};
+let ACTIVE_N   = {% if active_sprint %}{{ active_sprint.number }}{% else %}null{% endif %};
+const TAB      = {{ active_tab | tojson }};
+
+// ── Column definitions ────────────────────────────────────────────────────────
+const COLS = [
+  { k: 'backlog',       label: 'Backlog',      color: '#737686', bg: '#f2f4f6'  },
+  { k: 'ready-for-dev', label: 'Ready',        color: '#1d4ed8', bg: '#eff6ff'  },
+  { k: 'in-progress',   label: 'In Progress',  color: '#b45309', bg: '#fffbeb'  },
+  { k: 'review',        label: 'Review',       color: '#7c3aed', bg: '#f5f3ff'  },
+  { k: 'done',          label: 'Done',         color: '#065f46', bg: '#ecfdf5'  },
+  { k: 'blocked',       label: 'Blocked',      color: '#dc2626', bg: '#fef2f2'  },
+];
+
+const P_CLS   = { 'must-have':'priority-must','should-have':'priority-should','nice-to-have':'priority-nice' };
+const PB_CLS  = { 'must-have':'pb pb-must',   'should-have':'pb pb-should',   'nice-to-have':'pb pb-nice' };
+const PB_LBL  = { 'must-have':'Must',         'should-have':'Should',         'nice-to-have':'Nice' };
+const MS_CLS  = { planned:'ms-badge ms-planned','in progress':'ms-badge ms-in-progress',complete:'ms-badge ms-complete','at risk':'ms-badge ms-at-risk','on hold':'ms-badge ms-on-hold' };
+
+// Drag state
+let _dTaskId = null, _dSprintN = null;
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  return r.json();
+}
+
+function toast(msg, err=false) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  Object.assign(el.style, {
+    position:'fixed', bottom:'20px', right:'20px', zIndex:'9999',
+    background: err ? '#dc2626' : '#065f46', color:'#fff',
+    padding:'8px 16px', borderRadius:'6px', fontSize:'0.8rem',
+    fontWeight:'500', boxShadow:'0 4px 12px rgba(0,0,0,.2)',
+  });
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.transition='opacity .3s'; el.style.opacity='0'; setTimeout(() => el.remove(), 300); }, 2500);
+}
+
+function getSprint(n) { return SPRINTS.find(s => s.number === n) || null; }
+function getTask(sn, tid) { const s = getSprint(sn); return s ? (s.tasks.find(t => t.id === tid) || null) : null; }
+function closeModal(id) { const el = document.getElementById(id); if (el) el.style.display='none'; }
+
+// ── Board rendering ───────────────────────────────────────────────────────────
+function renderTabs() {
+  const bar = document.getElementById('sprint-tab-bar');
+  if (!bar) return;
+  if (!SPRINTS.length) {
+    bar.innerHTML = '<span style="font-size:0.8rem;color:var(--on-surface-variant);padding:5px 0;">No sprints yet — click <strong>+ New Sprint</strong> to start.</span>';
+    return;
+  }
+  bar.innerHTML = SPRINTS.map(s => {
+    const done  = s.tasks.filter(t => t.status === 'done').length;
+    const total = s.tasks.length;
+    const prog  = total ? ` <small style="opacity:.65;">(${done}/${total})</small>` : '';
+    return `<button class="sprint-tab ${s.number===ACTIVE_N?'active':''}" onclick="switchSprint(${s.number})">Sprint ${s.number}${prog}</button>`;
+  }).join('');
+}
+
+function renderHeader() {
+  const el = document.getElementById('sprint-header');
+  if (!el) return;
+  const s = getSprint(ACTIVE_N);
+  if (!s) { el.innerHTML=''; return; }
+  const dates = (s.start_date && s.end_date) ? `<span style="font-size:0.82rem;color:var(--on-surface-variant);">${s.start_date} – ${s.end_date}</span>` : '';
+  const goal  = s.goal ? `<span style="font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;flex:1;">"${esc(s.goal)}"</span>` : '<span style="flex:1"></span>';
+  el.innerHTML = `
+    <div class="card" style="padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-family:'Space Grotesk',sans-serif;font-size:1rem;font-weight:700;">Sprint ${s.number}</span>
+      ${dates}${goal}
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn btn-sm btn-secondary" onclick="openSprintModal(${s.number})">Edit</button>
+        <button class="btn btn-sm" style="background:#dc2626;color:#fff;border:none;"
+          onclick="confirmDel('Delete Sprint ${s.number}? This removes the sprint file.',()=>deleteSprint(${s.number}))">Delete</button>
+      </div>
+    </div>`;
+}
+
+function renderBoard() {
+  const board = document.getElementById('kanban-board');
+  if (!board) return;
+  const sprint = getSprint(ACTIVE_N);
+  board.innerHTML = COLS.map(col => {
+    const tasks = sprint ? sprint.tasks.filter(t => t.status === col.k) : [];
+    return `
+      <div class="kanban-col" id="kc-${col.k}"
+           ondragover="onDragOver(event,'${col.k}')" ondragleave="onDragLeave(event,'${col.k}')" ondrop="onDrop(event,'${col.k}')">
+        <div class="kanban-col-header" style="background:${col.bg};color:${col.color};">
+          ${col.label}<span class="col-count">${tasks.length}</span>
+        </div>
+        <div class="kanban-col-body">${tasks.map(t => taskCard(t, sprint.number)).join('')}</div>
+        ${sprint ? `<button class="kanban-add" onclick="openTaskModal(${sprint.number},null,'${col.k}')">+ Add task</button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function taskCard(task, sn) {
+  const pCls  = P_CLS[task.priority]  || 'priority-should';
+  const pbCls = PB_CLS[task.priority] || 'pb pb-should';
+  const pbLbl = PB_LBL[task.priority] || '';
+  const owner = task.owner ? `<span class="owner-chip">${esc(task.owner)}</span>` : '';
+  const est   = task.estimate_days ? `<span class="est-chip">${task.estimate_days}d</span>` : '';
+  const blocker = (task.status === 'blocked' && task.blocker)
+    ? `<div style="font-size:0.7rem;color:#dc2626;margin-top:4px;font-style:italic;">${esc(task.blocker)}</div>` : '';
+  const tid = esc(task.id);
+  return `
+    <div class="task-card ${pCls}" id="tc-${tid}" draggable="true"
+         ondragstart="onDragStart(event,'${tid}',${sn})" ondragend="onDragEnd(event)">
+      <button class="card-menu" onclick="openCtx(event,'${tid}',${sn})">···</button>
+      <div class="card-id">${tid}</div>
+      <div class="card-name">${esc(task.name)}</div>
+      <div class="card-meta"><span class="${pbCls}">${pbLbl}</span>${owner}${est}</div>
+      ${blocker}
+    </div>`;
+}
+
+// ── Drag-and-drop ─────────────────────────────────────────────────────────────
+function onDragStart(e, tid, sn) {
+  _dTaskId = tid; _dSprintN = sn;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', tid);
+  setTimeout(() => { const c = document.getElementById('tc-'+tid); if(c) c.classList.add('dragging'); }, 0);
+}
+
+function onDragEnd() {
+  if (_dTaskId) { const c = document.getElementById('tc-'+_dTaskId); if(c) c.classList.remove('dragging'); }
+  COLS.forEach(col => { const el = document.getElementById('kc-'+col.k); if(el) el.classList.remove('drag-over'); });
+}
+
+function onDragOver(e, k) { e.preventDefault(); e.dataTransfer.dropEffect='move'; const el=document.getElementById('kc-'+k); if(el) el.classList.add('drag-over'); }
+function onDragLeave(e, k) { const el=document.getElementById('kc-'+k); if(el) el.classList.remove('drag-over'); }
+
+async function onDrop(e, newStatus) {
+  e.preventDefault();
+  const el = document.getElementById('kc-'+newStatus); if(el) el.classList.remove('drag-over');
+  if (!_dTaskId || !_dSprintN) return;
+  const [tid, sn] = [_dTaskId, _dSprintN];
+  _dTaskId = null; _dSprintN = null;
+  const sprint = getSprint(sn);
+  if (!sprint) return;
+  const task = sprint.tasks.find(t => t.id === tid);
+  if (!task || task.status === newStatus) return;
+  const prev = task.status;
+  task.status = newStatus;
+  if (newStatus !== 'done') task.completed = '';
+  renderBoard(); renderTabs();
+  const res = await api('PATCH', `/api/pm/tasks/${sn}/${encodeURIComponent(tid)}`, { status: newStatus });
+  if (!res.ok) { task.status = prev; renderBoard(); toast('Status update failed', true); }
+}
+
+// ── Sprint switching ──────────────────────────────────────────────────────────
+function switchSprint(n) {
+  ACTIVE_N = n;
+  renderTabs(); renderHeader(); renderBoard();
+  history.replaceState(null, '', `/pm/board?sprint=${n}`);
+}
+
+// ── Context menu ──────────────────────────────────────────────────────────────
+let _ctxOff = null;
+
+function openCtx(e, tid, sn) {
+  e.stopPropagation();
+  closeCtx();
+  const menu = document.getElementById('ctx');
+  const others = SPRINTS.filter(s => s.number !== sn);
+  const moveItems = others.length
+    ? `<hr class="ctx-sep"><div class="ctx-item" style="font-size:0.7rem;color:var(--on-surface-variant);cursor:default;padding-bottom:2px;">Move to sprint</div>`
+      + others.map(s => `<span class="ctx-item" onclick="moveTask('${esc(tid)}',${sn},${s.number})">Sprint ${s.number}</span>`).join('')
+    : '';
+  menu.innerHTML = `
+    <span class="ctx-item" onclick="openTaskModal(${sn},getTask(${sn},'${esc(tid)}'))">Edit</span>
+    <span class="ctx-item danger" onclick="confirmDel('Delete task <strong>${esc(tid)}</strong>?',()=>deleteTask(${sn},'${esc(tid)}'))">Delete</span>
+    ${moveItems}`;
+  const card = document.getElementById('tc-'+tid);
+  const r = card ? card.getBoundingClientRect() : { bottom: e.clientY, right: e.clientX };
+  Object.assign(menu.style, { display:'block', top:(r.bottom+4)+'px', left:Math.max(4,r.right-150)+'px', right:'auto' });
+  _ctxOff = () => closeCtx();
+  setTimeout(() => document.addEventListener('click', _ctxOff, { once: true }), 0);
+}
+
+function closeCtx() {
+  const m = document.getElementById('ctx'); if(m) m.style.display='none';
+  if (_ctxOff) { document.removeEventListener('click', _ctxOff); _ctxOff=null; }
+}
+
+// ── Sprint CRUD ───────────────────────────────────────────────────────────────
+function openSprintModal(sn) {
+  const s = sn !== undefined ? getSprint(sn) : null;
+  document.getElementById('sm-title').textContent = s ? `Edit Sprint ${sn}` : 'New Sprint';
+  document.getElementById('sm-mode').value = s ? 'edit' : 'create';
+  document.getElementById('sm-orig').value  = s ? sn : '';
+  document.getElementById('sm-n').value     = s ? sn : (SPRINTS.length ? Math.max(...SPRINTS.map(x=>x.number))+1 : 1);
+  document.getElementById('sm-start').value = s ? (s.start_date||'') : '';
+  document.getElementById('sm-end').value   = s ? (s.end_date||'')   : '';
+  document.getElementById('sm-goal').value  = s ? (s.goal||'')       : '';
+  document.getElementById('sprint-modal').style.display = 'flex';
+}
+
+async function saveSprint() {
+  const mode = document.getElementById('sm-mode').value;
+  const orig = document.getElementById('sm-orig').value;
+  const n    = parseInt(document.getElementById('sm-n').value);
+  const goal = document.getElementById('sm-goal').value.trim();
+  const sd   = document.getElementById('sm-start').value;
+  const ed   = document.getElementById('sm-end').value;
+  if (!n) { toast('Sprint number required', true); return; }
+  closeModal('sprint-modal');
+
+  if (mode === 'create') {
+    const res = await api('POST', '/api/pm/sprints', { sprint_n:n, goal, start_date:sd, end_date:ed });
+    if (!res.ok) { toast('Failed to create sprint', true); return; }
+    if (res.sprint) SPRINTS.push(res.sprint);
+    SPRINTS.sort((a,b) => a.number-b.number);
+    ACTIVE_N = n;
+    toast(`Sprint ${n} created`);
+  } else {
+    const res = await api('PATCH', `/api/pm/sprints/${orig}`, { goal, start_date:sd, end_date:ed });
+    if (!res.ok) { toast('Failed to update sprint', true); return; }
+    const idx = SPRINTS.findIndex(s => s.number===parseInt(orig));
+    if (idx>=0) Object.assign(SPRINTS[idx], { goal, start_date:sd, end_date:ed });
+    toast(`Sprint ${orig} updated`);
+  }
+  renderTabs(); renderHeader(); renderBoard();
+}
+
+async function deleteSprint(n) {
+  closeModal('del-modal');
+  const res = await api('DELETE', `/api/pm/sprints/${n}`);
+  if (!res.ok) { toast('Failed to delete sprint', true); return; }
+  SPRINTS = SPRINTS.filter(s => s.number !== n);
+  if (ACTIVE_N === n) ACTIVE_N = SPRINTS.length ? SPRINTS[SPRINTS.length-1].number : null;
+  renderTabs(); renderHeader(); renderBoard();
+  toast(`Sprint ${n} deleted`);
+}
+
+// ── Task CRUD ─────────────────────────────────────────────────────────────────
+function openTaskModal(sn, task, defStatus) {
+  closeCtx();
+  const ms = document.getElementById('tm-move-sprint');
+  ms.innerHTML = SPRINTS.map(s => `<option value="${s.number}"${s.number===sn?' selected':''}>Sprint ${s.number}</option>`).join('');
+
+  if (task) {
+    document.getElementById('tm-title').textContent   = 'Edit Task';
+    document.getElementById('tm-mode').value          = 'edit';
+    document.getElementById('tm-orig-id').value       = task.id;
+    document.getElementById('tm-sprint-n').value      = sn;
+    document.getElementById('tm-id').value            = task.id;
+    document.getElementById('tm-name').value          = task.name;
+    document.getElementById('tm-owner').value         = task.owner||'';
+    document.getElementById('tm-est').value           = task.estimate_days||0;
+    document.getElementById('tm-priority').value      = task.priority||'should-have';
+    document.getElementById('tm-status').value        = task.status||'backlog';
+    document.getElementById('tm-deps').value          = task.dependencies||'';
+    document.getElementById('tm-ac').value            = task.acceptance_criteria||'';
+    document.getElementById('tm-blocker').value       = task.blocker||'';
+    ms.value = sn;
+  } else {
+    document.getElementById('tm-title').textContent   = 'New Task';
+    document.getElementById('tm-mode').value          = 'create';
+    document.getElementById('tm-orig-id').value       = '';
+    document.getElementById('tm-sprint-n').value      = sn;
+    const sprint = getSprint(sn);
+    const num = sprint ? sprint.tasks.length+1 : 1;
+    document.getElementById('tm-id').value            = `S${sn}-${String(num).padStart(3,'0')}`;
+    document.getElementById('tm-name').value          = '';
+    document.getElementById('tm-owner').value         = '';
+    document.getElementById('tm-est').value           = 1;
+    document.getElementById('tm-priority').value      = 'should-have';
+    document.getElementById('tm-status').value        = defStatus||'backlog';
+    document.getElementById('tm-deps').value          = '';
+    document.getElementById('tm-ac').value            = '';
+    document.getElementById('tm-blocker').value       = '';
+    ms.value = sn;
+  }
+  const sv = document.getElementById('tm-status').value;
+  document.getElementById('tm-blocker-row').style.display = sv==='blocked' ? 'block' : 'none';
+  document.getElementById('task-modal').style.display = 'flex';
+}
+
+async function saveTask() {
+  const mode   = document.getElementById('tm-mode').value;
+  const origId = document.getElementById('tm-orig-id').value;
+  const origSn = parseInt(document.getElementById('tm-sprint-n').value);
+  const tid    = document.getElementById('tm-id').value.trim();
+  const name   = document.getElementById('tm-name').value.trim();
+  const moveTo = parseInt(document.getElementById('tm-move-sprint').value);
+  if (!tid || !name) { toast('Task ID and name are required', true); return; }
+
+  const task = {
+    id: tid, name,
+    owner:                document.getElementById('tm-owner').value.trim(),
+    estimate_days:        parseFloat(document.getElementById('tm-est').value)||0,
+    priority:             document.getElementById('tm-priority').value,
+    status:               document.getElementById('tm-status').value,
+    dependencies:         document.getElementById('tm-deps').value.trim(),
+    acceptance_criteria:  document.getElementById('tm-ac').value.trim(),
+    blocker:              document.getElementById('tm-blocker').value.trim(),
+    sprint: origSn,
+  };
+
+  closeModal('task-modal');
+
+  if (mode === 'create') {
+    const res = await api('POST', `/api/pm/sprints/${origSn}/tasks`, task);
+    if (!res.ok) { toast('Failed to create task', true); return; }
+    const s = getSprint(origSn); if (s) s.tasks.push(res.task || task);
+    toast('Task created');
+  } else {
+    const body = { ...task, ...(moveTo!==origSn ? { move_to_sprint: moveTo } : {}) };
+    const res = await api('PATCH', `/api/pm/tasks/${origSn}/${encodeURIComponent(origId)}`, body);
+    if (!res.ok) { toast('Failed to update task', true); return; }
+    if (moveTo !== origSn) {
+      const src = getSprint(origSn); if (src) src.tasks = src.tasks.filter(t => t.id !== origId);
+      const dst = getSprint(moveTo); if (dst) dst.tasks.push({ ...task, sprint: moveTo });
+      ACTIVE_N = moveTo;
+    } else {
+      const s = getSprint(origSn); if (s) { const i=s.tasks.findIndex(t=>t.id===origId); if(i>=0) s.tasks[i]={...task}; }
+    }
+    toast('Task updated');
+  }
+  renderTabs(); renderHeader(); renderBoard();
+}
+
+async function deleteTask(sn, tid) {
+  closeModal('del-modal');
+  const res = await api('DELETE', `/api/pm/tasks/${sn}/${encodeURIComponent(tid)}`);
+  if (!res.ok) { toast('Failed to delete task', true); return; }
+  const s = getSprint(sn); if (s) s.tasks = s.tasks.filter(t => t.id !== tid);
+  renderTabs(); renderBoard();
+  toast('Task deleted');
+}
+
+async function moveTask(tid, fromSn, toSn) {
+  closeCtx();
+  const s = getSprint(fromSn); if (!s) return;
+  const task = s.tasks.find(t => t.id === tid); if (!task) return;
+  const res = await api('PATCH', `/api/pm/tasks/${fromSn}/${encodeURIComponent(tid)}`, { ...task, move_to_sprint: toSn });
+  if (!res.ok) { toast('Failed to move task', true); return; }
+  s.tasks = s.tasks.filter(t => t.id !== tid);
+  const dst = getSprint(toSn); if (dst) dst.tasks.push({ ...task, sprint: toSn });
+  renderTabs(); renderBoard();
+  toast(`Task moved to Sprint ${toSn}`);
+}
+
+// ── Milestone rendering ───────────────────────────────────────────────────────
+function renderMilestones() {
+  const grid = document.getElementById('ms-grid');
+  const empty = document.getElementById('ms-empty');
+  if (!grid) return;
+  if (!MILESTONES.length) { grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
+  if (empty) empty.style.display='none';
+  grid.innerHTML = MILESTONES.map(m => {
+    let total=0, done=0;
+    (m.sprints||[]).forEach(sn => {
+      const s = getSprint(sn);
+      if (s) { total += s.tasks.length; done += s.tasks.filter(t=>t.status==='done').length; }
+    });
+    const pct = total ? Math.round(done/total*100) : 0;
+    const chips = (m.sprints||[]).map(n=>`<span style="background:var(--surface-container-high);border-radius:3px;padding:1px 6px;font-size:0.68rem;font-weight:600;">S${n}</span>`).join('');
+    const sCls = MS_CLS[m.status.toLowerCase()] || 'ms-badge ms-planned';
+    const sLbl = m.status.charAt(0).toUpperCase()+m.status.slice(1);
+    const bar = total ? `
+      <div style="margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--on-surface-variant);margin-bottom:4px;">
+          <span>${done}/${total} tasks</span><span>${pct}%</span>
+        </div>
+        <div style="background:var(--surface-container-high);border-radius:999px;height:5px;overflow:hidden;">
+          <div style="background:var(--primary);height:100%;width:${pct}%;border-radius:999px;"></div>
+        </div>
+      </div>` : '';
+    return `
+      <div class="card" style="position:relative;">
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+          <div style="flex:1;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:1rem;font-weight:600;">${esc(m.name)}</div>
+            ${m.target_date?`<div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:1px;">Due ${esc(m.target_date)}</div>`:''}
+          </div>
+          <span class="${sCls}">${esc(sLbl)}</span>
+        </div>
+        ${m.goal?`<p style="font-size:0.8rem;color:var(--on-surface-variant);line-height:1.45;margin-bottom:8px;">${esc(m.goal)}</p>`:''}
+        ${chips?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px;">${chips}</div>`:''}
+        ${bar}
+        <div style="display:flex;gap:6px;margin-top:12px;">
+          <button class="btn btn-sm btn-secondary" onclick="openMilestoneModal('${esc(m.slug)}')">Edit</button>
+          <button class="btn btn-sm" style="background:transparent;border:1px solid var(--outline-variant);color:#dc2626;"
+            onclick="confirmDel('Delete milestone <strong>${esc(m.name)}</strong>?',()=>deleteMilestone('${esc(m.slug)}'))">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Milestone CRUD ────────────────────────────────────────────────────────────
+function openMilestoneModal(slug) {
+  const m = slug !== undefined ? MILESTONES.find(x => x.slug===slug) : null;
+  document.getElementById('msm-title').textContent = m ? 'Edit Milestone' : 'New Milestone';
+  document.getElementById('msm-mode').value      = m ? 'edit' : 'create';
+  document.getElementById('msm-orig-slug').value = m ? m.slug : '';
+  document.getElementById('msm-name').value      = m ? m.name : '';
+  document.getElementById('msm-date').value      = m ? (m.target_date||'') : '';
+  document.getElementById('msm-status').value    = m ? (m.status.charAt(0).toUpperCase()+m.status.slice(1)) : 'Planned';
+  document.getElementById('msm-sprints').value   = m ? (m.sprints||[]).join(', ') : '';
+  document.getElementById('msm-goal').value      = m ? (m.goal||'') : '';
+  document.getElementById('ms-modal').style.display = 'flex';
+}
+
+async function saveMilestone() {
+  const mode = document.getElementById('msm-mode').value;
+  const orig = document.getElementById('msm-orig-slug').value;
+  const name = document.getElementById('msm-name').value.trim();
+  const date = document.getElementById('msm-date').value;
+  const status = document.getElementById('msm-status').value;
+  const goal = document.getElementById('msm-goal').value.trim();
+  const sprints = document.getElementById('msm-sprints').value.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+  if (!name) { toast('Milestone name required', true); return; }
+  closeModal('ms-modal');
+
+  if (mode === 'create') {
+    const res = await api('POST', '/api/pm/milestones', { name, target_date:date, goal, sprints, status });
+    if (!res.ok) { toast('Failed to create milestone', true); return; }
+    if (res.milestone) MILESTONES.push(res.milestone);
+    toast('Milestone created');
+  } else {
+    const res = await api('PATCH', `/api/pm/milestones/${orig}`, { name, target_date:date, goal, sprints, status });
+    if (!res.ok) { toast('Failed to update milestone', true); return; }
+    const idx = MILESTONES.findIndex(m => m.slug===orig);
+    if (idx>=0) Object.assign(MILESTONES[idx], { name, target_date:date, goal, sprints, status:status.toLowerCase() });
+    toast('Milestone updated');
+  }
+  renderMilestones();
+}
+
+async function deleteMilestone(slug) {
+  closeModal('del-modal');
+  const res = await api('DELETE', `/api/pm/milestones/${slug}`);
+  if (!res.ok) { toast('Failed to delete milestone', true); return; }
+  MILESTONES = MILESTONES.filter(m => m.slug!==slug);
+  renderMilestones();
+  toast('Milestone deleted');
+}
+
+// ── Confirm delete ────────────────────────────────────────────────────────────
+function confirmDel(msg, onOk) {
+  closeCtx();
+  document.getElementById('del-msg').innerHTML = msg;
+  document.getElementById('del-ok').onclick = onOk;
+  document.getElementById('del-modal').style.display = 'flex';
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    ['sprint-modal','task-modal','ms-modal','del-modal'].forEach(closeModal);
+    closeCtx();
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+if (TAB === 'board') { renderTabs(); renderHeader(); renderBoard(); }
+else if (TAB === 'milestones') { renderMilestones(); }
+</script>
+{% endblock %}
