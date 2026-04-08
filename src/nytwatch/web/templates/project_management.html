@@ -276,12 +276,10 @@
     <input type="hidden" id="sm-mode" value="create">
     <input type="hidden" id="sm-orig" value="">
     <div class="modal-body">
-      <div class="grid3">
-        <div class="frow"><label>Sprint #</label><input type="number" id="sm-n" min="1" value="1"></div>
-        <div class="frow"><label>Start Date</label><input type="date" id="sm-start"></div>
-        <div class="frow"><label>End Date</label><input type="date" id="sm-end"></div>
-      </div>
-      <div class="frow"><label>Sprint Goal</label><textarea id="sm-goal" rows="3" placeholder="What does this sprint achieve?"></textarea></div>
+      <div class="frow"><label>Sprint #</label><input type="number" id="sm-n" min="1" value="1"></div>
+      <div class="frow"><label>Start Date</label><input type="date" id="sm-start"></div>
+      <div class="frow"><label>End Date</label><input type="date" id="sm-end"></div>
+      <div class="frow" style="margin-bottom:0;"><label>Sprint Goal</label><textarea id="sm-goal" rows="3" placeholder="What does this sprint achieve?"></textarea></div>
     </div>
     <div class="modal-footer">
       <div class="modal-footer-right">
@@ -308,41 +306,33 @@
     <input type="hidden" id="tm-orig-id" value="">
     <input type="hidden" id="tm-sprint-n" value="">
     <div class="modal-body">
-      <div class="grid-id">
-        <div class="frow"><label>Task ID</label><input type="text" id="tm-id" placeholder="T-001"></div>
-        <div class="frow"><label>Summary</label><input type="text" id="tm-name" placeholder="Implement feature..."></div>
+      <div class="frow"><label>Task ID</label><input type="text" id="tm-id" placeholder="T-001"></div>
+      <div class="frow"><label>Summary</label><input type="text" id="tm-name" placeholder="Implement feature..."></div>
+      <div class="frow"><label>Owner</label><input type="text" id="tm-owner" placeholder="username"></div>
+      <div class="frow"><label>Estimate (days)</label><input type="number" id="tm-est" min="0" step="0.5" value="1"></div>
+      <div class="frow">
+        <label>Priority</label>
+        <select id="tm-priority">
+          <option value="must-have">&#9650; Must Have</option>
+          <option value="should-have" selected>&#9679; Should Have</option>
+          <option value="nice-to-have">&#9651; Nice to Have</option>
+        </select>
       </div>
-      <p class="modal-section-label">Details</p>
-      <div class="grid3">
-        <div class="frow"><label>Owner</label><input type="text" id="tm-owner" placeholder="username"></div>
-        <div class="frow"><label>Estimate (days)</label><input type="number" id="tm-est" min="0" step="0.5" value="1"></div>
-        <div class="frow">
-          <label>Priority</label>
-          <select id="tm-priority">
-            <option value="must-have">&#9650; Must Have</option>
-            <option value="should-have" selected>&#9679; Should Have</option>
-            <option value="nice-to-have">&#9651; Nice to Have</option>
-          </select>
-        </div>
+      <div class="frow">
+        <label>Status</label>
+        <select id="tm-status" onchange="document.getElementById('tm-blocker-row').style.display=this.value==='blocked'?'block':'none'">
+          <option value="backlog">Backlog</option>
+          <option value="ready-for-dev">Ready for Dev</option>
+          <option value="in-progress">In Progress</option>
+          <option value="review">Review</option>
+          <option value="done">Done</option>
+          <option value="blocked">Blocked</option>
+        </select>
       </div>
-      <div class="grid2">
-        <div class="frow">
-          <label>Status</label>
-          <select id="tm-status" onchange="document.getElementById('tm-blocker-row').style.display=this.value==='blocked'?'block':'none'">
-            <option value="backlog">Backlog</option>
-            <option value="ready-for-dev">Ready for Dev</option>
-            <option value="in-progress">In Progress</option>
-            <option value="review">Review</option>
-            <option value="done">Done</option>
-            <option value="blocked">Blocked</option>
-          </select>
-        </div>
-        <div class="frow"><label>Sprint</label><select id="tm-move-sprint"></select></div>
-      </div>
+      <div class="frow"><label>Sprint</label><select id="tm-move-sprint"></select></div>
       <div class="frow"><label>Dependencies</label><input type="text" id="tm-deps" placeholder="T-001, T-002"></div>
-      <p class="modal-section-label">Acceptance Criteria</p>
-      <div class="frow" style="margin-bottom:0;"><textarea id="tm-ac" rows="3" placeholder="How do we know this is done?"></textarea></div>
-      <div class="frow" id="tm-blocker-row" style="display:none;margin-top:16px;">
+      <div class="frow"><label>Acceptance Criteria</label><textarea id="tm-ac" rows="3" placeholder="How do we know this is done?"></textarea></div>
+      <div class="frow" id="tm-blocker-row" style="display:none;">
         <label>Blocker</label>
         <textarea id="tm-blocker" rows="2" placeholder="What is blocking this task?"></textarea>
       </div>
@@ -371,23 +361,19 @@
     <input type="hidden" id="msm-mode" value="create">
     <input type="hidden" id="msm-orig-slug" value="">
     <div class="modal-body">
-      <div class="grid2">
-        <div class="frow"><label>Milestone Name</label><input type="text" id="msm-name" placeholder="Alpha Release"></div>
-        <div class="frow"><label>Target Date</label><input type="date" id="msm-date"></div>
+      <div class="frow"><label>Milestone Name</label><input type="text" id="msm-name" placeholder="Alpha Release"></div>
+      <div class="frow"><label>Target Date</label><input type="date" id="msm-date"></div>
+      <div class="frow">
+        <label>Status</label>
+        <select id="msm-status">
+          <option value="Planned">Planned</option>
+          <option value="In Progress">In Progress</option>
+          <option value="At Risk">At Risk</option>
+          <option value="Complete">Complete</option>
+          <option value="On Hold">On Hold</option>
+        </select>
       </div>
-      <div class="grid2">
-        <div class="frow">
-          <label>Status</label>
-          <select id="msm-status">
-            <option value="Planned">Planned</option>
-            <option value="In Progress">In Progress</option>
-            <option value="At Risk">At Risk</option>
-            <option value="Complete">Complete</option>
-            <option value="On Hold">On Hold</option>
-          </select>
-        </div>
-        <div class="frow"><label>Sprints (e.g. 1, 2, 3)</label><input type="text" id="msm-sprints" placeholder="1, 2, 3"></div>
-      </div>
+      <div class="frow"><label>Sprints (e.g. 1, 2, 3)</label><input type="text" id="msm-sprints" placeholder="1, 2, 3"></div>
       <div class="frow" style="margin-bottom:0;"><label>Goal</label><textarea id="msm-goal" rows="4" placeholder="What does this milestone deliver?"></textarea></div>
     </div>
     <div class="modal-footer">
