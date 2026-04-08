@@ -40,4 +40,7 @@ if [ -n "$RECENT_COMMITS" ] || [ -n "$MODIFIED_FILES" ]; then
     } >> "$SESSION_LOG_DIR/session-log.md" 2>/dev/null
 fi
 
+# ── Queue wiki update for files changed this session ─────────────────────────
+bash .claude/hooks/wiki-hook.sh 2>/dev/null
+
 exit 0
