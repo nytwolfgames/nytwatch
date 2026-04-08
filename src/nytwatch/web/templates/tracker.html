@@ -649,10 +649,12 @@ function deleteSession() {
         `"${name}" and its .md file will be permanently deleted from disk.`;
     _pendingDelete = _activeId;
     document.getElementById('confirm-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
     document.getElementById('confirm-ok-btn').onclick = confirmDelete;
 }
 function closeConfirm() {
     document.getElementById('confirm-overlay').style.display = 'none';
+    document.body.style.overflow = '';
     _pendingDelete = null;
 }
 async function confirmDelete() {

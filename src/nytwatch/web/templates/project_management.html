@@ -302,7 +302,7 @@
      ══════════════════════════════════════════════════════════════════════════ -->
 
 <!-- Sprint Modal -->
-<div id="sprint-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('sprint-modal')">
+<div id="sprint-modal" class="modal-bg" style="display:none;">
   <div class="modal-box modal-sm">
     <div class="modal-header">
       <div class="modal-header-icon icon-sprint">
@@ -331,7 +331,7 @@
 </div>
 
 <!-- Task Modal -->
-<div id="task-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('task-modal')">
+<div id="task-modal" class="modal-bg" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
       <div class="modal-header-icon icon-task">
@@ -397,7 +397,7 @@
 </div>
 
 <!-- Milestone Modal -->
-<div id="ms-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('ms-modal')">
+<div id="ms-modal" class="modal-bg" style="display:none;">
   <div class="modal-box modal-sm">
     <div class="modal-header">
       <div class="modal-header-icon icon-milestone">
@@ -436,7 +436,7 @@
 </div>
 
 <!-- Confirm Delete Modal -->
-<div id="del-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('del-modal')">
+<div id="del-modal" class="modal-bg" style="display:none;">
   <div class="modal-box modal-sm" style="max-width:400px;">
     <div class="modal-header">
       <div class="modal-header-icon icon-danger">
@@ -460,7 +460,7 @@
 </div>
 
 <!-- Close Sprint Modal -->
-<div id="close-sprint-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('close-sprint-modal')">
+<div id="close-sprint-modal" class="modal-bg" style="display:none;">
   <div class="modal-box modal-sm">
     <div class="modal-header">
       <div class="modal-header-icon icon-close-sprint">
@@ -548,7 +548,15 @@ function toast(msg, err=false) {
 
 function getSprint(n) { return SPRINTS.find(s => s.number === n) || null; }
 function getTask(sn, tid) { const s = getSprint(sn); return s ? (s.tasks.find(t => t.id === tid) || null) : null; }
-function closeModal(id) { const el = document.getElementById(id); if (el) el.style.display='none'; }
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+  if (!document.querySelector('.modal-bg[style*="flex"]')) document.body.style.overflow = '';
+}
+function _openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
 
 // ── Board rendering ───────────────────────────────────────────────────────────
 function renderTabs() {
@@ -719,7 +727,7 @@ function openSprintModal(sn) {
   document.getElementById('sm-start').value = s ? (s.start_date||'') : '';
   document.getElementById('sm-end').value   = s ? (s.end_date||'')   : '';
   document.getElementById('sm-goal').value  = s ? (s.goal||'')       : '';
-  document.getElementById('sprint-modal').style.display = 'flex';
+  _openModal('sprint-modal');
 }
 
 async function saveSprint() {
@@ -888,7 +896,7 @@ function openTaskModal(sn, task, defStatus) {
   }
   const sv = document.getElementById('tm-status').value;
   document.getElementById('tm-blocker-row').style.display = sv==='blocked' ? 'block' : 'none';
-  document.getElementById('task-modal').style.display = 'flex';
+  _openModal('task-modal');
 }
 
 async function saveTask() {
@@ -1016,7 +1024,7 @@ function openMilestoneModal(slug) {
   document.getElementById('msm-status').value    = m ? (m.status.charAt(0).toUpperCase()+m.status.slice(1)) : 'Planned';
   document.getElementById('msm-sprints').value   = m ? (m.sprints||[]).join(', ') : '';
   document.getElementById('msm-goal').value      = m ? (m.goal||'') : '';
-  document.getElementById('ms-modal').style.display = 'flex';
+  _openModal('ms-modal');
 }
 
 async function saveMilestone() {
@@ -1059,7 +1067,7 @@ function confirmDel(msg, onOk) {
   closeCtx();
   document.getElementById('del-msg').innerHTML = msg;
   document.getElementById('del-ok').onclick = onOk;
-  document.getElementById('del-modal').style.display = 'flex';
+  _openModal('del-modal');
 }
 
 // ── Sprint close ──────────────────────────────────────────────────────────────
@@ -1078,7 +1086,7 @@ function openCloseSprintModal(n) {
     warn.style.display = 'none';
   }
 
-  document.getElementById('close-sprint-modal').style.display = 'flex';
+  _openModal('close-sprint-modal');
 }
 
 async function doCloseSprint() {
@@ -1096,6 +1104,17 @@ async function doCloseSprint() {
     if (next) switchSprint(next.number);
   }
   toast(`Sprint ${n} closed — retrospective written to production/retrospectives/`);
+}
+
+// ── Modal backdrop: close only on clean click (not drag-out) ─────────────────
+{
+  let _bgMousedownTarget = null;
+  document.addEventListener('mousedown', e => { _bgMousedownTarget = e.target; }, true);
+  document.querySelectorAll('.modal-bg').forEach(bg => {
+    bg.addEventListener('click', e => {
+      if (e.target === bg && _bgMousedownTarget === bg) closeModal(bg.id);
+    });
+  });
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────

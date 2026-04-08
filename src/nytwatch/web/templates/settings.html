@@ -1247,11 +1247,13 @@ function _wzReset() {
 function openWizard() {
     _wzReset();
     document.getElementById('wizard-overlay').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
     wzRender();
 }
 
 function closeWizard() {
     document.getElementById('wizard-overlay').style.display = 'none';
+    document.body.style.overflow = '';
     spClose();
 }
 

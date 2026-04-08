@@ -698,6 +698,7 @@ async function showLog(scanId, status) {
     content.innerHTML = '<span style="color:var(--on-surface-variant,#888)">Loading…</span>';
     countEl.textContent = '';
     modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
     liveBadge.style.display = 'none';
 
     await fetchLogs(true);
@@ -769,12 +770,16 @@ function closeLog() {
     _logScanId = null;
     _logOffset = 0;
     document.getElementById('log-modal').style.display = 'none';
+    document.body.style.overflow = '';
     document.getElementById('log-content').innerHTML = '';
 }
 
-document.getElementById('log-modal').addEventListener('click', function(e) {
-    if (e.target === this) closeLog();
-});
+{
+    const _lm = document.getElementById('log-modal');
+    let _lmDown = null;
+    _lm.addEventListener('mousedown', e => { _lmDown = e.target; }, true);
+    _lm.addEventListener('click', e => { if (e.target === _lm && _lmDown === _lm) closeLog(); });
+}
 
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeLog();
