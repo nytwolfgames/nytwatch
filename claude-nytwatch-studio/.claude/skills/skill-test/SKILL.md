@@ -30,7 +30,7 @@ Determine mode from the first argument:
 - `static [name]` → run 7 structural checks on one skill
 - `static all` → run 7 structural checks on all skills (Glob `.claude/skills/*/SKILL.md`)
 - `spec [name]` → read skill + test spec, evaluate assertions
-- `category [name]` → run category-specific rubric from `CCGS Skill Testing Framework/quality-rubric.md`
+- `category [name]` → run category-specific rubric from `CNS Skill Testing Framework/quality-rubric.md`
 - `category all` → run category rubric for every skill that has a `category:` in catalog
 - `audit` (or no argument) → read catalog, list all skills and agents, show coverage
 
@@ -139,7 +139,7 @@ Aggregate Verdict: N WARNINGS / N FAILURES
 ### Step 1 — Locate Files
 
 Find skill at `.claude/skills/[name]/SKILL.md`.
-Look up the spec path from `CCGS Skill Testing Framework/catalog.yaml` — use the
+Look up the spec path from `CNS Skill Testing Framework/catalog.yaml` — use the
 `spec:` field for the matching skill entry.
 
 If either is missing:
@@ -180,7 +180,7 @@ For **Protocol Compliance** assertions (always present):
 ```
 === Skill Spec Test: /[name] ===
 Date: [date]
-Spec: CCGS Skill Testing Framework/skills/[category]/[name].md
+Spec: CNS Skill Testing Framework/skills/[category]/[name].md
 
 Case 1: [Happy Path — name]
   Fixture: [summary]
@@ -204,12 +204,12 @@ Overall Verdict: FAIL (1 case failed, 1 warning)
 
 ### Step 5 — Offer to Write Results
 
-"May I write these results to `CCGS Skill Testing Framework/results/skill-test-spec-[name]-[date].md`
-and update `CCGS Skill Testing Framework/catalog.yaml`?"
+"May I write these results to `CNS Skill Testing Framework/results/skill-test-spec-[name]-[date].md`
+and update `CNS Skill Testing Framework/catalog.yaml`?"
 
 If yes:
-- Write results file to `CCGS Skill Testing Framework/results/`
-- Update the skill's entry in `CCGS Skill Testing Framework/catalog.yaml`:
+- Write results file to `CNS Skill Testing Framework/results/`
+- Update the skill's entry in `CNS Skill Testing Framework/catalog.yaml`:
   - `last_spec: [date]`
   - `last_spec_result: PASS|PARTIAL|FAIL`
 
@@ -220,7 +220,7 @@ If yes:
 ### Step 1 — Locate Skill and Category
 
 Find skill at `.claude/skills/[name]/SKILL.md`.
-Look up `category:` field in `CCGS Skill Testing Framework/catalog.yaml`.
+Look up `category:` field in `CNS Skill Testing Framework/catalog.yaml`.
 
 If skill not found: "Skill '[name]' not found."
 If no `category:` field: "No category assigned for '[name]' in catalog.yaml.
@@ -232,7 +232,7 @@ For `category all`: collect all skills with a `category:` field and process each
 
 ### Step 2 — Read Rubric Section
 
-Read `CCGS Skill Testing Framework/quality-rubric.md`.
+Read `CNS Skill Testing Framework/quality-rubric.md`.
 Extract the section matching the skill's category (e.g., `### gate`, `### team`).
 
 ### Step 3 — Read Skill
@@ -266,7 +266,7 @@ Fix: Add TD-PHASE-GATE, PR-PHASE-GATE, and AD-PHASE-GATE to the full-mode direct
 
 ### Step 6 — Offer to Update Catalog
 
-"May I update `CCGS Skill Testing Framework/catalog.yaml` to record this category check
+"May I update `CNS Skill Testing Framework/catalog.yaml` to record this category check
 (`last_category`, `last_category_result`) for [name]?"
 
 ---
@@ -275,7 +275,7 @@ Fix: Add TD-PHASE-GATE, PR-PHASE-GATE, and AD-PHASE-GATE to the full-mode direct
 
 ### Step 1 — Read Catalog
 
-Read `CCGS Skill Testing Framework/catalog.yaml`. If missing, note that catalog doesn't exist
+Read `CNS Skill Testing Framework/catalog.yaml`. If missing, note that catalog doesn't exist
 yet (first-run state).
 
 ### Step 2 — Enumerate All Skills and Agents
@@ -283,13 +283,13 @@ yet (first-run state).
 Glob `.claude/skills/*/SKILL.md` to get the complete list of skills.
 Extract skill name from each path (directory name).
 
-Also read the `agents:` section from `CCGS Skill Testing Framework/catalog.yaml` to get the
+Also read the `agents:` section from `CNS Skill Testing Framework/catalog.yaml` to get the
 complete list of agents.
 
 ### Step 3 — Build Skill Coverage Table
 
 For each skill:
-- Check if a spec file exists (use the `spec:` path from catalog, or glob `CCGS Skill Testing Framework/skills/*/[name].md`)
+- Check if a spec file exists (use the `spec:` path from catalog, or glob `CNS Skill Testing Framework/skills/*/[name].md`)
 - Look up `last_static`, `last_static_result`, `last_spec`, `last_spec_result`,
   `last_category`, `last_category_result`, `category` from catalog (or mark as
   "never" / "—" if not in catalog)
@@ -298,7 +298,7 @@ For each skill:
 ### Step 3b — Build Agent Coverage Table
 
 For each agent in catalog's `agents:` section:
-- Check if a spec file exists (use the `spec:` path from catalog, or glob `CCGS Skill Testing Framework/agents/*/[name].md`)
+- Check if a spec file exists (use the `spec:` path from catalog, or glob `CNS Skill Testing Framework/agents/*/[name].md`)
 - Look up `last_spec`, `last_spec_result`, `category` from catalog
 
 ### Step 4 — Output Report
@@ -348,9 +348,9 @@ After any mode completes, offer contextual follow-up:
   correctness if a test spec exists."
 - After `static all` with failures: "Address NON-COMPLIANT skills first. Run
   `/skill-test static [name]` individually for detailed remediation guidance."
-- After `spec [name]` PASS: "Update `CCGS Skill Testing Framework/catalog.yaml` to record this
+- After `spec [name]` PASS: "Update `CNS Skill Testing Framework/catalog.yaml` to record this
   pass date. Consider running `/skill-test audit` to find the next spec gap."
 - After `spec [name]` FAIL: "Review the failing assertions and update the skill
   or the test spec to resolve the mismatch."
 - After `audit`: "Start with the critical-priority gaps. Use the spec template
-  at `CCGS Skill Testing Framework/templates/skill-test-spec.md` to create new specs."
+  at `CNS Skill Testing Framework/templates/skill-test-spec.md` to create new specs."

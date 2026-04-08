@@ -44,7 +44,7 @@ If baseline is 0 FAILs and 0 WARNs, note it and proceed to Phase 2b.
 
 ### Phase 2b: Category Baseline
 
-Look up the skill's `category:` field in `CCGS Skill Testing Framework/catalog.yaml`.
+Look up the skill's `category:` field in `CNS Skill Testing Framework/catalog.yaml`.
 
 If no `category:` field is found, display:
 "Category: not yet assigned — skipping category checks."
