@@ -11,6 +11,6 @@ build/
 .code-auditor/
 *.xlsx
 *.png
-.claude/
+./.claude/
 .DS_Store
 src/.DS_Store
