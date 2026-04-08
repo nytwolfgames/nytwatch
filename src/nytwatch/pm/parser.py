@@ -2,14 +2,14 @@
 Parse claude-nytwatch-studio production/ markdown files into Python dataclasses.
 
 Reads:
-  production/sprints/sprint-N.md      — sprint task tables
-  production/sprint-status.yaml       — machine-readable task statuses
-  production/milestones/*.md          — milestone definitions
+  production/sprints/sprint-N.md  — sprint task checklists or tables
+  production/milestones/*.md      — milestone definitions
+
+Task status is stored directly in the markdown as [{status}] markers.
 """
 from __future__ import annotations
 
 import re
-import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -36,6 +36,29 @@ STATUS_LABELS = {
 }
 
 PRIORITY_ORDER = {"must-have": 0, "should-have": 1, "nice-to-have": 2}
+
+# Marker ↔ status mapping for [{status}] checklist format
+# Supports both legacy [ ]/[x] and new named-status markers
+_MARKER_TO_STATUS: dict[str, str] = {
+    " ":          "backlog",
+    "x":          "done",
+    "X":          "done",
+    "backlog":    "backlog",
+    "ready":      "ready-for-dev",
+    "in_progress":"in-progress",
+    "review":     "review",
+    "done":       "done",
+    "blocked":    "blocked",
+}
+
+_STATUS_TO_MARKER: dict[str, str] = {
+    "backlog":     "backlog",
+    "ready-for-dev": "ready",
+    "in-progress": "in_progress",
+    "review":      "review",
+    "done":        "done",
+    "blocked":     "blocked",
+}
 
 MILESTONE_STATUSES = ["planned", "in progress", "complete", "at risk", "on hold"]
 
@@ -133,8 +156,12 @@ def _parse_float(s: str) -> float:
 # ── Checklist-format parser (P0/P1/P2 sections with - [ ] items) ─────────────
 
 def _is_checklist_format(content: str) -> bool:
-    """Return True if the file uses checklist-style tasks (not markdown tables)."""
-    return bool(re.search(r'^- \[[ xX]\]', content, re.MULTILINE))
+    """Return True if the file uses checklist-style tasks (not markdown tables).
+    Detects both legacy [ ]/[x] and named [{status}] markers."""
+    return bool(re.search(
+        r'^- \[(?:[ xX]|backlog|ready|in_progress|review|done|blocked)\]',
+        content, re.MULTILINE,
+    ))
 
 
 def _parse_checklist_tasks(content: str, sprint_n: int) -> list[Task]:
@@ -164,13 +191,14 @@ def _parse_checklist_tasks(content: str, sprint_n: int) -> list[Task]:
         i = 0
         while i < len(lines):
             line = lines[i]
-            # Top-level checklist item (no leading spaces)
-            top_m = re.match(r'^- \[( |x|X)\] (.+)$', line)
+            # Top-level checklist item (no leading spaces); accepts [ ]/[x]/[status]
+            top_m = re.match(r'^- \[([^\]]*)\] (.+)$', line)
             if not top_m:
                 i += 1
                 continue
 
-            checked = top_m.group(1).lower() == 'x'
+            marker = top_m.group(1)
+            status = _MARKER_TO_STATUS.get(marker, 'backlog')
             text = top_m.group(2).strip()
 
             # Extract explicit task ID: **TASK-10**: or **TASK-10 (complete)**:
@@ -199,7 +227,7 @@ def _parse_checklist_tasks(content: str, sprint_n: int) -> list[Task]:
             j = i + 1
             while j < len(lines):
                 sub_line = lines[j]
-                sub_m = re.match(r'^\s+- \[[ xX]\] (.+)$', sub_line)
+                sub_m = re.match(r'^\s+- \[[^\]]*\] (.+)$', sub_line)
                 if sub_m:
                     sub_items.append(sub_m.group(1).strip())
                     j += 1
@@ -212,7 +240,7 @@ def _parse_checklist_tasks(content: str, sprint_n: int) -> list[Task]:
                 id=task_id,
                 name=task_name,
                 priority=priority,
-                status='done' if checked else 'backlog',
+                status=status,
                 sprint=sprint_n,
                 acceptance_criteria='; '.join(sub_items) if sub_items else '',
             ))
@@ -306,31 +334,6 @@ def _parse_sprint_file(file_path: Path) -> Sprint:
     )
 
 
-def _apply_status_yaml(sprints: list[Sprint], yaml_path: Path) -> None:
-    """Overlay statuses from sprint-status.yaml onto parsed sprint tasks."""
-    try:
-        data = yaml.safe_load(yaml_path.read_text(encoding='utf-8'))
-    except Exception:
-        return
-    if not isinstance(data, dict) or 'stories' not in data:
-        return
-
-    story_map = {s['id']: s for s in data.get('stories', []) if isinstance(s, dict)}
-
-    for sprint in sprints:
-        for task in sprint.tasks:
-            if task.id in story_map:
-                s = story_map[task.id]
-                task.status = s.get('status') or task.status
-                task.owner = s.get('owner') or task.owner
-                task.blocker = s.get('blocker') or ''
-                task.completed = s.get('completed') or ''
-                task.file = s.get('file') or ''
-                # priority from yaml overrides markdown section
-                if s.get('priority'):
-                    task.priority = s['priority']
-
-
 def load_sprints(studio_path: Path) -> list[Sprint]:
     """Load and return all sprints sorted by sprint number."""
     sprints_dir = studio_path / "production" / "sprints"
@@ -345,11 +348,6 @@ def load_sprints(studio_path: Path) -> list[Sprint]:
             pass
 
     sprints.sort(key=lambda s: s.number)
-
-    yaml_path = studio_path / "production" / "sprint-status.yaml"
-    if yaml_path.exists():
-        _apply_status_yaml(sprints, yaml_path)
-
     return sprints
 
 
@@ -395,8 +393,8 @@ def _parse_milestone_file(file_path: Path) -> Milestone:
             goal = goal.split('\n\n')[0].strip()
             break
 
-    # Feature checklist items
-    features = re.findall(r'-\s+\[[ xX]\]\s+(.+)', content)
+    # Feature checklist items (supports both legacy [ ]/[x] and [{status}])
+    features = re.findall(r'-\s+\[[^\]]*\]\s+(.+)', content)
 
     return Milestone(
         slug=slug,

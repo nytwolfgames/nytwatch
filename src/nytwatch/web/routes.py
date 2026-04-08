@@ -2656,9 +2656,8 @@ async def api_pm_create_task(request: Request, sprint_n: int):
         "completed":            "",
         "file":                 "",
     }
-    from nytwatch.pm.writer import add_task_to_sprint, upsert_task_in_yaml
+    from nytwatch.pm.writer import add_task_to_sprint
     add_task_to_sprint(studio, sprint_n, task)
-    upsert_task_in_yaml(studio, sprint_n, task)
     return JSONResponse({"ok": True, "task": task})
 
 
@@ -2668,15 +2667,11 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
     if studio is None:
         return JSONResponse({"error": "No studio path found"}, status_code=400)
     body = await request.json()
-    from nytwatch.pm.writer import (
-        update_task_status, update_task_in_sprint,
-        upsert_task_in_yaml, move_task_between_sprints,
-    )
+    from nytwatch.pm.writer import update_task_in_sprint, move_task_between_sprints
 
     move_to = body.get("move_to_sprint")
 
     if move_to is not None and int(move_to) != sprint_n:
-        # Rebuild full task dict from body for the move
         task = {
             "id":                  task_id,
             "name":                body.get("name", ""),
@@ -2692,19 +2687,18 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
         return JSONResponse({"ok": True, "moved_to": move_to})
 
     # Status-only update (e.g. drag between Kanban columns)
-    if "status" in body and len(body) <= 2:
-        new_status = body["status"]
-        blocker = body.get("blocker", "")
-        found = update_task_status(studio, task_id, new_status, blocker)
-        if not found:
-            # Task not in yaml yet — add it with minimal info
-            upsert_task_in_yaml(studio, sprint_n, {
-                "id": task_id, "status": new_status, "blocker": blocker,
-                "sprint": sprint_n,
-            })
+    # task_name is sent by client so the checklist writer can locate the line.
+    if "status" in body and "name" not in body:
+        task = {
+            "id":     task_id,
+            "name":   body.get("task_name", ""),
+            "status": body["status"],
+        }
+        update_task_in_sprint(studio, sprint_n, task)
         return JSONResponse({"ok": True})
 
     # Full task update
+    old_name = body.get("old_name", "")
     task = {
         "id":                  task_id,
         "name":                body.get("name", ""),
@@ -2719,8 +2713,7 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
         "completed":           body.get("completed", ""),
         "file":                body.get("file", ""),
     }
-    update_task_in_sprint(studio, sprint_n, task)
-    upsert_task_in_yaml(studio, sprint_n, task)
+    update_task_in_sprint(studio, sprint_n, task, old_name=old_name)
     return JSONResponse({"ok": True})
 
 
@@ -2729,9 +2722,8 @@ async def api_pm_delete_task(request: Request, sprint_n: int, task_id: str):
     studio = _pm_studio_path(request)
     if studio is None:
         return JSONResponse({"error": "No studio path found"}, status_code=400)
-    from nytwatch.pm.writer import remove_task_from_sprint, remove_task_from_yaml
+    from nytwatch.pm.writer import remove_task_from_sprint
     remove_task_from_sprint(studio, sprint_n, task_id)
-    remove_task_from_yaml(studio, task_id)
     return JSONResponse({"ok": True})
 
 

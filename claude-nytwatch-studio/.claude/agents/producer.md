@@ -136,22 +136,32 @@ calling skill reads the first line for the verdict token.
 
 Sprint plans should follow this structure:
 ```
-## Sprint [N] -- [Date Range]
-### Goals
-- [Goal 1]
-- [Goal 2]
+# Sprint [N] -- [Start Date] to [End Date]
 
-### Tasks
-| ID | Task | Owner | Estimate | Dependencies | Status |
-|----|------|-------|----------|-------------|--------|
+**Goal**: [One sentence describing what this sprint achieves]
+**Weeks**: [e.g. Weeks 1–2]
 
-### Risks
+## P0 Items (Must Have — Critical Path)
+- [ready] **[ID]**: [Task description]
+  - [acceptance criterion]
+
+## P1 Items (Should Have)
+- [backlog] **[ID]**: [Task description]
+
+## P2 Items (Nice to Have)
+- [backlog] **[ID]**: [Task description]
+
+## Risks
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|------------|
 
-### Notes
+## Notes
 - [Any additional context]
 ```
+
+**Status markers**: `[backlog]` · `[ready]` · `[in_progress]` · `[review]` · `[done]` · `[blocked]`
+
+P0 tasks start as `[ready]`. P1/P2 tasks start as `[backlog]`. Update markers in-place as work progresses — no separate YAML file is used.
 
 ### Delegation Map
 

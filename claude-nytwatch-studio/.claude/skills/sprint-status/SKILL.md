@@ -54,25 +54,28 @@ found — burndown assessment skipped."
 
 ## 3. Scan Story Status
 
-**First: check for `production/sprint-status.yaml`.**
+Task status is stored directly in the sprint markdown file as `[{status}]` markers
+on each checklist item. Read these markers to determine each task's current status.
 
-If it exists, read it directly — it is the authoritative source of truth.
-Extract status for each story from the `status` field. No markdown scanning needed.
-Use its `sprint`, `goal`, `start`, `end` fields instead of re-parsing the sprint plan.
+**Marker → status mapping:**
 
-**If `sprint-status.yaml` does not exist** (legacy sprint or first-time setup),
-fall back to markdown scanning:
+| Marker | Status |
+|--------|--------|
+| `[backlog]` | NOT STARTED |
+| `[ready]` | READY |
+| `[ ]` *(legacy)* | NOT STARTED |
+| `[in_progress]` | IN PROGRESS |
+| `[review]` | IN REVIEW |
+| `[done]` | DONE |
+| `[x]` *(legacy)* | DONE |
+| `[blocked]` | BLOCKED |
 
-1. If the entry references a story file path, check if the file exists.
-   Read the file and scan for status markers: DONE, COMPLETE, IN PROGRESS,
-   BLOCKED, NOT STARTED (case-insensitive).
-2. If the entry has no file path (inline task in the sprint plan), scan the
-   sprint plan itself for status markers next to that entry.
-3. If no status marker is found, classify as NOT STARTED.
-4. If a file is referenced but does not exist, classify as MISSING and note it.
+For each checklist item in the sprint file (P0, P1, P2 sections):
 
-When using the fallback, add a note at the bottom of the output:
-"⚠ No `sprint-status.yaml` found — status inferred from markdown. Run `/sprint-plan update` to generate one."
+1. Extract the marker from `- [{marker}] **ID**: task name`
+2. Map the marker to status using the table above
+3. If no marker is found on a line, classify as NOT STARTED
+4. Blocked tasks — check if a sub-item or inline note explains the blocker
 
 Optionally (fast check only — do not do a deep scan): grep `src/` for a
 directory or file name that matches the story's system slug to check for
@@ -80,7 +83,7 @@ implementation evidence. This is a hint only, not a definitive status.
 
 ### Stale Story Detection
 
-After collecting status for all stories, check each IN PROGRESS story for staleness:
+After collecting status for all stories, check each IN PROGRESS (`[in_progress]`) story for staleness:
 
 - For each story that has a referenced file, read the file and look for a
   `Last Updated:` field in the frontmatter or header (e.g., `Last Updated: 2026-04-01`
@@ -104,10 +107,10 @@ On Track window. Record this escalation reason: "At Risk — [N] story(ies) with
 ## 4. Burndown Assessment
 
 Calculate:
-- Tasks complete (DONE or COMPLETE)
-- Tasks in progress (IN PROGRESS)
-- Tasks blocked (BLOCKED)
-- Tasks not started (NOT STARTED or MISSING)
+- Tasks complete (`[done]`)
+- Tasks in progress (`[in_progress]`) and in review (`[review]`)
+- Tasks blocked (`[blocked]`)
+- Tasks not started (`[backlog]`, `[ready]`, or no marker)
 - Completion percentage: (complete / total) * 100
 
 Assess burndown by comparing completion percentage to time consumed percentage:

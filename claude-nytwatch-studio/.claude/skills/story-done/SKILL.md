@@ -341,10 +341,11 @@ If yes, edit the story file:
 3. If advisory deviations exist, ask: "Should I log these as tech debt in
    `docs/tech-debt-register.md`?"
 
-4. **Update `production/sprint-status.yaml`** (if it exists):
-   - Find the entry matching this story's file path or ID
-   - Set `status: done` and `completed: [today's date]`
-   - Update the top-level `updated` field
+4. **Update the sprint markdown file** to mark this task as done:
+   - Find the current sprint file in `production/sprints/`
+   - Locate the checklist line for this story (match `**[ID]**:` or the task name)
+   - Change its marker from `[in_progress]` (or any other state) to `[done]`
+   - Example: `- [in_progress] **TASK-05**: Implement damage system` → `- [done] **TASK-05**: Implement damage system`
    - This is a silent update — no extra approval needed (already approved in step above)
 
 ### Session State Update
@@ -390,14 +391,13 @@ If no more Must Have stories remain in this sprint (all are Complete or Blocked)
 ```
 ### Sprint Close-Out Sequence
 
-All Must Have stories are complete. QA sign-off is required before advancing.
-Run these in order:
+All Must Have stories are complete. Run the sprint close workflow:
 
-1. `/smoke-check sprint` — verify the critical path still works end-to-end
-2. `/team-qa sprint` — full QA cycle: test case execution, bug triage, sign-off report
-3. `/gate-check` — advance to the next phase once QA approves
+1. `/sprint-close` — formally close the sprint: verifies all P0s are done,
+   runs smoke check + QA sign-off, handles carryover, and writes the retrospective summary
+2. `/gate-check` — advance to the next phase once the sprint is closed and QA is approved
 
-Do not run `/gate-check` until `/team-qa` returns APPROVED or APPROVED WITH CONDITIONS.
+Do not run `/gate-check` until `/sprint-close` is complete and QA returns APPROVED or APPROVED WITH CONDITIONS.
 ```
 
 If there are Should Have stories still unstarted, surface them alongside the close-out sequence so the user can choose: close the sprint now, or pull in more work first.
