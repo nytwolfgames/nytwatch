@@ -109,31 +109,94 @@
 .ctx-item.danger { color: #dc2626; }
 .ctx-sep { border: none; border-top: 1px solid var(--outline-variant); margin: 4px 0; }
 
-/* Modal */
+/* Modal — JIRA Style */
 .modal-bg {
-  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 800;
-  display: flex; align-items: center; justify-content: center; padding: 24px;
+  position: fixed; inset: 0; background: rgba(9,30,66,.54); z-index: 800;
+  display: flex; align-items: flex-start; justify-content: center; padding: 56px 24px 24px;
 }
 .modal-box {
-  background: var(--surface-container-lowest); border-radius: var(--radius-lg);
-  border: 1px solid var(--outline-variant); padding: 28px 32px; width: 100%; max-width: 680px;
-  max-height: 92vh; overflow-y: auto; box-shadow: 0 16px 48px rgba(0,0,0,.2);
+  background: #fff; border-radius: 3px; border: none; padding: 0;
+  width: 100%; max-width: 680px; max-height: calc(100vh - 80px);
+  overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 8px 16px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31);
 }
-.modal-box.modal-sm { max-width: 400px; }
-.modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; margin-bottom: 20px; }
+.modal-box.modal-sm { max-width: 440px; }
+
+/* Header */
+.modal-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 20px; border-bottom: 1px solid #DFE1E6; flex-shrink: 0; background: #fff;
+}
+.modal-header-icon {
+  width: 28px; height: 28px; border-radius: 3px; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+.icon-sprint    { background: #0052CC; }
+.icon-task      { background: #0052CC; }
+.icon-milestone { background: #36B37E; }
+.icon-danger    { background: #DE350B; }
+.icon-close-sprint { background: #065f46; }
+.modal-header-title {
+  font-size: 1rem; font-weight: 600; color: #172B4D; flex: 1; line-height: 1.3;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.modal-close-btn {
+  width: 28px; height: 28px; border: none; background: transparent; cursor: pointer;
+  border-radius: 3px; display: flex; align-items: center; justify-content: center;
+  color: #6B778C; transition: background .1s, color .1s; padding: 0; flex-shrink: 0;
+}
+.modal-close-btn:hover { background: #EBECF0; color: #172B4D; }
+
+/* Body */
+.modal-body { padding: 20px 20px 12px; overflow-y: auto; flex: 1; background: #fff; }
+.modal-section-label {
+  font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: #6B778C; margin: 4px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #EBECF0;
+}
+
+/* Footer */
+.modal-footer {
+  display: flex; align-items: center; padding: 12px 20px;
+  border-top: 1px solid #DFE1E6; background: #F4F5F7; flex-shrink: 0;
+}
+.modal-footer-right { display: flex; gap: 8px; margin-left: auto; }
+.jira-btn {
+  border: none; border-radius: 3px; padding: 0 14px; height: 32px;
+  font-size: 0.875rem; font-weight: 500; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px; transition: background .1s, color .1s;
+  white-space: nowrap;
+}
+.jira-btn-primary { background: #0052CC; color: #fff; }
+.jira-btn-primary:hover { background: #0065FF; }
+.jira-btn-secondary { background: transparent; color: #42526E; }
+.jira-btn-secondary:hover { background: #DFE1E6; color: #172B4D; }
+.jira-btn-danger-ghost { background: transparent; color: #DE350B; }
+.jira-btn-danger-ghost:hover { background: #FFEBE6; }
+
+/* Fields */
 .frow { margin-bottom: 16px; }
-.frow label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.frow label { display: block; font-size: 0.75rem; font-weight: 600; color: #6B778C; margin-bottom: 4px; }
 .frow input, .frow select, .frow textarea {
-  width: 100%; padding: 9px 12px; border: 1px solid var(--outline-variant); border-radius: var(--radius-md);
-  background: var(--surface); color: var(--on-surface); font-size: 0.9rem; font-family: inherit; transition: border-color .15s;
-  box-sizing: border-box;
+  width: 100%; padding: 8px 10px; border: 2px solid #DFE1E6; border-radius: 3px;
+  background: #FAFBFC; color: #172B4D; font-size: 0.875rem; font-family: inherit;
+  transition: background .15s, border-color .15s; box-sizing: border-box;
 }
-.frow input:focus, .frow select:focus, .frow textarea:focus { outline: none; border-color: var(--primary); }
-.frow textarea { resize: vertical; min-height: 80px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
-.grid-id { display: grid; grid-template-columns: 140px 1fr; gap: 14px; }
+.frow input:hover:not(:focus), .frow select:hover:not(:focus), .frow textarea:hover:not(:focus) { background: #EBECF0; }
+.frow input:focus, .frow select:focus, .frow textarea:focus { outline: none; background: #fff; border-color: #4C9AFF; }
+.frow select { cursor: pointer; }
+.frow textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+.frow input[type="number"] { -moz-appearance: textfield; }
+.frow input[type="number"]::-webkit-inner-spin-button,
+.frow input[type="number"]::-webkit-outer-spin-button { opacity: 0.5; }
+
+/* Grids */
+.grid2   { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.grid-id { display: grid; grid-template-columns: 130px 1fr; gap: 14px; }
+
+/* Legacy — kept so JS title-setter works; visually overridden by .modal-header-title */
+.modal-title  { display: none; }
+.modal-actions { display: none; }
 </style>
 
 <!-- ── Header ──────────────────────────────────────────────────────────────── -->
@@ -200,19 +263,31 @@
 
 <!-- Sprint Modal -->
 <div id="sprint-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('sprint-modal')">
-  <div class="modal-box">
-    <div class="modal-title" id="sm-title">New Sprint</div>
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div class="modal-header-icon icon-sprint">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="modal-header-title" id="sm-title">New Sprint</div>
+      <button class="modal-close-btn" onclick="closeModal('sprint-modal')" title="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
     <input type="hidden" id="sm-mode" value="create">
     <input type="hidden" id="sm-orig" value="">
-    <div class="grid3">
-      <div class="frow"><label>Sprint #</label><input type="number" id="sm-n" min="1" value="1"></div>
-      <div class="frow"><label>Start Date</label><input type="date" id="sm-start"></div>
-      <div class="frow"><label>End Date</label><input type="date" id="sm-end"></div>
+    <div class="modal-body">
+      <div class="grid3">
+        <div class="frow"><label>Sprint #</label><input type="number" id="sm-n" min="1" value="1"></div>
+        <div class="frow"><label>Start Date</label><input type="date" id="sm-start"></div>
+        <div class="frow"><label>End Date</label><input type="date" id="sm-end"></div>
+      </div>
+      <div class="frow"><label>Sprint Goal</label><textarea id="sm-goal" rows="3" placeholder="What does this sprint achieve?"></textarea></div>
     </div>
-    <div class="frow"><label>Sprint Goal</label><textarea id="sm-goal" rows="2" placeholder="What does this sprint achieve?"></textarea></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('sprint-modal')">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="saveSprint()">Save Sprint</button>
+    <div class="modal-footer">
+      <div class="modal-footer-right">
+        <button class="jira-btn jira-btn-secondary" onclick="closeModal('sprint-modal')">Cancel</button>
+        <button class="jira-btn jira-btn-primary" onclick="saveSprint()">Save Sprint</button>
+      </div>
     </div>
   </div>
 </div>
@@ -220,92 +295,130 @@
 <!-- Task Modal -->
 <div id="task-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('task-modal')">
   <div class="modal-box">
-    <div class="modal-title" id="tm-title">New Task</div>
+    <div class="modal-header">
+      <div class="modal-header-icon icon-task">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      </div>
+      <div class="modal-header-title" id="tm-title">New Task</div>
+      <button class="modal-close-btn" onclick="closeModal('task-modal')" title="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
     <input type="hidden" id="tm-mode" value="create">
     <input type="hidden" id="tm-orig-id" value="">
     <input type="hidden" id="tm-sprint-n" value="">
-    <div class="grid-id">
-      <div class="frow"><label>Task ID</label><input type="text" id="tm-id" placeholder="T-001"></div>
-      <div class="frow"><label>Task Name</label><input type="text" id="tm-name" placeholder="Implement feature"></div>
-    </div>
-    <div class="grid3">
-      <div class="frow"><label>Owner</label><input type="text" id="tm-owner" placeholder="gameplay-programmer"></div>
-      <div class="frow"><label>Est. Days</label><input type="number" id="tm-est" min="0" step="0.5" value="1"></div>
-      <div class="frow">
-        <label>Priority</label>
-        <select id="tm-priority">
-          <option value="must-have">Must Have</option>
-          <option value="should-have" selected>Should Have</option>
-          <option value="nice-to-have">Nice to Have</option>
-        </select>
+    <div class="modal-body">
+      <div class="grid-id">
+        <div class="frow"><label>Task ID</label><input type="text" id="tm-id" placeholder="T-001"></div>
+        <div class="frow"><label>Summary</label><input type="text" id="tm-name" placeholder="Implement feature..."></div>
+      </div>
+      <p class="modal-section-label">Details</p>
+      <div class="grid3">
+        <div class="frow"><label>Owner</label><input type="text" id="tm-owner" placeholder="username"></div>
+        <div class="frow"><label>Estimate (days)</label><input type="number" id="tm-est" min="0" step="0.5" value="1"></div>
+        <div class="frow">
+          <label>Priority</label>
+          <select id="tm-priority">
+            <option value="must-have">&#9650; Must Have</option>
+            <option value="should-have" selected>&#9679; Should Have</option>
+            <option value="nice-to-have">&#9651; Nice to Have</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="frow">
+          <label>Status</label>
+          <select id="tm-status" onchange="document.getElementById('tm-blocker-row').style.display=this.value==='blocked'?'block':'none'">
+            <option value="backlog">Backlog</option>
+            <option value="ready-for-dev">Ready for Dev</option>
+            <option value="in-progress">In Progress</option>
+            <option value="review">Review</option>
+            <option value="done">Done</option>
+            <option value="blocked">Blocked</option>
+          </select>
+        </div>
+        <div class="frow"><label>Sprint</label><select id="tm-move-sprint"></select></div>
+      </div>
+      <div class="frow"><label>Dependencies</label><input type="text" id="tm-deps" placeholder="T-001, T-002"></div>
+      <p class="modal-section-label">Acceptance Criteria</p>
+      <div class="frow" style="margin-bottom:0;"><textarea id="tm-ac" rows="3" placeholder="How do we know this is done?"></textarea></div>
+      <div class="frow" id="tm-blocker-row" style="display:none;margin-top:16px;">
+        <label>Blocker</label>
+        <textarea id="tm-blocker" rows="2" placeholder="What is blocking this task?"></textarea>
       </div>
     </div>
-    <div class="grid2">
-      <div class="frow">
-        <label>Status</label>
-        <select id="tm-status" onchange="document.getElementById('tm-blocker-row').style.display=this.value==='blocked'?'block':'none'">
-          <option value="backlog">Backlog</option>
-          <option value="ready-for-dev">Ready for Dev</option>
-          <option value="in-progress">In Progress</option>
-          <option value="review">Review</option>
-          <option value="done">Done</option>
-          <option value="blocked">Blocked</option>
-        </select>
+    <div class="modal-footer">
+      <div class="modal-footer-right">
+        <button class="jira-btn jira-btn-secondary" onclick="closeModal('task-modal')">Cancel</button>
+        <button class="jira-btn jira-btn-primary" onclick="saveTask()">Save Task</button>
       </div>
-      <div class="frow"><label>Move to Sprint</label><select id="tm-move-sprint"></select></div>
-    </div>
-    <div class="frow"><label>Dependencies</label><input type="text" id="tm-deps" placeholder="T-001, T-002"></div>
-    <div class="frow"><label>Acceptance Criteria</label><textarea id="tm-ac" rows="2" placeholder="How do we know this is done?"></textarea></div>
-    <div class="frow" id="tm-blocker-row" style="display:none;">
-      <label>Blocker</label>
-      <textarea id="tm-blocker" rows="1" placeholder="What is blocking this task?"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('task-modal')">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="saveTask()">Save Task</button>
     </div>
   </div>
 </div>
 
 <!-- Milestone Modal -->
 <div id="ms-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('ms-modal')">
-  <div class="modal-box">
-    <div class="modal-title" id="msm-title">New Milestone</div>
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div class="modal-header-icon icon-milestone">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+      </div>
+      <div class="modal-header-title" id="msm-title">New Milestone</div>
+      <button class="modal-close-btn" onclick="closeModal('ms-modal')" title="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
     <input type="hidden" id="msm-mode" value="create">
     <input type="hidden" id="msm-orig-slug" value="">
-    <div class="grid2">
-      <div class="frow"><label>Milestone Name</label><input type="text" id="msm-name" placeholder="Alpha Release"></div>
-      <div class="frow"><label>Target Date</label><input type="date" id="msm-date"></div>
-    </div>
-    <div class="grid2">
-      <div class="frow">
-        <label>Status</label>
-        <select id="msm-status">
-          <option value="Planned">Planned</option>
-          <option value="In Progress">In Progress</option>
-          <option value="At Risk">At Risk</option>
-          <option value="Complete">Complete</option>
-          <option value="On Hold">On Hold</option>
-        </select>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="frow"><label>Milestone Name</label><input type="text" id="msm-name" placeholder="Alpha Release"></div>
+        <div class="frow"><label>Target Date</label><input type="date" id="msm-date"></div>
       </div>
-      <div class="frow"><label>Sprints (e.g. 1, 2, 3)</label><input type="text" id="msm-sprints" placeholder="1, 2, 3"></div>
+      <div class="grid2">
+        <div class="frow">
+          <label>Status</label>
+          <select id="msm-status">
+            <option value="Planned">Planned</option>
+            <option value="In Progress">In Progress</option>
+            <option value="At Risk">At Risk</option>
+            <option value="Complete">Complete</option>
+            <option value="On Hold">On Hold</option>
+          </select>
+        </div>
+        <div class="frow"><label>Sprints (e.g. 1, 2, 3)</label><input type="text" id="msm-sprints" placeholder="1, 2, 3"></div>
+      </div>
+      <div class="frow" style="margin-bottom:0;"><label>Goal</label><textarea id="msm-goal" rows="4" placeholder="What does this milestone deliver?"></textarea></div>
     </div>
-    <div class="frow"><label>Goal</label><textarea id="msm-goal" rows="3" placeholder="What does this milestone deliver?"></textarea></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('ms-modal')">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="saveMilestone()">Save Milestone</button>
+    <div class="modal-footer">
+      <div class="modal-footer-right">
+        <button class="jira-btn jira-btn-secondary" onclick="closeModal('ms-modal')">Cancel</button>
+        <button class="jira-btn jira-btn-primary" onclick="saveMilestone()">Save Milestone</button>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- Confirm Delete Modal -->
 <div id="del-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('del-modal')">
-  <div class="modal-box" style="max-width:360px;">
-    <div class="modal-title" style="color:#dc2626;">Confirm Delete</div>
-    <p id="del-msg" style="font-size:0.875rem;color:var(--on-surface-variant);margin-bottom:20px;"></p>
-    <div class="modal-actions">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('del-modal')">Cancel</button>
-      <button id="del-ok" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none;">Delete</button>
+  <div class="modal-box modal-sm" style="max-width:400px;">
+    <div class="modal-header">
+      <div class="modal-header-icon icon-danger">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </div>
+      <div class="modal-header-title">Confirm Delete</div>
+      <button class="modal-close-btn" onclick="closeModal('del-modal')" title="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p id="del-msg" style="font-size:0.875rem;color:#42526E;margin:0;line-height:1.6;"></p>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-right">
+        <button class="jira-btn jira-btn-secondary" onclick="closeModal('del-modal')">Cancel</button>
+        <button id="del-ok" class="jira-btn" style="background:#DE350B;color:#fff;">Delete</button>
+      </div>
     </div>
   </div>
 </div>
@@ -313,23 +426,32 @@
 <!-- Close Sprint Modal -->
 <div id="close-sprint-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('close-sprint-modal')">
   <div class="modal-box modal-sm">
-    <div class="modal-title" style="display:flex;align-items:center;gap:8px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#065f46" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      Close Sprint <span id="csm-n"></span>
+    <div class="modal-header">
+      <div class="modal-header-icon icon-close-sprint">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="modal-header-title">Close Sprint <span id="csm-n"></span></div>
+      <button class="modal-close-btn" onclick="closeModal('close-sprint-modal')" title="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
-    <p style="font-size:0.875rem;color:var(--on-surface-variant);line-height:1.6;margin-bottom:8px;">
-      This will mark the sprint as <strong>Closed</strong> in the markdown file and generate a skeleton retrospective in
-      <code style="background:var(--surface-container);padding:1px 5px;border-radius:3px;font-size:0.8rem;">production/retrospectives/</code>.
-    </p>
-    <p style="font-size:0.8rem;color:var(--on-surface-variant);line-height:1.5;margin-bottom:4px;">
-      For the full ceremony — smoke check, QA gate, carryover decisions — run
-      <code style="background:var(--surface-container);padding:1px 5px;border-radius:3px;">/sprint-close</code>
-      in <strong>claude-nytwatch-studio</strong>.
-    </p>
-    <div id="csm-p0-warning" style="display:none;margin-top:12px;padding:8px 12px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.2);border-radius:6px;font-size:0.8rem;color:#dc2626;"></div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('close-sprint-modal')">Cancel</button>
-      <button id="csm-ok" class="btn btn-sm" style="background:#065f46;color:#fff;border:none;" onclick="doCloseSprint()">Close Sprint</button>
+    <div class="modal-body">
+      <p style="font-size:0.875rem;color:#42526E;line-height:1.6;margin:0 0 10px;">
+        This will mark the sprint as <strong>Closed</strong> in the markdown file and generate a skeleton retrospective in
+        <code style="background:#F4F5F7;padding:1px 5px;border-radius:3px;font-size:0.8rem;">production/retrospectives/</code>.
+      </p>
+      <p style="font-size:0.8rem;color:#6B778C;line-height:1.5;margin:0;">
+        For the full ceremony — smoke check, QA gate, carryover decisions — run
+        <code style="background:#F4F5F7;padding:1px 5px;border-radius:3px;">/sprint-close</code>
+        in <strong>claude-nytwatch-studio</strong>.
+      </p>
+      <div id="csm-p0-warning" style="display:none;margin-top:14px;padding:10px 12px;background:#FFEBE6;border:1px solid #FF8F73;border-radius:3px;font-size:0.8rem;color:#DE350B;line-height:1.5;"></div>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-right">
+        <button class="jira-btn jira-btn-secondary" onclick="closeModal('close-sprint-modal')">Cancel</button>
+        <button id="csm-ok" class="jira-btn" style="background:#065f46;color:#fff;" onclick="doCloseSprint()">Close Sprint</button>
+      </div>
     </div>
   </div>
 </div>
