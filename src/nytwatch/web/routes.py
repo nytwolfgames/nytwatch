@@ -2543,13 +2543,8 @@ async def pm_board(request: Request, sprint: Optional[int] = None):
     if sprint is not None:
         active = next((s for s in sprints if s.number == sprint), None)
     else:
-        # Default: most recent non-fully-done sprint, or just the last one
-        active = None
-        for s in reversed(sprints):
-            done = all(t.status == "done" for t in s.tasks) if s.tasks else False
-            if not done:
-                active = s
-                break
+        # Default: first (lowest-numbered) sprint that is not closed
+        active = next((s for s in sprints if not s.closed), None)
         if active is None and sprints:
             active = sprints[-1]
 
@@ -2631,6 +2626,17 @@ async def api_pm_delete_sprint(request: Request, sprint_n: int):
         return JSONResponse({"error": "No studio path found"}, status_code=400)
     from nytwatch.pm.writer import delete_sprint_file
     ok = delete_sprint_file(studio, sprint_n)
+    return JSONResponse({"ok": ok})
+
+
+@router.post("/api/pm/sprints/{sprint_n}/close")
+async def api_pm_close_sprint(request: Request, sprint_n: int):
+    studio = _pm_studio_path(request)
+    if studio is None:
+        return JSONResponse({"error": "No studio path found"}, status_code=400)
+    body = await request.json()
+    from nytwatch.pm.writer import close_sprint_file
+    ok = close_sprint_file(studio, sprint_n, sprint_data=body.get("sprint"))
     return JSONResponse({"ok": ok})
 
 

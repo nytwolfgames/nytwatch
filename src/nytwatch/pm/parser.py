@@ -90,6 +90,8 @@ class Sprint:
     end_date: str = ""
     tasks: list = field(default_factory=list)  # list[Task]
     file_path: str = ""
+    closed: bool = False
+    closed_date: str = ""
 
 
 @dataclass
@@ -317,6 +319,11 @@ def _parse_sprint_file(file_path: Path) -> Sprint:
         goal_m2 = re.search(r'\*{0,2}Goal\*{0,2}[:\s]+([^\n]+)', content, re.IGNORECASE)
         goal = goal_m2.group(1).strip() if goal_m2 else ""
 
+    # Closed status: "**Status**: Closed" anywhere in the file
+    closed = bool(re.search(r'\*{0,2}Status\*{0,2}[:\s]+Closed', content, re.IGNORECASE))
+    closed_m = re.search(r'\*{0,2}Closed\*{0,2}[:\s]+(\d{4}-\d{2}-\d{2})', content, re.IGNORECASE)
+    closed_date = closed_m.group(1) if closed_m else ""
+
     # Detect format and parse tasks
     if _is_checklist_format(content):
         tasks = _parse_checklist_tasks(content, number)
@@ -331,6 +338,8 @@ def _parse_sprint_file(file_path: Path) -> Sprint:
         end_date=end_date,
         tasks=tasks,
         file_path=str(file_path),
+        closed=closed,
+        closed_date=closed_date,
     )
 
 
@@ -454,6 +463,8 @@ def sprint_to_dict(s: Sprint) -> dict:
         "end_date": s.end_date,
         "tasks": [task_to_dict(t) for t in s.tasks],
         "file_path": s.file_path,
+        "closed": s.closed,
+        "closed_date": s.closed_date,
     }
 
 

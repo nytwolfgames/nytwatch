@@ -7,6 +7,7 @@ No YAML files — markdown is the single source of truth.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 
@@ -219,6 +220,141 @@ def delete_sprint_file(studio_path: Path, sprint_n: int) -> bool:
         p.unlink()
         return True
     return False
+
+
+_RETRO_SKELETON = """\
+# Sprint {n} Retrospective — {date}
+
+**Sprint**: Sprint {n}
+**Dates**: {start} → {end}
+**Closed**: {date}
+**Goal**: {goal}
+
+## Velocity
+
+| Tier | Planned | Done | Incomplete | % |
+|------|---------|------|------------|---|
+| P0 (Must Have) | {p0_planned} | {p0_done} | {p0_inc} | {p0_pct}% |
+| P1 (Should Have) | {p1_planned} | {p1_done} | {p1_inc} | {p1_pct}% |
+| P2 (Nice to Have) | {p2_planned} | {p2_done} | {p2_inc} | {p2_pct}% |
+| **Total** | {total_planned} | {total_done} | {total_inc} | {total_pct}% |
+
+## Completed
+{completed_list}
+
+## Incomplete / Carryover
+{incomplete_list}
+
+## Gate Results
+- **Smoke Check**: Skipped — run `/sprint-close` for full ceremony
+- **QA Sign-Off**: Skipped — run `/sprint-close` for full ceremony
+
+## What Went Well
+*(Fill in during `/retrospective sprint-{n}`)*
+
+## What Could Be Better
+*(Fill in during `/retrospective sprint-{n}`)*
+
+## Action Items for Next Sprint
+*(Fill in during `/sprint-close`)*
+
+---
+*Skeleton created by nytwatch UI. Run `/sprint-close` in claude-nytwatch-studio for the full ceremony: smoke check, QA gate, carryover decisions, and detailed retrospective.*
+"""
+
+
+def close_sprint_file(studio_path: Path, sprint_n: int,
+                       sprint_data: dict | None = None) -> bool:
+    """
+    Mark a sprint as closed: writes **Status**: Closed + **Closed**: date to the
+    sprint markdown, and creates a skeleton retrospective file.
+    Returns True if the sprint file was updated.
+    """
+    p = _sprint_path(studio_path, sprint_n)
+    if not p.exists():
+        return False
+
+    content = p.read_text(encoding='utf-8')
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # Already closed — still write/update retro, but don't re-write sprint file
+    already_closed = bool(re.search(r'\*{0,2}Status\*{0,2}[:\s]+Closed', content, re.IGNORECASE))
+
+    if not already_closed:
+        # Update or insert **Status**: Closed
+        if re.search(r'\*{0,2}Status\*{0,2}[:\s]+', content, re.IGNORECASE):
+            content = re.sub(
+                r'\*{0,2}Status\*{0,2}[:\s]+[^\n]+',
+                f'**Status**: Closed',
+                content, count=1,
+            )
+        else:
+            # Insert after H1 title line
+            content = re.sub(
+                r'^(# Sprint[^\n]+\n)',
+                f'\\g<1>\n**Status**: Closed\n',
+                content, count=1, flags=re.MULTILINE,
+            )
+
+        # Add **Closed**: date if not already present
+        if not re.search(r'\*{0,2}Closed\*{0,2}[:\s]+', content, re.IGNORECASE):
+            content = content.replace('**Status**: Closed', f'**Status**: Closed\n**Closed**: {today}', 1)
+        else:
+            content = re.sub(
+                r'\*{0,2}Closed\*{0,2}[:\s]+[^\n]+',
+                f'**Closed**: {today}',
+                content, count=1,
+            )
+
+        p.write_text(content, encoding='utf-8')
+
+    # ── Write skeleton retrospective ──────────────────────────────────────────
+    retro_dir = studio_path / "production" / "retrospectives"
+    retro_dir.mkdir(parents=True, exist_ok=True)
+    retro_path = retro_dir / f"retro-sprint-{sprint_n}-{today}.md"
+
+    # Skip if a retro file already exists for this sprint+date
+    if not retro_path.exists():
+        tasks = (sprint_data or {}).get('tasks', [])
+        p0 = [t for t in tasks if t.get('priority') == 'must-have']
+        p1 = [t for t in tasks if t.get('priority') == 'should-have']
+        p2 = [t for t in tasks if t.get('priority') == 'nice-to-have']
+
+        def _tally(lst):
+            done = sum(1 for t in lst if t.get('status') == 'done')
+            inc  = len(lst) - done
+            pct  = round(done / len(lst) * 100) if lst else 0
+            return len(lst), done, inc, pct
+
+        p0t, p0d, p0i, p0p = _tally(p0)
+        p1t, p1d, p1i, p1p = _tally(p1)
+        p2t, p2d, p2i, p2p = _tally(p2)
+        tot, toD, toI, toP  = _tally(tasks)
+
+        def _task_line(t):
+            return f"- [{t.get('status','?')}] **{t.get('id','')}**: {t.get('name','')}"
+
+        completed = [_task_line(t) for t in tasks if t.get('status') == 'done']
+        incomplete = [_task_line(t) for t in tasks if t.get('status') != 'done']
+
+        sd = (sprint_data or {}).get('start_date', '')
+        ed = (sprint_data or {}).get('end_date', '')
+        goal = (sprint_data or {}).get('goal', '')
+
+        retro_path.write_text(
+            _RETRO_SKELETON.format(
+                n=sprint_n, date=today, start=sd, end=ed, goal=goal,
+                p0_planned=p0t, p0_done=p0d, p0_inc=p0i, p0_pct=p0p,
+                p1_planned=p1t, p1_done=p1d, p1_inc=p1i, p1_pct=p1p,
+                p2_planned=p2t, p2_done=p2d, p2_inc=p2i, p2_pct=p2p,
+                total_planned=tot, total_done=toD, total_inc=toI, total_pct=toP,
+                completed_list='\n'.join(completed) or '*(none)*',
+                incomplete_list='\n'.join(incomplete) or '*(none — all tasks done)*',
+            ),
+            encoding='utf-8',
+        )
+
+    return True
 
 
 def _make_checklist_item(task: dict) -> str:

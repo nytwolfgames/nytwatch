@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Projects — Nytwatch{% endblock %}
+{% block title %}Planning — Nytwatch{% endblock %}
 
 {% block content %}
 <style>
@@ -31,6 +31,7 @@
 }
 .sprint-tab:hover { background: var(--surface-container); }
 .sprint-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.sprint-tab.closed { opacity: .5; font-style: italic; }
 
 /* Kanban */
 .kanban-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; align-items: flex-start; min-height: 480px; }
@@ -137,7 +138,7 @@
 
 <!-- ── Header ──────────────────────────────────────────────────────────────── -->
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
-  <h1 class="headline-lg" style="flex:1;">Project Management</h1>
+  <h1 class="headline-lg" style="flex:1;">Planning</h1>
   {% if studio_path %}
   <button class="btn btn-sm btn-secondary" onclick="openSprintModal()">+ New Sprint</button>
   <button class="btn btn-sm btn-secondary" onclick="openMilestoneModal()">+ New Milestone</button>
@@ -309,6 +310,30 @@
   </div>
 </div>
 
+<!-- Close Sprint Modal -->
+<div id="close-sprint-modal" class="modal-bg" style="display:none;" onclick="if(event.target===this)closeModal('close-sprint-modal')">
+  <div class="modal-box modal-sm">
+    <div class="modal-title" style="display:flex;align-items:center;gap:8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#065f46" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Close Sprint <span id="csm-n"></span>
+    </div>
+    <p style="font-size:0.875rem;color:var(--on-surface-variant);line-height:1.6;margin-bottom:8px;">
+      This will mark the sprint as <strong>Closed</strong> in the markdown file and generate a skeleton retrospective in
+      <code style="background:var(--surface-container);padding:1px 5px;border-radius:3px;font-size:0.8rem;">production/retrospectives/</code>.
+    </p>
+    <p style="font-size:0.8rem;color:var(--on-surface-variant);line-height:1.5;margin-bottom:4px;">
+      For the full ceremony — smoke check, QA gate, carryover decisions — run
+      <code style="background:var(--surface-container);padding:1px 5px;border-radius:3px;">/sprint-close</code>
+      in <strong>claude-nytwatch-studio</strong>.
+    </p>
+    <div id="csm-p0-warning" style="display:none;margin-top:12px;padding:8px 12px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.2);border-radius:6px;font-size:0.8rem;color:#dc2626;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('close-sprint-modal')">Cancel</button>
+      <button id="csm-ok" class="btn btn-sm" style="background:#065f46;color:#fff;border:none;" onclick="doCloseSprint()">Close Sprint</button>
+    </div>
+  </div>
+</div>
+
 <!-- Context menu -->
 <div id="ctx" class="ctx-menu" style="display:none;"></div>
 
@@ -379,7 +404,9 @@ function renderTabs() {
     const done  = s.tasks.filter(t => t.status === 'done').length;
     const total = s.tasks.length;
     const prog  = total ? ` <small style="opacity:.65;">(${done}/${total})</small>` : '';
-    return `<button class="sprint-tab ${s.number===ACTIVE_N?'active':''}" onclick="switchSprint(${s.number})">Sprint ${s.number}${prog}</button>`;
+    const closedCls = s.closed ? ' closed' : '';
+    const closedIcon = s.closed ? ' ✓' : '';
+    return `<button class="sprint-tab${closedCls}${s.number===ACTIVE_N?' active':''}" onclick="switchSprint(${s.number})">Sprint ${s.number}${closedIcon}${prog}</button>`;
   }).join('');
 }
 
@@ -390,15 +417,22 @@ function renderHeader() {
   if (!s) { el.innerHTML=''; return; }
   const dates = (s.start_date && s.end_date) ? `<span style="font-size:0.82rem;color:var(--on-surface-variant);">${s.start_date} – ${s.end_date}</span>` : '';
   const goal  = s.goal ? `<span style="font-size:0.82rem;color:var(--on-surface-variant);font-style:italic;flex:1;">"${esc(s.goal)}"</span>` : '<span style="flex:1"></span>';
+  const closedBadge = s.closed
+    ? `<span style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;background:#d1fae5;color:#065f46;">Closed${s.closed_date ? ' · '+s.closed_date : ''}</span>`
+    : '';
+  const actionBtns = s.closed
+    ? `<button class="btn btn-sm btn-secondary" onclick="openSprintModal(${s.number})">Edit</button>
+       <button class="btn btn-sm" style="background:transparent;border:1px solid var(--outline-variant);color:#dc2626;"
+         onclick="confirmDel('Delete Sprint ${s.number}? This removes the sprint file.',()=>deleteSprint(${s.number}))">Delete</button>`
+    : `<button class="btn btn-sm btn-secondary" onclick="openSprintModal(${s.number})">Edit</button>
+       <button class="btn btn-sm" style="background:#065f46;color:#fff;border:none;" onclick="openCloseSprintModal(${s.number})">Close Sprint</button>
+       <button class="btn btn-sm" style="background:transparent;border:1px solid var(--outline-variant);color:#dc2626;"
+         onclick="confirmDel('Delete Sprint ${s.number}? This removes the sprint file.',()=>deleteSprint(${s.number}))">Delete</button>`;
   el.innerHTML = `
     <div class="card" style="padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <span style="font-family:'Space Grotesk',sans-serif;font-size:1rem;font-weight:700;">Sprint ${s.number}</span>
-      ${dates}${goal}
-      <div style="display:flex;gap:6px;flex-shrink:0;">
-        <button class="btn btn-sm btn-secondary" onclick="openSprintModal(${s.number})">Edit</button>
-        <button class="btn btn-sm" style="background:#dc2626;color:#fff;border:none;"
-          onclick="confirmDel('Delete Sprint ${s.number}? This removes the sprint file.',()=>deleteSprint(${s.number}))">Delete</button>
-      </div>
+      ${dates}${goal}${closedBadge}
+      <div style="display:flex;gap:6px;flex-shrink:0;">${actionBtns}</div>
     </div>`;
 }
 
@@ -782,10 +816,46 @@ function confirmDel(msg, onOk) {
   document.getElementById('del-modal').style.display = 'flex';
 }
 
+// ── Sprint close ──────────────────────────────────────────────────────────────
+function openCloseSprintModal(n) {
+  const s = getSprint(n);
+  if (!s) return;
+  document.getElementById('csm-n').textContent = n;
+
+  // Warn if any P0 tasks are incomplete
+  const p0Inc = s.tasks.filter(t => t.priority === 'must-have' && t.status !== 'done');
+  const warn  = document.getElementById('csm-p0-warning');
+  if (p0Inc.length) {
+    warn.style.display = 'block';
+    warn.textContent   = `⚠ ${p0Inc.length} P0 (Must Have) task${p0Inc.length>1?'s are':' is'} not done: ${p0Inc.map(t=>t.id||t.name).join(', ')}`;
+  } else {
+    warn.style.display = 'none';
+  }
+
+  document.getElementById('close-sprint-modal').style.display = 'flex';
+}
+
+async function doCloseSprint() {
+  const n = parseInt(document.getElementById('csm-n').textContent);
+  closeModal('close-sprint-modal');
+  const s = getSprint(n);
+  const res = await api('POST', `/api/pm/sprints/${n}/close`, { sprint: s });
+  if (!res.ok) { toast('Failed to close sprint', true); return; }
+  const idx = SPRINTS.findIndex(x => x.number === n);
+  if (idx >= 0) { SPRINTS[idx].closed = true; SPRINTS[idx].closed_date = new Date().toISOString().slice(0,10); }
+  renderTabs(); renderHeader();
+  // Switch to next open sprint if this one was active
+  if (ACTIVE_N === n) {
+    const next = SPRINTS.find(x => !x.closed);
+    if (next) switchSprint(next.number);
+  }
+  toast(`Sprint ${n} closed — retrospective written to production/retrospectives/`);
+}
+
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    ['sprint-modal','task-modal','ms-modal','del-modal'].forEach(closeModal);
+    ['sprint-modal','task-modal','ms-modal','del-modal','close-sprint-modal'].forEach(closeModal);
     closeCtx();
   }
 });
