@@ -2835,6 +2835,49 @@ def _wiki_path(request: Request) -> Optional[Path]:
     return None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Docs
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _design_path(request: Request) -> Optional[str]:
+    """Return the repo_path for the active project, used by docs_parser."""
+    config = get_config(request)
+    if not config or not getattr(config, "repo_path", ""):
+        return None
+    return config.repo_path
+
+
+@router.get("/docs", response_class=HTMLResponse)
+async def docs_page(request: Request, doc: Optional[str] = None):
+    from nytwatch.pm.docs_parser import load_design_docs, doc_to_dict, _planning_root
+
+    repo_path = _design_path(request)
+
+    if repo_path is None:
+        return templates.TemplateResponse(request, "docs.html", {
+            "design_path": None,
+            "docs": [],
+            "selected_doc": None,
+        })
+
+    docs = load_design_docs(repo_path)
+    planning = _planning_root(repo_path)
+
+    selected = None
+    if doc:
+        selected = next((d for d in docs if d.slug == doc), None)
+
+    return templates.TemplateResponse(request, "docs.html", {
+        "design_path": str(planning) if planning else None,
+        "docs": [doc_to_dict(d) for d in docs],
+        "selected_doc": doc_to_dict(selected) if selected else None,
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Wiki
+# ═══════════════════════════════════════════════════════════════════════════════
+
 @router.get("/wiki", response_class=HTMLResponse)
 async def wiki_page(request: Request, doc: Optional[str] = None):
     from nytwatch.pm.wiki_parser import load_wiki_docs, doc_to_dict

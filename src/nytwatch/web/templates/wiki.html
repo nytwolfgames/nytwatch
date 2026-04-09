@@ -717,6 +717,45 @@ if (SELECTED_CONTENT !== null) {
       a.href = '/wiki?doc=' + encodeURIComponent(parts.join('/'));
     });
 
+    // Linkify "Source:" entries in blockquotes → /docs?doc=<slug>
+    // Pattern: > **Source**: gdd/foo.md, docs/bar.md, Source/...
+    body.querySelectorAll('blockquote').forEach(bq => {
+      // Find whichever <strong> says "Source" (may not be the first one)
+      const sourceStrong = Array.from(bq.querySelectorAll('strong'))
+        .find(el => /^source$/i.test(el.textContent.trim()));
+      if (!sourceStrong) return;
+
+      // Only walk text nodes that are siblings/children of the same <p> as the Source strong
+      const sourcePara = sourceStrong.closest('p') || bq;
+      const walker = document.createTreeWalker(sourcePara, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) textNodes.push(node);
+
+      textNodes.forEach(tn => {
+        // Match tokens like "gdd/foo.md" or "docs/subdir/bar.md"
+        const re = /\b((?:gdd|docs)\/[^\s,]+\.md)/g;
+        const text = tn.nodeValue;
+        if (!re.test(text)) return;
+        re.lastIndex = 0;
+
+        const frag = document.createDocumentFragment();
+        let last = 0, m;
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+          const slug = m[1].replace(/\.md$/, '');
+          const a = document.createElement('a');
+          a.href = '/docs?doc=' + encodeURIComponent(slug);
+          a.textContent = m[1];
+          a.title = 'Open in Docs';
+          frag.appendChild(a);
+          last = re.lastIndex;
+        }
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        tn.parentNode.replaceChild(frag, tn);
+      });
+    });
+
     // Run syntax highlighting on code blocks
     body.querySelectorAll('pre code').forEach(el => {
       try { hljs.highlightElement(el); } catch (e) {}

@@ -1,0 +1,555 @@
+{% extends "base.html" %}
+{% block title %}Docs — Nytwatch{% endblock %}
+
+{% block content %}
+<style>
+/* ── Full-height override ─────────────────────────────────────────────────── */
+body { overflow: hidden; }
+.main-content {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.docs-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface);
+}
+
+/* ── Two-panel layout ────────────────────────────────────────────────────── */
+.docs-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── List panel ──────────────────────────────────────────────────────────── */
+.docs-list-panel {
+  flex: 0 0 280px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+  overflow: hidden;
+}
+
+.docs-search-wrap {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.docs-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px 6px 30px;
+  font-size: 0.8125rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  outline: none;
+  transition: border-color .15s, background .15s;
+}
+.docs-search:focus { border-color: var(--primary); background: var(--surface); }
+.docs-search-icon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--on-surface-variant);
+  opacity: .55;
+}
+
+.docs-list-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 16px;
+}
+
+/* Section group */
+.docs-section {
+  margin-bottom: 4px;
+}
+
+/* Section header */
+.docs-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--on-surface);
+  background: var(--surface-container);
+  border-top: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline-variant);
+  cursor: pointer;
+  user-select: none;
+  margin-top: 4px;
+}
+.docs-section-header:first-child { margin-top: 0; border-top: none; }
+.docs-section-header:hover { background: var(--surface-container-high, var(--surface-container)); }
+.docs-section-chevron {
+  transition: transform .15s;
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+.docs-section-chevron.collapsed { transform: rotate(-90deg); }
+.docs-section-count {
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: 999px;
+  padding: 0px 6px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  margin-left: auto;
+  color: var(--on-surface-variant);
+}
+
+.docs-section-body { }
+.docs-section-body.hidden { display: none; }
+
+/* Subsection header (collapsible) */
+.docs-subsection-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 4px 16px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: .01em;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  border-bottom: 1px solid var(--outline-variant);
+  cursor: pointer;
+  user-select: none;
+}
+.docs-subsection-header:hover { color: var(--on-surface); background: var(--surface-container); }
+.docs-subsection-chevron {
+  transition: transform .15s;
+  flex-shrink: 0;
+}
+.docs-subsection-chevron.collapsed { transform: rotate(-90deg); }
+.docs-subsection-count {
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: 999px;
+  padding: 0px 5px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  margin-left: auto;
+  color: var(--on-surface-variant);
+}
+.docs-subsection-body.hidden { display: none; }
+
+/* Doc row */
+.docs-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 28px;
+  font-size: 0.8125rem;
+  color: var(--on-surface-variant);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: background .1s, color .1s, border-color .1s;
+  line-height: 1.35;
+}
+.docs-item:hover {
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  text-decoration: none;
+}
+.docs-item.active {
+  background: rgba(0, 74, 198, 0.07);
+  color: var(--primary);
+  border-left-color: var(--primary);
+  font-weight: 500;
+}
+.docs-item-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: .35;
+}
+.docs-item.active .docs-item-dot { opacity: 1; }
+
+/* No results */
+.docs-no-results {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--on-surface-variant);
+  opacity: .6;
+}
+
+/* ── View panel ──────────────────────────────────────────────────────────── */
+.docs-view-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  min-width: 0;
+}
+
+/* Empty state */
+.docs-empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.docs-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 48px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  max-width: 360px;
+  text-align: center;
+}
+
+/* Doc header */
+.docs-view-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+}
+
+.docs-view-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 40px 48px;
+}
+
+/* ── Markdown content (same as wiki) ─────────────────────────────────────── */
+.docs-view-body h1 { font-size: 1.45rem; font-weight: 700; margin: 0 0 20px; line-height: 1.25; color: var(--on-surface); }
+.docs-view-body h2 { font-size: 1.05rem; font-weight: 650; margin: 28px 0 10px; padding-bottom: 5px; border-bottom: 1px solid var(--outline-variant); color: var(--on-surface); }
+.docs-view-body h3 { font-size: 0.95rem; font-weight: 600; margin: 20px 0 7px; color: var(--on-surface); }
+.docs-view-body h4 { font-size: 0.88rem; font-weight: 600; margin: 14px 0 5px; color: var(--on-surface-variant); }
+.docs-view-body p { font-size: 0.875rem; line-height: 1.7; margin: 0 0 13px; color: var(--on-surface); }
+.docs-view-body ul, .docs-view-body ol { font-size: 0.875rem; line-height: 1.65; margin: 0 0 13px; padding-left: 22px; }
+.docs-view-body li { margin-bottom: 4px; }
+.docs-view-body li > ul, .docs-view-body li > ol { margin-top: 4px; margin-bottom: 0; }
+.docs-view-body code:not(pre code) {
+  font-family: 'Consolas', 'SF Mono', monospace; font-size: 0.8rem;
+  background: var(--surface-container); padding: 1px 5px; border-radius: 3px; color: var(--on-surface);
+}
+.docs-view-body pre {
+  background: var(--surface-container-low) !important;
+  border: 1px solid var(--outline-variant); border-radius: var(--radius-md);
+  padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
+}
+.docs-view-body pre code { font-size: 0.8rem; background: none !important; padding: 0 !important; }
+.docs-view-body table { border-collapse: collapse; width: 100%; margin: 0 0 16px; font-size: 0.845rem; }
+.docs-view-body th, .docs-view-body td { border: 1px solid var(--outline-variant); padding: 6px 10px; text-align: left; vertical-align: top; }
+.docs-view-body th { background: var(--surface-container); font-weight: 600; font-size: 0.8rem; }
+.docs-view-body blockquote {
+  border-left: 3px solid var(--primary); margin: 0 0 14px;
+  padding: 8px 14px; background: var(--surface-container-low);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.855rem; color: var(--on-surface-variant);
+}
+.docs-view-body blockquote p { margin: 0; font-size: inherit; color: inherit; }
+.docs-view-body a { color: var(--primary); text-decoration: none; }
+.docs-view-body a:hover { text-decoration: underline; }
+.docs-view-body hr { border: none; border-top: 1px solid var(--outline-variant); margin: 20px 0; }
+.docs-view-body strong { font-weight: 650; }
+</style>
+
+<!-- Header -->
+<div class="docs-header">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--on-surface-variant);flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  <span class="headline-md" style="font-size:1rem;font-weight:650;">Docs</span>
+  <span style="margin-left:auto;font-size:0.78rem;color:var(--on-surface-variant);">
+    {{ docs|length }} document{% if docs|length != 1 %}s{% endif %}
+  </span>
+</div>
+
+{% if not design_path %}
+<!-- No design path found -->
+<div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--on-surface-variant);padding:40px;">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.35;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  <p class="body-md" style="margin:0;">No design docs found for this project.</p>
+  <p class="body-sm" style="margin:0;opacity:.7;">Create a <code style="font-size:0.82rem;background:var(--surface-container);padding:2px 6px;border-radius:3px;">planning/design/gdd/</code> or <code style="font-size:0.82rem;background:var(--surface-container);padding:2px 6px;border-radius:3px;">planning/design/docs/</code> directory with Markdown files.</p>
+</div>
+
+{% else %}
+
+<div class="docs-layout">
+
+  <!-- List panel -->
+  <div class="docs-list-panel">
+    <div class="docs-search-wrap" style="position:relative;">
+      <svg class="docs-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="docs-search" class="docs-search" placeholder="Search docs…" autocomplete="off" oninput="docsSearch(this.value)">
+    </div>
+
+    <div class="docs-list-body" id="docs-list-body">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+  <!-- View panel -->
+  <div class="docs-view-panel" id="docs-view-panel">
+
+    {% if selected_doc %}
+    <!-- Doc header -->
+    <div class="docs-view-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--on-surface-variant);flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span style="font-size:0.88rem;font-weight:600;color:var(--on-surface);">{{ selected_doc.title }}</span>
+      <span class="mono" style="margin-left:auto;font-size:0.68rem;color:var(--on-surface-variant);">{{ selected_doc.rel_path }}</span>
+    </div>
+    <div class="docs-view-body" id="docs-view-body"></div>
+
+    {% else %}
+    <!-- Empty state -->
+    <div class="docs-empty-state">
+      <div class="docs-empty-card">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <p class="body-md" style="margin:0;font-weight:500;">No document selected</p>
+        <p class="body-sm" style="margin:0;opacity:.65;">Pick a document from the list on the left.</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
+
+<!-- Data -->
+<script>
+const DOCS_DATA     = {{ docs | tojson }};
+const SELECTED_SLUG = {{ (selected_doc.slug if selected_doc else None) | tojson }};
+{% if selected_doc %}
+const SELECTED_CONTENT = {{ selected_doc.raw_content | tojson }};
+{% else %}
+const SELECTED_CONTENT = null;
+{% endif %}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  List panel — build + search
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Section display names: all-uppercase for known acronyms, otherwise Title Case
+function sectionLabel(s) {
+  const ACRONYMS = new Set(['gdd', 'rts', 'api', 'ui', 'ux']);
+  return ACRONYMS.has(s.toLowerCase())
+    ? s.toUpperCase()
+    : s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function buildList(query) {
+  const q = (query || '').toLowerCase().trim();
+  const listBody = document.getElementById('docs-list-body');
+  listBody.innerHTML = '';
+
+  // Filter
+  const visible = q
+    ? DOCS_DATA.filter(d =>
+        d.title.toLowerCase().includes(q) ||
+        d.slug.toLowerCase().includes(q)
+      )
+    : DOCS_DATA;
+
+  if (visible.length === 0) {
+    listBody.innerHTML = '<div class="docs-no-results">No results</div>';
+    return;
+  }
+
+  // Group: section → subsection → docs
+  const sections = {};
+  for (const doc of visible) {
+    if (!sections[doc.section]) sections[doc.section] = {};
+    const sub = doc.subsection || '';
+    if (!sections[doc.section][sub]) sections[doc.section][sub] = [];
+    sections[doc.section][sub].push(doc);
+  }
+
+  const sortedSections = Object.keys(sections).sort((a, b) => a.localeCompare(b));
+
+  for (const section of sortedSections) {
+    const subsections = sections[section];
+    const totalCount = Object.values(subsections).reduce((s, a) => s + a.length, 0);
+    const sLabel = sectionLabel(section);
+    const sectionId = 'docs-sec-' + section;
+
+    const secEl = document.createElement('div');
+    secEl.className = 'docs-section';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'docs-section-header';
+    hdr.setAttribute('data-section', section);
+    hdr.innerHTML = `
+      <svg class="docs-section-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <span>${sLabel}</span>
+      <span class="docs-section-count">${totalCount}</span>
+    `;
+    hdr.onclick = () => toggleSection(section);
+
+    const body = document.createElement('div');
+    body.className = 'docs-section-body';
+    body.id = sectionId;
+
+    // Subsections first (sorted), then flat docs (empty key) last
+    const sortedSubs = Object.keys(subsections).sort((a, b) => {
+      if (a === '') return 1;
+      if (b === '') return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const sub of sortedSubs) {
+      const subDocs = subsections[sub];
+      if (sub) {
+        const subId = 'docs-sub-' + section + '-' + sub.replace(/\//g, '-');
+        const subHdr = document.createElement('div');
+        subHdr.className = 'docs-subsection-header';
+        subHdr.dataset.subsection = subId;
+        subHdr.innerHTML = `
+          <svg class="docs-subsection-chevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <span>${sub.split('/').join(' / ')}</span>
+          <span class="docs-subsection-count">${subDocs.length}</span>
+        `;
+        subHdr.onclick = () => toggleSubsection(subId);
+
+        const subBody = document.createElement('div');
+        subBody.className = 'docs-subsection-body';
+        subBody.id = subId;
+
+        for (const doc of subDocs) {
+          const a = document.createElement('a');
+          a.className = 'docs-item' + (doc.slug === SELECTED_SLUG ? ' active' : '');
+          a.href = '/docs?doc=' + encodeURIComponent(doc.slug);
+          a.dataset.slug = doc.slug;
+          a.innerHTML = `<span class="docs-item-dot"></span><span>${doc.title}</span>`;
+          subBody.appendChild(a);
+        }
+
+        body.appendChild(subHdr);
+        body.appendChild(subBody);
+      } else {
+        for (const doc of subDocs) {
+          const a = document.createElement('a');
+          a.className = 'docs-item' + (doc.slug === SELECTED_SLUG ? ' active' : '');
+          a.href = '/docs?doc=' + encodeURIComponent(doc.slug);
+          a.dataset.slug = doc.slug;
+          a.innerHTML = `<span class="docs-item-dot"></span><span>${doc.title}</span>`;
+          body.appendChild(a);
+        }
+      }
+    }
+
+    secEl.appendChild(hdr);
+    secEl.appendChild(body);
+    listBody.appendChild(secEl);
+  }
+}
+
+// Persist collapsed state per section
+const _collapsed = JSON.parse(sessionStorage.getItem('docs-collapsed') || '{}');
+
+function toggleSection(section) {
+  const body = document.getElementById('docs-sec-' + section);
+  const hdr  = document.querySelector(`.docs-section-header[data-section="${section}"]`);
+  if (!body || !hdr) return;
+  const isHidden = body.classList.toggle('hidden');
+  hdr.querySelector('.docs-section-chevron').classList.toggle('collapsed', isHidden);
+  _collapsed['sec:' + section] = isHidden;
+  sessionStorage.setItem('docs-collapsed', JSON.stringify(_collapsed));
+}
+
+function toggleSubsection(subId) {
+  const body = document.getElementById(subId);
+  const hdr  = document.querySelector(`.docs-subsection-header[data-subsection="${subId}"]`);
+  if (!body || !hdr) return;
+  const isHidden = body.classList.toggle('hidden');
+  hdr.querySelector('.docs-subsection-chevron').classList.toggle('collapsed', isHidden);
+  _collapsed['sub:' + subId] = isHidden;
+  sessionStorage.setItem('docs-collapsed', JSON.stringify(_collapsed));
+}
+
+function restoreCollapsed() {
+  for (const [key, isCollapsed] of Object.entries(_collapsed)) {
+    if (!isCollapsed) continue;
+    if (key.startsWith('sec:')) {
+      const section = key.slice(4);
+      const body = document.getElementById('docs-sec-' + section);
+      const hdr  = document.querySelector(`.docs-section-header[data-section="${section}"]`);
+      if (body) body.classList.add('hidden');
+      if (hdr) hdr.querySelector('.docs-section-chevron')?.classList.add('collapsed');
+    } else if (key.startsWith('sub:')) {
+      const subId = key.slice(4);
+      const body = document.getElementById(subId);
+      const hdr  = document.querySelector(`.docs-subsection-header[data-subsection="${subId}"]`);
+      if (body) body.classList.add('hidden');
+      if (hdr) hdr.querySelector('.docs-subsection-chevron')?.classList.add('collapsed');
+    }
+  }
+}
+
+let _searchTimer = null;
+function docsSearch(val) {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { buildList(val); restoreCollapsed(); }, 120);
+}
+
+// Initial render
+buildList('');
+restoreCollapsed();
+
+// Scroll active item into view
+requestAnimationFrame(() => {
+  const active = document.querySelector('.docs-item.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Document renderer
+// ═══════════════════════════════════════════════════════════════════════════
+
+if (SELECTED_CONTENT !== null) {
+  const body = document.getElementById('docs-view-body');
+  if (body) {
+    marked.use({ breaks: false, gfm: true });
+    body.innerHTML = marked.parse(SELECTED_CONTENT);
+
+    // Highlight code blocks
+    body.querySelectorAll('pre code').forEach(el => {
+      try { hljs.highlightElement(el); } catch (e) {}
+    });
+  }
+}
+</script>
+
+{% endif %}
+{% endblock %}

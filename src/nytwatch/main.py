@@ -39,7 +39,7 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     import asyncio
     from nytwatch.ws_manager import manager as ws_manager
 
-    app = FastAPI(title="Nytwatch", version="0.1.0")
+    app = FastAPI(title="Nytwatch", version="0.1.0", docs_url="/api-docs", redoc_url="/api-redoc")
 
     app.state.tracking_active = _read_tracking_active(config.repo_path) if config.repo_path else False
 
