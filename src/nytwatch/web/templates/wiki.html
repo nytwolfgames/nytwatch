@@ -305,6 +305,7 @@ body { overflow: hidden; }
 const WIKI_DOCS = {{ docs | tojson }};
 const SELECTED_SLUG = {{ (selected_doc.slug if selected_doc else None) | tojson }};
 const DESIGN_DOCS = {{ design_docs | tojson }};
+window._wikiPath = {{ wiki_path | tojson }};
 {% if selected_doc %}
 const SELECTED_CONTENT = {{ selected_doc.raw_content | tojson }};
 {% else %}
@@ -350,32 +351,31 @@ class WikiGraph {
     this._isPanning = false;
     this._panStart = null;
 
-    // ── Build section→color mapping ───────────────────────────────────────
-    const sections = [...new Set(docs.map(d => d.section || ''))].sort();
+    // ── Build colorKey → color mapping (keyed on full parent dir) ────────
+    // e.g. "" for root, "subsystems" for subsystems/foo.md,
+    //      "subsystems/battle" for subsystems/battle/foo.md
+    const colorKeys = [...new Set(
+      docs.map(d => d.slug.split('/').slice(0, -1).join('/'))
+    )].sort();
     this.sectionColor = {};
-    // Root docs (section="") always use primary blue
-    let colorIdx = 1;
-    sections.forEach(s => {
-      if (s === '') {
-        this.sectionColor[''] = PALETTE[0];
-      } else {
-        this.sectionColor[s] = PALETTE[colorIdx++ % PALETTE.length];
-      }
+    let colorIdx = 0;
+    colorKeys.forEach(k => {
+      this.sectionColor[k] = PALETTE[colorIdx++ % PALETTE.length];
     });
 
     // ── Build legend ──────────────────────────────────────────────────────
-    this._buildLegend(sections);
+    this._buildLegend(colorKeys);
 
     // ── Create node objects ───────────────────────────────────────────────
-    // Spread nodes in a rough circle to avoid initial overlap
     const n = docs.length;
     this.nodes = docs.map((d, i) => {
       const angle = (i / n) * Math.PI * 2;
       const r = Math.min(120, 40 + n * 8);
+      const colorKey = d.slug.split('/').slice(0, -1).join('/');
       return {
         slug: d.slug,
         label: d.title,
-        section: d.section || '',
+        colorKey,
         x: Math.cos(angle) * r + (Math.random() - 0.5) * 20,
         y: Math.sin(angle) * r + (Math.random() - 0.5) * 20,
         vx: 0,
@@ -404,18 +404,29 @@ class WikiGraph {
     this._setupResize();
     this._setupEvents();
 
-    // Pre-warm: run simulation headlessly so nodes arrive settled on first paint
-    for (let i = 0; i < 200; i++) this._simulate();
+    // Restore saved positions if available, otherwise pre-warm
+    const saved = this._loadPositions();
+    const savedNodes = saved.nodes || {};
+    const hasSaved = Object.keys(savedNodes).length > 0;
+    if (hasSaved) {
+      this.nodes.forEach(n => {
+        if (savedNodes[n.slug]) { n.x = savedNodes[n.slug].x; n.y = savedNodes[n.slug].y; }
+      });
+      if (saved.transform) this.transform = saved.transform;
+      this.alpha = 0.08;
+    } else {
+      for (let i = 0; i < 200; i++) this._simulate();
+    }
 
     this._animate();
   }
 
-  _buildLegend(sections) {
+  _buildLegend(colorKeys) {
     const container = document.getElementById('wiki-legend');
     if (!container) return;
-    sections.forEach(s => {
-      const label = s === '' ? 'root' : s;
-      const color = this.sectionColor[s];
+    colorKeys.forEach(k => {
+      const label = k === '' ? 'root' : k.split('/').join(' / ');
+      const color = this.sectionColor[k];
       const el = document.createElement('div');
       el.className = 'wiki-legend-item';
       el.innerHTML = `<div class="wiki-legend-dot" style="background:${color}"></div><span>${label}</span>`;
@@ -501,7 +512,8 @@ class WikiGraph {
     window.addEventListener('mouseup', e => {
       if (this._dragNode) {
         if (!this._dragMoved) {
-          // Click: navigate to doc
+          // Save positions so the graph doesn't reset on reload
+          this._savePositions();
           window.location.href = '/wiki?doc=' + encodeURIComponent(this._dragNode.slug);
         }
         this._dragNode.fixed = false;
@@ -616,7 +628,7 @@ class WikiGraph {
 
     // ── Nodes ──────────────────────────────────────────────────────────────
     for (const n of this.nodes) {
-      const color   = this.sectionColor[n.section] || PALETTE[0];
+      const color   = this.sectionColor[n.colorKey] || PALETTE[0];
       const isSel   = n.slug === this.selectedSlug;
       const isHov   = n === this.hoveredNode;
       const r       = isSel ? 8 : (isHov ? 7 : 5.5);
@@ -665,6 +677,23 @@ class WikiGraph {
     this._simulate();
     this._draw();
     requestAnimationFrame(() => this._animate());
+  }
+
+  // ── Position persistence ─────────────────────────────────────────────────
+  _posKey() { return 'wiki-graph-pos:' + (window._wikiPath || ''); }
+
+  _savePositions() {
+    const pos = {};
+    this.nodes.forEach(n => { pos[n.slug] = { x: n.x, y: n.y }; });
+    sessionStorage.setItem(this._posKey(), JSON.stringify({
+      nodes: pos,
+      transform: this.transform,
+    }));
+  }
+
+  _loadPositions() {
+    try { return JSON.parse(sessionStorage.getItem(this._posKey()) || '{}'); }
+    catch { return {}; }
   }
 
   // ── Public controls ─────────────────────────────────────────────────────

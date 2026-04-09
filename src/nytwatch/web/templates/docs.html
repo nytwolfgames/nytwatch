@@ -527,11 +527,22 @@ function docsSearch(val) {
 buildList('');
 restoreCollapsed();
 
-// Scroll active item into view
+// Restore list scroll position, then ensure active item is visible
 requestAnimationFrame(() => {
-  const active = document.querySelector('.docs-item.active');
-  if (active) active.scrollIntoView({ block: 'nearest' });
+  const listBody = document.getElementById('docs-list-body');
+  const savedScroll = sessionStorage.getItem('docs-list-scroll');
+  if (savedScroll) {
+    listBody.scrollTop = parseInt(savedScroll, 10);
+  } else {
+    const active = document.querySelector('.docs-item.active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }
 });
+
+// Persist scroll position on scroll
+document.getElementById('docs-list-body').addEventListener('scroll', function () {
+  sessionStorage.setItem('docs-list-scroll', this.scrollTop);
+}, { passive: true });
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Document renderer
@@ -543,38 +554,38 @@ if (SELECTED_CONTENT !== null) {
     marked.use({ breaks: false, gfm: true });
     body.innerHTML = marked.parse(SELECTED_CONTENT);
 
-    // Rewrite relative .md links → /docs?doc=<slug>
-    // SELECTED_SLUG e.g. "gdd/battle-system" — resolve relative to its directory
+    // ── Shared slug resolver (used by both link rewriters below) ─────────
+    const _slugSet = new Set(DOCS_DATA.map(d => d.slug.toLowerCase()));
+    function _resolveDocSlug(raw) {
+      let s = raw.replace(/\.md$/, '').replace(/^design\//i, '');
+      const lower = s.toLowerCase();
+      if (_slugSet.has(lower)) return DOCS_DATA.find(d => d.slug.toLowerCase() === lower)?.slug || null;
+      return null;
+    }
+
+    // Rewrite markdown <a href="*.md"> links → /docs?doc=<slug>
     const currentDir = SELECTED_SLUG ? SELECTED_SLUG.split('/').slice(0, -1) : [];
     body.querySelectorAll('a[href]').forEach(a => {
       const href = a.getAttribute('href');
       if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
       if (!href.endsWith('.md') && !href.includes('.md#')) return;
       const hrefBase = href.split('#')[0];
+
+      // First: try resolving relative to current doc's directory
       const parts = [...currentDir];
       hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
         if (seg === '..') parts.pop();
         else if (seg && seg !== '.') parts.push(seg);
       });
-      a.href = '/docs?doc=' + encodeURIComponent(parts.join('/'));
-    });
+      const relSlug = parts.join('/');
 
-    // Linkify any path-like *.md token in the document body that resolves to a known doc slug.
-    // Handles: "gdd/foo.md", "design/gdd/foo.md", "Docs/Plan/foo.md", etc.
-    const _slugSet = new Set(DOCS_DATA.map(d => d.slug.toLowerCase()));
-    function _resolveDocSlug(raw) {
-      // Strip .md extension
-      let s = raw.replace(/\.md$/, '');
-      // Strip leading "design/" prefix (docs_parser strips it when building slugs)
-      s = s.replace(/^design\//i, '');
-      // Find a case-insensitive match in the known slug set
-      const lower = s.toLowerCase();
-      if (_slugSet.has(lower)) {
-        // Return the canonical-cased slug
-        return DOCS_DATA.find(d => d.slug.toLowerCase() === lower)?.slug || null;
-      }
-      return null;
-    }
+      // Validate; if relative resolution misses, fall back to absolute lookup
+      const slug = _slugSet.has(relSlug.toLowerCase())
+        ? DOCS_DATA.find(d => d.slug.toLowerCase() === relSlug.toLowerCase())?.slug
+        : _resolveDocSlug(hrefBase);
+
+      if (slug) a.href = '/docs?doc=' + encodeURIComponent(slug);
+    });
 
     // Match any token that looks like a path ending in .md (contains at least one /)
     const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
