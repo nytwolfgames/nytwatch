@@ -464,7 +464,7 @@ class WikiGraph {
     this._setupResize();
     this._setupEvents();
 
-    // Restore saved positions if available, otherwise pre-warm
+    // Restore saved positions, transform, and filter state
     const saved = this._loadPositions();
     const savedNodes = saved.nodes || {};
     const hasSaved = Object.keys(savedNodes).length > 0;
@@ -476,6 +476,10 @@ class WikiGraph {
       this.alpha = 0.08;
     } else {
       for (let i = 0; i < 200; i++) this._simulate();
+    }
+    if (saved.hiddenKeys && saved.hiddenKeys.length > 0) {
+      saved.hiddenKeys.forEach(k => this.hiddenKeys.add(k));
+      this._syncAllLegendVisuals();
     }
 
     this._animate();
@@ -498,6 +502,7 @@ class WikiGraph {
   _buildLegend(colorKeys) {
     const container = document.getElementById('wiki-legend');
     if (!container) return;
+    this._legendGroups = [];
 
     const narKeys = colorKeys.filter(k => k === 'narrative' || k.startsWith('narrative/'));
     const srcKeys = colorKeys.filter(k => k !== 'narrative' && !k.startsWith('narrative/'));
@@ -523,14 +528,18 @@ class WikiGraph {
       labelSpan.textContent = g.label;
       header.appendChild(headerEye);
       header.appendChild(labelSpan);
-      header.addEventListener('click', () => this._toggleGroupFilter(g.id, section, headerEye));
+
+      const tree = this._buildKeyTree(g.keys, g.isNarrative);
+      const grpData = { keys: g.keys, sectionEl: section, headerEye, tree };
+      this._legendGroups.push(grpData);
+
+      header.addEventListener('click', () => this._toggleGroup(grpData));
       section.appendChild(header);
 
       // ── Tree list ──
       const list = document.createElement('div');
       list.className = 'wiki-legend-list';
-      const tree = this._buildKeyTree(g.keys, g.isNarrative);
-      this._renderTreeNodes(tree.children, list, 0);
+      this._renderTreeNodes(tree.children, list, 0, grpData);
       section.appendChild(list);
 
       container.appendChild(section);
@@ -541,7 +550,6 @@ class WikiGraph {
   _buildKeyTree(keys, isNarrative) {
     const root = { children: new Map() };
     for (const k of keys) {
-      // Display path: strip 'narrative/' prefix for narrative group
       let dispPath = isNarrative
         ? (k === 'narrative' ? 'root' : k.replace(/^narrative\//, ''))
         : (k === '' ? 'root' : k);
@@ -550,7 +558,6 @@ class WikiGraph {
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         if (!node.children.has(part)) {
-          // Derive the actual filterKey for this trie node
           let filterKey;
           if (isNarrative) {
             const rel = parts.slice(0, i + 1).join('/');
@@ -559,17 +566,23 @@ class WikiGraph {
             const rel = parts[0] === 'root' ? '' : parts.slice(0, i + 1).join('/');
             filterKey = rel;
           }
-          node.children.set(part, { label: part, filterKey, colorKey: null, children: new Map() });
+          node.children.set(part, { label: part, filterKey, colorKey: null, children: new Map(), _itemEl: null, _eyeEl: null });
         }
         node = node.children.get(part);
       }
-      node.colorKey = k; // mark as a real color entry
+      node.colorKey = k;
     }
     return root;
   }
 
-  // Recursively render tree nodes into container div
-  _renderTreeNodes(childrenMap, container, depth) {
+  // Collect all real colorKeys in a subtree (including the node itself)
+  _collectColorKeys(node, out) {
+    if (node.colorKey !== null) out.push(node.colorKey);
+    for (const [, child] of node.children) this._collectColorKeys(child, out);
+  }
+
+  // Recursively render tree nodes — stores element refs on each node object
+  _renderTreeNodes(childrenMap, container, depth, grpData) {
     for (const [, node] of childrenMap) {
       const item = document.createElement('div');
       item.className = 'wiki-legend-tree-item';
@@ -579,66 +592,89 @@ class WikiGraph {
       dot.className = 'wiki-legend-dot' + (node.colorKey === null ? ' wiki-legend-dot-ghost' : '');
       if (node.colorKey !== null) dot.style.background = this.sectionColor[node.colorKey];
 
-      const label = document.createElement('span');
-      label.className = 'wiki-legend-tree-label';
-      label.textContent = node.label;
+      const lbl = document.createElement('span');
+      lbl.className = 'wiki-legend-tree-label';
+      lbl.textContent = node.label;
 
       const eye = this._makeSvg(11, 'wiki-legend-tree-eye');
       eye.innerHTML = this._eyeOn();
 
+      node._itemEl = item;
+      node._eyeEl  = eye;
+
       item.appendChild(dot);
-      item.appendChild(label);
+      item.appendChild(lbl);
       item.appendChild(eye);
-      item.addEventListener('click', e => {
-        e.stopPropagation();
-        this._toggleTreeItem(node.filterKey, item, eye);
-      });
+      item.addEventListener('click', e => { e.stopPropagation(); this._toggleTreeItem(node, grpData); });
       container.appendChild(item);
 
       if (node.children.size > 0) {
-        this._renderTreeNodes(node.children, container, depth + 1);
+        this._renderTreeNodes(node.children, container, depth + 1, grpData);
       }
     }
   }
 
-  // Toggle a group-level filter (header eye)
-  _toggleGroupFilter(groupId, sectionEl, eyeSvg) {
-    const sentinel = '__grp_' + groupId;
-    if (this.hiddenKeys.has(sentinel)) {
-      this.hiddenKeys.delete(sentinel);
-      sectionEl.classList.remove('hidden-group');
-      eyeSvg.innerHTML = this._eyeOn();
-    } else {
-      this.hiddenKeys.add(sentinel);
-      sectionEl.classList.add('hidden-group');
-      eyeSvg.innerHTML = this._eyeOff();
+  // Toggle all items in a group (header eye click)
+  _toggleGroup(grpData) {
+    const allHidden = grpData.keys.every(k => this.hiddenKeys.has(k));
+    grpData.keys.forEach(k => allHidden ? this.hiddenKeys.delete(k) : this.hiddenKeys.add(k));
+    this._syncSubtreeVisuals(grpData.tree);
+    this._syncGroupHeaders();
+    this._savePositions();
+  }
+
+  // Toggle a single tree item (and its subtree)
+  _toggleTreeItem(node, grpData) {
+    const keys = [];
+    this._collectColorKeys(node, keys);
+    const allHidden = keys.length > 0 && keys.every(k => this.hiddenKeys.has(k));
+    keys.forEach(k => allHidden ? this.hiddenKeys.delete(k) : this.hiddenKeys.add(k));
+    // Sync this node and its children
+    this._syncNodeVisual(node);
+    this._syncSubtreeVisuals({ children: node.children });
+    this._syncGroupHeaders();
+    this._savePositions();
+  }
+
+  // Update a single node's DOM to match hiddenKeys
+  _syncNodeVisual(node) {
+    if (!node._itemEl) return;
+    const keys = [];
+    this._collectColorKeys(node, keys);
+    const allHidden = keys.length > 0 && keys.every(k => this.hiddenKeys.has(k));
+    node._itemEl.classList.toggle('hidden-key', allHidden);
+    node._eyeEl.innerHTML = allHidden ? this._eyeOff() : this._eyeOn();
+  }
+
+  // Recursively sync all nodes under a tree (pass root or any sub-root)
+  _syncSubtreeVisuals(treeOrNode) {
+    const map = treeOrNode.children;
+    if (!map) return;
+    for (const [, node] of map) {
+      this._syncNodeVisual(node);
+      if (node.children.size > 0) this._syncSubtreeVisuals(node);
     }
   }
 
-  // Toggle an individual tree-item filter
-  _toggleTreeItem(filterKey, itemEl, eyeEl) {
-    if (this.hiddenKeys.has(filterKey)) {
-      this.hiddenKeys.delete(filterKey);
-      itemEl.classList.remove('hidden-key');
-      eyeEl.innerHTML = this._eyeOn();
-    } else {
-      this.hiddenKeys.add(filterKey);
-      itemEl.classList.add('hidden-key');
-      eyeEl.innerHTML = this._eyeOff();
+  // Sync all group headers (dimmed when all their keys hidden)
+  _syncGroupHeaders() {
+    for (const g of this._legendGroups) {
+      const allHidden = g.keys.every(k => this.hiddenKeys.has(k));
+      g.sectionEl.classList.toggle('hidden-group', allHidden);
+      g.headerEye.innerHTML = allHidden ? this._eyeOff() : this._eyeOn();
     }
   }
 
-  // Returns true if this colorKey is effectively hidden (self, ancestor, or group)
+  // Sync all legend DOM from current hiddenKeys (called after restoring from storage)
+  _syncAllLegendVisuals() {
+    for (const g of this._legendGroups) this._syncSubtreeVisuals(g.tree);
+    this._syncGroupHeaders();
+  }
+
+  // A colorKey is hidden only if explicitly in hiddenKeys (no ancestor cascade —
+  // tree toggles bulk-add all descendants so individual items can always override)
   _isNodeHidden(colorKey) {
-    const isNar = colorKey === 'narrative' || colorKey.startsWith('narrative/');
-    if (isNar  && this.hiddenKeys.has('__grp_narrative')) return true;
-    if (!isNar && this.hiddenKeys.has('__grp_source'))    return true;
-    if (this.hiddenKeys.has(colorKey)) return true;
-    const parts = colorKey.split('/');
-    for (let i = 1; i < parts.length; i++) {
-      if (this.hiddenKeys.has(parts.slice(0, i).join('/'))) return true;
-    }
-    return false;
+    return this.hiddenKeys.has(colorKey);
   }
 
   // ── Resize handling ─────────────────────────────────────────────────────
@@ -903,6 +939,7 @@ class WikiGraph {
     sessionStorage.setItem(this._posKey(), JSON.stringify({
       nodes: pos,
       transform: this.transform,
+      hiddenKeys: [...this.hiddenKeys],
     }));
   }
 
