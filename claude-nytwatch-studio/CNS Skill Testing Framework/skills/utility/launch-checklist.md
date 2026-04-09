@@ -8,7 +8,7 @@ certification status, store page completeness (screenshots, description, metadat
 build validation (version tag, reproducible build), analytics and crash reporting
 configuration, and first-run experience verification.
 
-The skill produces a checklist report written to `production/launch/launch-checklist-[date].md`
+The skill produces a checklist report written to `planning/production/launch/launch-checklist-[date].md`
 after a "May I write" ask. If a previous launch checklist exists, it compares the
 new results against the old to highlight newly resolved and newly blocked items. No
 director gates apply — `/team-release` orchestrates the full release pipeline. Verdicts:
@@ -40,9 +40,9 @@ is managed by `/team-release`.
 ### Case 1: Happy Path — All Checklist Items Verified, LAUNCH READY
 
 **Fixture:**
-- Legal docs present: EULA, privacy policy in `production/legal/`
+- Legal docs present: EULA, privacy policy in `planning/production/legal/`
 - Platform certification: marked as submitted and approved in production notes
-- Store page assets: screenshots, description, metadata all present in `production/store/`
+- Store page assets: screenshots, description, metadata all present in `planning/production/store/`
 - Build: version tag `v1.0.0` exists, reproducible build confirmed
 - Crash reporting: configured in `technical-preferences.md`
 
@@ -52,7 +52,7 @@ is managed by `/team-release`.
 1. Skill checks all checklist categories
 2. All items pass their verification checks
 3. Skill produces checklist report with all items marked PASS
-4. Skill asks "May I write to `production/launch/launch-checklist-2026-04-06.md`?"
+4. Skill asks "May I write to `planning/production/launch/launch-checklist-2026-04-06.md`?"
 5. Report written on approval; verdict is LAUNCH READY
 
 **Assertions:**
@@ -114,7 +114,7 @@ is managed by `/team-release`.
 ### Case 4: Previous Checklist Exists — Delta Comparison
 
 **Fixture:**
-- `production/launch/launch-checklist-2026-03-25.md` exists with previous results:
+- `planning/production/launch/launch-checklist-2026-03-25.md` exists with previous results:
   - 2 items were BLOCKED (platform cert, crash reporting)
   - 1 item had a MANUAL CHECK
 - New checklist: platform cert is now PASS, crash reporting is now PASS,
@@ -175,6 +175,6 @@ is managed by `/team-release`.
 - Region-specific compliance (GDPR data handling, COPPA for under-13 audiences)
   is checked but the specific requirements are not enumerated in test assertions.
 - The store page completeness check (screenshots, description) relies on the
-  presence of files in `production/store/`; it cannot verify visual quality.
+  presence of files in `planning/production/store/`; it cannot verify visual quality.
 - Build reproducibility check validates the presence of a version tag and build
   configuration but does not execute the build process.

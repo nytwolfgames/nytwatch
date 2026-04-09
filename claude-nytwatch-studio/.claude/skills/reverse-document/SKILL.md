@@ -32,13 +32,13 @@ appropriate design or architecture documentation. Use this when:
 **Path**: Directory or file to analyze
 - `src/gameplay/combat/` → All combat-related code
 - `src/core/event-system.cpp` → Specific file
-- `prototypes/stealth-mech/` → Prototype directory
+- `planning/prototypes/stealth-mech/` → Prototype directory
 
 **Examples**:
 ```bash
 /reverse-document design src/gameplay/magic-system
 /reverse-document architecture src/core/entity-component
-/reverse-document concept prototypes/vehicle-combat
+/reverse-document concept planning/prototypes/vehicle-combat
 ```
 
 ## Phase 2: Analyze Implementation
@@ -122,9 +122,9 @@ Based on type, use appropriate template:
 
 | Type | Template | Output Path |
 |------|----------|-------------|
-| `design` | `templates/design-doc-from-implementation.md` | `design/gdd/[system-name].md` |
-| `architecture` | `templates/architecture-doc-from-code.md` | `docs/architecture/[decision-name].md` |
-| `concept` | `templates/concept-doc-from-prototype.md` | `prototypes/[name]/CONCEPT.md` or `design/concepts/[name].md` |
+| `design` | `templates/design-doc-from-implementation.md` | `planning/design/gdd/[system-name].md` |
+| `architecture` | `templates/architecture-doc-from-code.md` | `planning/docs/architecture/[decision-name].md` |
+| `concept` | `templates/concept-doc-from-prototype.md` | `planning/prototypes/[name]/CONCEPT.md` or `planning/design/concepts/[name].md` |
 
 **Draft structure**:
 - Capture **what exists** (mechanics, patterns, implementation)
@@ -149,7 +149,7 @@ SECTIONS MARKED AS INCOMPLETE:
 - "[System] interaction with [other-system]" (not fully implemented yet)
 - "[Variant or feature]" (only [subset] implemented so far)
 
-May I write this to design/gdd/[system-name].md?
+May I write this to planning/design/gdd/[system-name].md?
 ```
 
 Wait for approval. User may request changes before writing.
@@ -180,7 +180,7 @@ verified-by: [User name]
 After writing, suggest next steps:
 
 ```
-✅ Written to design/gdd/combat-system.md
+✅ Written to planning/design/gdd/combat-system.md
 
 FOLLOW-UP RECOMMENDED:
 1. Run /balance-check on combat formulas (exponential scaling concern)
@@ -201,7 +201,7 @@ Would you like me to tackle any of these now?
 |----------------|-----------------|------------|
 | `src/gameplay/*` | design-doc-from-implementation.md | Gameplay mechanics → GDD |
 | `src/core/*`, `src/ai/*` | architecture-doc-from-code.md | Core systems → ADR |
-| `prototypes/*` | concept-doc-from-prototype.md | Experiments → concept doc |
+| `planning/prototypes/*` | concept-doc-from-prototype.md | Experiments → concept doc |
 | `src/networking/*` | architecture-doc-from-code.md | Technical systems → ADR |
 | `src/ui/*` | design-doc-from-implementation.md | UI/UX → design spec |
 
@@ -230,11 +230,11 @@ User: 1. [Resource] is for pacing, prevent [unwanted behavior]
 Agent: Perfect, that clarifies the vision. Let me draft the design doc.
        [Shows draft with clarified intent]
 
-       May I write this to design/gdd/[system-name].md?
+       May I write this to planning/design/gdd/[system-name].md?
 
 User: Yes, write it.
 
-Agent: ✅ Written to design/gdd/[system-name].md
+Agent: ✅ Written to planning/design/gdd/[system-name].md
        ✅ Marked as [REVERSE-DOCUMENTED]
        ✅ Flagged [value] scaling for rebalancing
 

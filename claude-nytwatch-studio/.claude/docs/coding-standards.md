@@ -1,7 +1,7 @@
 # Coding Standards
 
 - All game code must include doc comments on public APIs
-- Every system must have a corresponding architecture decision record in `docs/architecture/`
+- Every system must have a corresponding architecture decision record in `planning/docs/architecture/`
 - Gameplay values must be data-driven (external config), never hardcoded
 - All public methods must be unit-testable (dependency injection over singletons)
 - Commits must reference the relevant design document or task ID
@@ -12,7 +12,7 @@
 # Design Document Standards
 
 - All design docs use Markdown
-- Each mechanic has a dedicated document in `design/gdd/`
+- Each mechanic has a dedicated document in `planning/design/gdd/`
 - Documents must include these 8 required sections:
   1. **Overview** -- one-paragraph summary
   2. **Player Fantasy** -- intended feeling and experience
@@ -34,9 +34,9 @@ All stories must have appropriate test evidence before they can be marked Done:
 |---|---|---|---|
 | **Logic** (formulas, AI, state machines) | Automated unit test — must pass | `tests/unit/[system]/` | BLOCKING |
 | **Integration** (multi-system) | Integration test OR documented playtest | `tests/integration/[system]/` | BLOCKING |
-| **Visual/Feel** (animation, VFX, feel) | Screenshot + lead sign-off | `production/qa/evidence/` | ADVISORY |
-| **UI** (menus, HUD, screens) | Manual walkthrough doc OR interaction test | `production/qa/evidence/` | ADVISORY |
-| **Config/Data** (balance tuning) | Smoke check pass | `production/qa/smoke-[date].md` | ADVISORY |
+| **Visual/Feel** (animation, VFX, feel) | Screenshot + lead sign-off | `planning/production/qa/evidence/` | ADVISORY |
+| **UI** (menus, HUD, screens) | Manual walkthrough doc OR interaction test | `planning/production/qa/evidence/` | ADVISORY |
+| **Config/Data** (balance tuning) | Smoke check pass | `planning/production/qa/smoke-[date].md` | ADVISORY |
 
 ## Automated Test Rules
 

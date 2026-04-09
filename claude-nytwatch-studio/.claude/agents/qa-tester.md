@@ -180,9 +180,9 @@ Before writing any test, classify the story type per `coding-standards.md`:
 |---|---|---|---|
 | Logic (formulas, state machines) | Automated unit test — must pass | `tests/unit/[system]/` | BLOCKING |
 | Integration (multi-system) | Integration test or documented playtest | `tests/integration/[system]/` | BLOCKING |
-| Visual/Feel (animation, VFX) | Screenshot + lead sign-off doc | `production/qa/evidence/` | ADVISORY |
-| UI (menus, HUD, screens) | Manual walkthrough doc or interaction test | `production/qa/evidence/` | ADVISORY |
-| Config/Data (balance tuning) | Smoke check pass | `production/qa/smoke-[date].md` | ADVISORY |
+| Visual/Feel (animation, VFX) | Screenshot + lead sign-off doc | `planning/production/qa/evidence/` | ADVISORY |
+| UI (menus, HUD, screens) | Manual walkthrough doc or interaction test | `planning/production/qa/evidence/` | ADVISORY |
+| Config/Data (balance tuning) | Smoke check pass | `planning/production/qa/smoke-[date].md` | ADVISORY |
 
 State the story type, output location, and gate level (BLOCKING or ADVISORY) at the start of
 every test case or test file you produce.

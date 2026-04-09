@@ -50,7 +50,7 @@ Status: IN PROGRESS
 [How to revert if the fix causes new issues]
 ```
 
-Ask: "May I write this to `production/hotfixes/hotfix-[date]-[short-name].md`?"
+Ask: "May I write this to `planning/production/hotfixes/hotfix-[date]-[short-name].md`?"
 
 If yes, write the file, creating the directory if needed.
 

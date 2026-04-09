@@ -54,7 +54,7 @@ None. `/reverse-document` is a documentation utility. No director gates apply.
    Tuning Knobs, Acceptance Criteria
 4. Formulas section includes the inferred clamping formula
 5. Tuning Knobs notes `max_health = 100` as a configurable value
-6. Skill asks "May I write to `design/gdd/health-system.md`?"
+6. Skill asks "May I write to `planning/design/gdd/health-system.md`?"
 7. File written; verdict is COMPLETE
 
 **Assertions:**
@@ -81,7 +81,7 @@ None. `/reverse-document` is a documentation utility. No director gates apply.
 2. Skill produces a GDD skeleton with notes: "AMBIGUOUS VALUE: 150 (unknown units —
    is this pixels, world units, or tiles?)"
 3. Skill marks the Formulas and Tuning Knobs sections as requiring human review
-4. Skill asks "May I write to `design/gdd/enemy-ai.md`?" with PARTIAL advisory
+4. Skill asks "May I write to `planning/design/gdd/enemy-ai.md`?" with PARTIAL advisory
 5. File written with PARTIAL markers; verdict is PARTIAL
 
 **Assertions:**
@@ -105,13 +105,13 @@ None. `/reverse-document` is a documentation utility. No director gates apply.
 2. Skill produces a cross-system architecture overview (not individual GDDs)
 3. Overview describes: Combat System → Damage Resolver interaction, shared
    interfaces, data flow between the two
-4. Skill asks "May I write to `docs/architecture/combat-damage-overview.md`?"
+4. Skill asks "May I write to `planning/docs/architecture/combat-damage-overview.md`?"
 5. Overview written after approval; verdict is COMPLETE (or PARTIAL if ambiguous)
 
 **Assertions:**
 - [ ] Both files are analyzed together (not as two separate docs)
 - [ ] Cross-system dependency is documented in the output
-- [ ] Output file is written to `docs/architecture/` (not `design/gdd/`)
+- [ ] Output file is written to `planning/docs/architecture/` (not `planning/design/gdd/`)
 - [ ] Verdict is COMPLETE or PARTIAL
 
 ---

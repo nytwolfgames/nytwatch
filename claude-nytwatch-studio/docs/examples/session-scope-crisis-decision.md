@@ -25,10 +25,10 @@
 > This is a classic pillar vs. schedule conflict - exactly what I'm here to help resolve. Let me gather the full context before recommending options.
 >
 > First, let me review the relevant documents:
-> - `production/milestones/alpha.md` (milestone definition)
-> - `design/pillars.md` (what's non-negotiable)
-> - `design/gdd/crafting-system.md` (what was designed)
-> - `production/sprints/sprint-current.md` (current work)
+> - `planning/production/milestones/alpha.md` (milestone definition)
+> - `planning/design/pillars.md` (what's non-negotiable)
+> - `planning/design/gdd/crafting-system.md` (what was designed)
+> - `planning/production/sprints/sprint-current.md` (current work)
 >
 > [Reads documents]
 >
@@ -186,7 +186,7 @@
 >
 > **Implementation Plan if you choose Option B:**
 > 1. I'll create an ADR documenting this scope decision
-> 2. I'll update `design/gdd/crafting-system.md` with "Alpha Scope" markers
+> 2. I'll update `planning/design/gdd/crafting-system.md` with "Alpha Scope" markers
 > 3. I'll brief gameplay-programmer on simplified implementation
 > 4. I'll create a demo script for you: how to PRESENT the 10-recipe system to show the 50-recipe vision
 >
@@ -206,8 +206,8 @@
 >
 > **Creating:**
 > 1. ADR-007: Alpha Crafting Scope Reduction
-> 2. Updated design/gdd/crafting-system.md with Alpha/Beta scope markers
-> 3. Updated production/milestones/alpha.md success criteria
+> 2. Updated planning/design/gdd/crafting-system.md with Alpha/Beta scope markers
+> 3. Updated planning/production/milestones/alpha.md success criteria
 > 4. Demo script guidance for investor presentation
 >
 > [Creates documents]
@@ -293,10 +293,10 @@
 
 **Agent:**
 > ✅ Complete! Created/Updated:
-> - `docs/architecture/adr-007-alpha-crafting-scope.md`
-> - `design/gdd/crafting-system.md` (added Alpha/Beta scope markers)
-> - `production/milestones/alpha.md` (updated success criteria)
-> - `production/demo-script-investor-alpha.md` (new file with presentation guide)
+> - `planning/docs/architecture/adr-007-alpha-crafting-scope.md`
+> - `planning/design/gdd/crafting-system.md` (added Alpha/Beta scope markers)
+> - `planning/production/milestones/alpha.md` (updated success criteria)
+> - `planning/production/demo-script-investor-alpha.md` (new file with presentation guide)
 >
 > **Notifications Sent:**
 >

@@ -3,7 +3,7 @@
 ## Skill Summary
 
 `/help` analyzes what has been done and what comes next in the project workflow.
-It runs on the Haiku model (read-only, formatting task) and reads `production/stage.txt`,
+It runs on the Haiku model (read-only, formatting task) and reads `planning/production/stage.txt`,
 the active sprint file, and recent session state to produce a concise situational
 guidance summary. The skill optionally accepts a context query (e.g., `/help testing`)
 to surface relevant skills for a specific topic.
@@ -37,9 +37,9 @@ None. `/help` is a read-only navigation skill. No director gates apply.
 ### Case 1: Happy Path — Production stage with active sprint
 
 **Fixture:**
-- `production/stage.txt` contains `Production`
-- `production/sprints/sprint-004.md` exists with in-progress stories
-- `production/session-state/active.md` has a recent checkpoint
+- `planning/production/stage.txt` contains `Production`
+- `planning/production/sprints/sprint-004.md` exists with in-progress stories
+- `planning/production/session-state/active.md` has a recent checkpoint
 
 **Input:** `/help`
 
@@ -64,7 +64,7 @@ None. `/help` is a read-only navigation skill. No director gates apply.
 ### Case 2: Concept Stage — Shows concept-to-systems-design workflow path
 
 **Fixture:**
-- `production/stage.txt` contains `Concept`
+- `planning/production/stage.txt` contains `Concept`
 - No sprint files, no GDD files
 - `technical-preferences.md` is configured (engine selected)
 
@@ -87,7 +87,7 @@ None. `/help` is a read-only navigation skill. No director gates apply.
 ### Case 3: No stage.txt — Shows full workflow overview
 
 **Fixture:**
-- No `production/stage.txt`
+- No `planning/production/stage.txt`
 - No sprint files
 - `technical-preferences.md` has placeholders
 
@@ -111,7 +111,7 @@ None. `/help` is a read-only navigation skill. No director gates apply.
 ### Case 4: Context Query — User asks for help with testing
 
 **Fixture:**
-- `production/stage.txt` contains `Production`
+- `planning/production/stage.txt` contains `Production`
 - Active sprint has a story with `Status: In Review`
 
 **Input:** `/help testing`

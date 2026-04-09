@@ -2,7 +2,7 @@
 
 When authoring or editing files in this directory, follow these standards.
 
-## GDD Files (`design/gdd/`)
+## GDD Files (`planning/design/gdd/`)
 
 Every GDD must include all **8 required sections** in this order:
 1. Overview — one-paragraph summary
@@ -16,23 +16,23 @@ Every GDD must include all **8 required sections** in this order:
 
 **File naming:** `[system-slug].md` (e.g. `movement-system.md`, `combat-system.md`)
 
-**Systems index:** `design/gdd/systems-index.md` — update when adding a new GDD.
+**Systems index:** `planning/design/gdd/systems-index.md` — update when adding a new GDD.
 
 **Design order:** Foundation → Core → Feature → Presentation → Polish
 
 **Validation:** Run `/design-review [path]` after authoring any GDD.
 Run `/review-all-gdds` after completing a set of related GDDs.
 
-## Quick Specs (`design/quick-specs/`)
+## Quick Specs (`planning/design/quick-specs/`)
 
 Lightweight specs for tuning changes, minor mechanics, or balance adjustments.
 Use `/quick-design` to author.
 
-## UX Specs (`design/ux/`)
+## UX Specs (`planning/design/ux/`)
 
-- Per-screen specs: `design/ux/[screen-name].md`
-- HUD design: `design/ux/hud.md`
-- Interaction pattern library: `design/ux/interaction-patterns.md`
-- Accessibility requirements: `design/ux/accessibility-requirements.md`
+- Per-screen specs: `planning/design/ux/[screen-name].md`
+- HUD design: `planning/design/ux/hud.md`
+- Interaction pattern library: `planning/design/ux/interaction-patterns.md`
+- Accessibility requirements: `planning/design/ux/accessibility-requirements.md`
 
 Use `/ux-design` to author. Validate with `/ux-review` before passing to `/team-ui`.

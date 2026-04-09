@@ -2,7 +2,7 @@
 
 ## Skill Summary
 
-`/bug-triage` reads all open bug reports in `production/bugs/` and produces a
+`/bug-triage` reads all open bug reports in `planning/production/bugs/` and produces a
 prioritized triage table sorted by severity (CRITICAL → HIGH → MEDIUM → LOW).
 It runs on the Haiku model (read-only, formatting/sorting task) and produces no
 file writes — the triage output is conversational. The skill flags bugs missing
@@ -38,7 +38,7 @@ None. `/bug-triage` is a read-only advisory skill. No director gates apply.
 ### Case 1: Happy Path — 5 bugs of varying severity, sorted table produced
 
 **Fixture:**
-- `production/bugs/` contains 5 bug report files:
+- `planning/production/bugs/` contains 5 bug report files:
   - bug-2026-03-10-audio-crash.md (CRITICAL)
   - bug-2026-03-12-score-overflow.md (HIGH)
   - bug-2026-03-14-ui-overlap.md (MEDIUM)
@@ -66,13 +66,13 @@ None. `/bug-triage` is a read-only advisory skill. No director gates apply.
 ### Case 2: No Bug Reports Found — Guidance to run /bug-report
 
 **Fixture:**
-- `production/bugs/` directory exists but is empty (or does not exist)
+- `planning/production/bugs/` directory exists but is empty (or does not exist)
 
 **Input:** `/bug-triage`
 
 **Expected behavior:**
-1. Skill scans `production/bugs/` and finds no reports
-2. Skill outputs: "No open bug reports found in production/bugs/"
+1. Skill scans `planning/production/bugs/` and finds no reports
+2. Skill outputs: "No open bug reports found in planning/production/bugs/"
 3. Skill suggests running `/bug-report` to create a bug report
 4. No triage table is produced
 
@@ -87,7 +87,7 @@ None. `/bug-triage` is a read-only advisory skill. No director gates apply.
 ### Case 3: Bug Missing Reproduction Steps — Flagged as NEEDS REPRO INFO
 
 **Fixture:**
-- `production/bugs/` contains 3 bug reports; one has an empty "Repro Steps" section
+- `planning/production/bugs/` contains 3 bug reports; one has an empty "Repro Steps" section
 
 **Input:** `/bug-triage`
 
@@ -109,7 +109,7 @@ None. `/bug-triage` is a read-only advisory skill. No director gates apply.
 ### Case 4: Possible Duplicate Bugs — Flagged in triage output
 
 **Fixture:**
-- `production/bugs/` contains 2 bug reports with similar titles:
+- `planning/production/bugs/` contains 2 bug reports with similar titles:
   - bug-2026-03-18-player-fall-through-floor.md
   - bug-2026-03-20-player-clips-through-floor.md
   - Both affect the "Physics" system with identical severity
@@ -134,7 +134,7 @@ None. `/bug-triage` is a read-only advisory skill. No director gates apply.
 ### Case 5: Director Gate Check — No gate; triage is advisory
 
 **Fixture:**
-- `production/bugs/` contains any number of reports
+- `planning/production/bugs/` contains any number of reports
 
 **Input:** `/bug-triage`
 
@@ -154,7 +154,7 @@ None. `/bug-triage` is a read-only advisory skill. No director gates apply.
 
 ## Protocol Compliance
 
-- [ ] Reads all files in `production/bugs/` before generating the table
+- [ ] Reads all files in `planning/production/bugs/` before generating the table
 - [ ] Sorts by severity (CRITICAL → HIGH → MEDIUM → LOW)
 - [ ] Flags bugs missing repro steps
 - [ ] Flags possible duplicates by title/system similarity

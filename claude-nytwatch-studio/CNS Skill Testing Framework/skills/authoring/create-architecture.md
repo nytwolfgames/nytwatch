@@ -11,7 +11,7 @@ specific sections.
 
 In `full` review mode, TD-ARCHITECTURE (technical-director) and LP-FEASIBILITY
 (lead-programmer) spawn after the complete draft is finished. In `lean` or `solo`
-mode, both gates are skipped. The skill writes to `docs/architecture/architecture.md`.
+mode, both gates are skipped. The skill writes to `planning/docs/architecture/architecture.md`.
 
 ---
 
@@ -48,14 +48,14 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 1: Happy Path — New architecture doc, skeleton-first, full mode gates approve
 
 **Fixture:**
-- No existing `docs/architecture/architecture.md`
-- `docs/architecture/` contains Accepted ADRs for reference
-- `production/session-state/review-mode.txt` contains `full`
+- No existing `planning/docs/architecture/architecture.md`
+- `planning/docs/architecture/` contains Accepted ADRs for reference
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Input:** `/create-architecture`
 
 **Expected behavior:**
-1. Skill creates skeleton `docs/architecture/architecture.md` with all required section headers
+1. Skill creates skeleton `planning/docs/architecture/architecture.md` with all required section headers
 2. For each section: drafts content, shows draft, asks "May I write [section]?", writes after approval
 3. After all sections are drafted: TD-ARCHITECTURE and LP-FEASIBILITY spawn in parallel
 4. Both gates return APPROVED
@@ -76,7 +76,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 
 **Fixture:**
 - Architecture doc is fully drafted (all sections)
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - TD-ARCHITECTURE gate returns MAJOR REVISION: "[specific structural issue]"
 
 **Input:** `/create-architecture`
@@ -100,7 +100,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 
 **Fixture:**
 - No existing architecture doc
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Input:** `/create-architecture`
 
@@ -122,7 +122,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 4: Retrofit Mode — Existing architecture doc, user updates a section
 
 **Fixture:**
-- `docs/architecture/architecture.md` already exists with all sections populated
+- `planning/docs/architecture/architecture.md` already exists with all sections populated
 
 **Input:** `/create-architecture`
 
@@ -146,7 +146,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 **Fixture:**
 - Architecture doc is being authored
 - One section references or depends on an ADR that has `Status: Proposed`
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Input:** `/create-architecture`
 

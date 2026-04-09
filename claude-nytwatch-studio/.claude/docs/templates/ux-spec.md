@@ -5,7 +5,7 @@
 > **Last Updated**: [Date]
 > **Screen / Flow Name**: [Short identifier used in code and tickets — e.g., `InventoryScreen`, `NewGameFlow`]
 > **Platform Target**: [PC | Console | Mobile | All — list all that this spec covers]
-> **Related GDDs**: [Links to the GDD sections that generated this UI requirement — e.g., `design/gdd/inventory.md § UI Requirements`]
+> **Related GDDs**: [Links to the GDD sections that generated this UI requirement — e.g., `planning/design/gdd/inventory.md § UI Requirements`]
 > **Related ADRs**: [Any architectural decisions that constrain this screen — e.g., `ADR-0012: UI Framework Selection`]
 > **Related UX Specs**: [Sibling and parent screens — e.g., `ux-spec-pause-menu.md`, `ux-spec-settings.md`]
 > **Accessibility Tier**: Basic | Standard | Comprehensive | Exemplary
@@ -385,7 +385,7 @@ Example:
 > **Why this section exists**: Accessibility requirements must be specified at design
 > time because retrofitting them is expensive and often architecturally impractical.
 > This section documents requirements specific to this screen. Project-wide standards
-> live in `docs/accessibility-requirements.md` — consult it before filling this
+> live in `planning/docs/accessibility-requirements.md` — consult it before filling this
 > section so you do not duplicate or contradict project-level commitments.
 >
 > Accessibility Tiers in this project:

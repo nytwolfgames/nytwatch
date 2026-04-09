@@ -7,9 +7,9 @@ user input. The report is organized into four sections: Feel/Accessibility,
 Bugs Observed, Design Feedback, and Next Steps. When multiple testers participated,
 the skill aggregates feedback and distinguishes majority opinions from minority
 ones. The skill links to existing bug reports when a reported bug matches a file
-in `production/bugs/`.
+in `planning/production/bugs/`.
 
-Reports are written to `production/qa/playtest-[date].md` after a "May I write"
+Reports are written to `planning/production/qa/playtest-[date].md` after a "May I write"
 ask. No director gates apply here — the CD-PLAYTEST director gate (if needed) is
 a separate invocation. The verdict is COMPLETE when the report is written.
 
@@ -42,7 +42,7 @@ separate invocation and not part of this skill.
 - User provides typed playtest notes from a single session
 - Notes cover: game feel, one bug (framerate drop), and a design concern
   (tutorial too long)
-- `production/bugs/` exists but is empty (bug not yet reported)
+- `planning/production/bugs/` exists but is empty (bug not yet reported)
 
 **Input:** `/playtest-report` (user pastes session notes)
 
@@ -53,7 +53,7 @@ separate invocation and not part of this skill.
 4. Design Feedback: notes the tutorial length concern
 5. Next Steps: suggests `/bug-report` for the framerate issue and `/design-review`
    for the tutorial feedback
-6. Skill asks "May I write to `production/qa/playtest-2026-04-06.md`?"
+6. Skill asks "May I write to `planning/production/qa/playtest-2026-04-06.md`?"
 7. Report is written on approval; verdict is COMPLETE
 
 **Assertions:**
@@ -118,16 +118,16 @@ separate invocation and not part of this skill.
 ### Case 4: Bug Matches Existing Report — Links to existing file
 
 **Fixture:**
-- `production/bugs/bug-2026-03-30-player-stuck-ledge.md` exists
+- `planning/production/bugs/bug-2026-03-30-player-stuck-ledge.md` exists
 - User's playtest notes describe "player gets stuck on ledges near walls"
 
 **Input:** `/playtest-report`
 
 **Expected behavior:**
 1. Skill structures the report and identifies the stuck-on-ledge bug
-2. Skill scans `production/bugs/` and finds `bug-2026-03-30-player-stuck-ledge.md`
+2. Skill scans `planning/production/bugs/` and finds `bug-2026-03-30-player-stuck-ledge.md`
 3. In the Bugs section, the report includes: "See existing report:
-   production/bugs/bug-2026-03-30-player-stuck-ledge.md"
+   planning/production/bugs/bug-2026-03-30-player-stuck-ledge.md"
 4. Skill does NOT suggest creating a new bug report for this issue
 5. Report written; verdict is COMPLETE
 
@@ -163,7 +163,7 @@ separate invocation and not part of this skill.
 - [ ] Structures output into all 4 sections (Feel, Bugs, Design Feedback, Next Steps)
 - [ ] Labels majority vs. minority opinions when multiple testers are involved
 - [ ] Cross-references existing bug reports when bugs match
-- [ ] Asks "May I write to `production/qa/playtest-[date].md`?" before writing
+- [ ] Asks "May I write to `planning/production/qa/playtest-[date].md`?" before writing
 - [ ] Verdict is COMPLETE when report is written
 
 ---

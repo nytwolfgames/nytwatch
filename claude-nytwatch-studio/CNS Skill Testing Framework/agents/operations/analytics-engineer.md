@@ -11,7 +11,7 @@
 ## Static Assertions (Structural)
 
 - [ ] `description:` field is present and domain-specific (references telemetry, A/B testing, event tracking, analytics)
-- [ ] `allowed-tools:` list matches the agent's role (Read/Write for design/analytics/ and documentation; no game source or CI tools)
+- [ ] `allowed-tools:` list matches the agent's role (Read/Write for planning/design/analytics/ and documentation; no game source or CI tools)
 - [ ] Model tier is Sonnet (default for operations specialists)
 - [ ] Agent definition does not claim authority over game implementation, economy design, or live ops scheduling
 

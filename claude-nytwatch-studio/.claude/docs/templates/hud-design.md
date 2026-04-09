@@ -5,9 +5,9 @@
 > **Last Updated**: [Date]
 > **Game**: [Game name — this is a single document per game, not per element]
 > **Platform Targets**: [All platforms this HUD must work on — e.g., PC, PS5, Xbox Series X, Steam Deck]
-> **Related GDDs**: [Every system that exposes information through the HUD — e.g., `design/gdd/combat.md`, `design/gdd/progression.md`, `design/gdd/quests.md`]
+> **Related GDDs**: [Every system that exposes information through the HUD — e.g., `planning/design/gdd/combat.md`, `planning/design/gdd/progression.md`, `planning/design/gdd/quests.md`]
 > **Accessibility Tier**: Basic | Standard | Comprehensive | Exemplary
-> **Style Reference**: [Link to art bible HUD section if it exists — e.g., `design/gdd/art-bible.md § HUD Visual Language`]
+> **Style Reference**: [Link to art bible HUD section if it exists — e.g., `planning/design/gdd/art-bible.md § HUD Visual Language`]
 
 > **Note — Scope boundary**: This document specifies all elements that overlay the
 > game world during active gameplay — health bars, ammo counters, minimaps, quest
@@ -355,7 +355,7 @@ Repositioning saves to player profile, not to a single slot. Applies across play
 > in every gameplay moment. Color-blind failures, illegible text at minimum scale,
 > and inability to disable distracting animations are among the top accessibility
 > complaints in game reviews. This section defines HUD-specific requirements; refer
-> to the project's `docs/accessibility-requirements.md` for the full project standard.
+> to the project's `planning/docs/accessibility-requirements.md` for the full project standard.
 
 ### 10.1 Colorblind Modes
 

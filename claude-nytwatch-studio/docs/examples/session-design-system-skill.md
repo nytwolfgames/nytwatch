@@ -1,16 +1,16 @@
 # Example Session: Using /design-system to Author a GDD
 
-**Context:** Solo indie dev, week 3 of project. `/map-systems` already ran and produced `design/gdd/systems-index.md`. The movement system is listed as MVP tier, Foundation priority.
+**Context:** Solo indie dev, week 3 of project. `/map-systems` already ran and produced `planning/design/gdd/systems-index.md`. The movement system is listed as MVP tier, Foundation priority.
 
 **Starting State:**
-- `design/gdd/game-concept.md` exists (survival-crafting game, 2D, Godot 4.6)
-- `design/gdd/systems-index.md` exists (15 systems identified, movement is first in design order)
+- `planning/design/gdd/game-concept.md` exists (survival-crafting game, 2D, Godot 4.6)
+- `planning/design/gdd/systems-index.md` exists (15 systems identified, movement is first in design order)
 - No per-system GDDs written yet
 - No upstream dependencies for movement (it is the foundation)
 
 **Session Duration:** ~60 minutes
 **Turns:** 14
-**Outcome:** Complete `design/gdd/movement-system.md` with all 8 required sections written to file, ready for `/design-review`
+**Outcome:** Complete `planning/design/gdd/movement-system.md` with all 8 required sections written to file, ready for `/design-review`
 
 ---
 
@@ -24,8 +24,8 @@
 **Agent (game-designer, via /design-system):**
 > I'm loading context before we start:
 >
-> - Read `design/gdd/game-concept.md` — survival-crafting, exploration-heavy, lone survivor stranded on alien planet
-> - Read `design/gdd/systems-index.md` — movement is **Foundation / MVP**, no upstream deps, downstream: combat, exploration, stamina
+> - Read `planning/design/gdd/game-concept.md` — survival-crafting, exploration-heavy, lone survivor stranded on alien planet
+> - Read `planning/design/gdd/systems-index.md` — movement is **Foundation / MVP**, no upstream deps, downstream: combat, exploration, stamina
 > - No prior GDD found for movement — starting fresh
 >
 > **Technical Feasibility Pre-Check:**
@@ -41,12 +41,12 @@
 >
 > I'll show you a draft of each section, you approve or revise, then I write it to the file before we move on.
 >
-> Creating the file skeleton now with empty section headers — may I write `design/gdd/movement-system.md` with placeholders?
+> Creating the file skeleton now with empty section headers — may I write `planning/design/gdd/movement-system.md` with placeholders?
 
 **User:**
 > Yes
 
-**Agent writes** `design/gdd/movement-system.md` with 8 empty section headers.
+**Agent writes** `planning/design/gdd/movement-system.md` with 8 empty section headers.
 
 ---
 
@@ -236,7 +236,7 @@
 ## Turn 11: Completion Summary
 
 **Agent:**
-> All 8 sections written to `design/gdd/movement-system.md`.
+> All 8 sections written to `planning/design/gdd/movement-system.md`.
 >
 > **GDD Status:**
 > - ✅ Overview
@@ -253,7 +253,7 @@
 > - Rolling has a flat stamina cost (not per-second)
 > - Heavy carry disables run (signal-driven, not hardcoded check)
 >
-> **Recommended next step:** Run `/design-review design/gdd/movement-system.md` before moving to the next system in your queue (stamina is next in dependency order, per systems-index).
+> **Recommended next step:** Run `/design-review planning/design/gdd/movement-system.md` before moving to the next system in your queue (stamina is next in dependency order, per systems-index).
 >
 > The review will validate completeness, internal consistency, and catch anything that needs revision before you build on this GDD.
 

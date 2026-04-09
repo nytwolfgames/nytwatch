@@ -107,7 +107,7 @@ None. Asset auditing is a read-only analysis skill; no gates are invoked.
 ### Case 4: Missing Asset — Asset referenced by GDD but absent from assets/
 
 **Fixture:**
-- `design/gdd/enemies.md` references `enemy_boss_idle.png`
+- `planning/design/gdd/enemies.md` references `enemy_boss_idle.png`
 - `assets/art/characters/boss/` directory is empty — file does not exist
 
 **Input:** `/asset-audit`
@@ -140,7 +140,7 @@ None. Asset auditing is a read-only analysis skill; no gates are invoked.
 3. Verdict is WARNINGS
 4. Output notes: "Consider having a Technical Artist review naming conventions"
 5. Skill presents findings; offers optional audit report write
-6. If user opts in: "May I write to `production/qa/asset-audit-[date].md`?"
+6. If user opts in: "May I write to `planning/production/qa/asset-audit-[date].md`?"
 
 **Assertions:**
 - [ ] No director gate is invoked in any review mode

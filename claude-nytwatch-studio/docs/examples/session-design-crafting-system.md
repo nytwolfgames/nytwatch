@@ -216,7 +216,7 @@
 > - Consulted `systems-designer` for XP curve formula validation
 > - Consulted `economy-designer` for material cost balancing
 >
-> May I write this to `design/gdd/crafting-system.md`?
+> May I write this to `planning/design/gdd/crafting-system.md`?
 
 ## Turn 11: User Approves Writing
 
@@ -226,10 +226,10 @@
 ## Turn 12: Agent Writes File and Offers Next Steps
 
 **Agent:**
-> ✅ Created `design/gdd/crafting-system.md`
+> ✅ Created `planning/design/gdd/crafting-system.md`
 >
 > **Next Steps:**
-> 1. Run `/design-review design/gdd/crafting-system.md` to validate against 8-section standard
+> 1. Run `/design-review planning/design/gdd/crafting-system.md` to validate against 8-section standard
 > 2. Create data file structure in `assets/data/` for ingredients and recipes
 > 3. When ready to implement, use `/team-combat` pattern but for crafting (game-designer → gameplay-programmer → ui-programmer → qa-tester)
 >
@@ -256,7 +256,7 @@
 - Turn 10: Agent requested approval before writing file
 
 **Files Created:**
-- `design/gdd/crafting-system.md` (complete 8-section GDD)
+- `planning/design/gdd/crafting-system.md` (complete 8-section GDD)
 
 **Context Usage:** ~35% (estimated)
 **User Satisfaction:** High - user made all creative decisions, agent provided expert guidance

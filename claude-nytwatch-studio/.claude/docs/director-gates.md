@@ -28,7 +28,7 @@ the verdict using the **Verdict handling** rules below.
 Review intensity controls whether director gates run. It can be set globally
 (persists across sessions) or overridden per skill run.
 
-**Global config**: `production/review-mode.txt` — one word: `full`, `lean`, or `solo`.
+**Global config**: `planning/production/review-mode.txt` — one word: `full`, `lean`, or `solo`.
 Set once during `/start`. Edit the file directly to change it at any time.
 
 **Per-run override**: any gate-using skill accepts `--review [full|lean|solo]` as an
@@ -52,7 +52,7 @@ Examples:
 ```
 Before spawning gate [GATE-ID]:
 1. If skill was called with --review [mode], use that
-2. Else read production/review-mode.txt
+2. Else read planning/production/review-mode.txt
 3. Else default to full
 
 Apply the resolved mode:
@@ -68,7 +68,7 @@ Apply the resolved mode:
 
 **MANDATORY: Resolve review mode before every gate spawn.** Never spawn a gate without checking. The resolved mode is determined once per skill run:
 1. If skill was called with `--review [mode]`, use that
-2. Else read `production/review-mode.txt`
+2. Else read `planning/production/review-mode.txt`
 3. Else default to `lean`
 
 Apply the resolved mode:
@@ -117,8 +117,8 @@ After a gate resolves, record the verdict in the relevant document's status head
 > **[Director] Review ([GATE-ID])**: APPROVED [date] / CONCERNS (accepted) [date] / REVISED [date]
 ```
 
-For phase gates, record in `docs/architecture/architecture.md` or
-`production/session-state/active.md` as appropriate.
+For phase gates, record in `planning/docs/architecture/architecture.md` or
+`planning/production/session-state/active.md` as appropriate.
 
 ---
 
@@ -158,7 +158,7 @@ workflow that produces a GDD)
 
 **Context to pass**:
 - GDD file path
-- Game pillars (from `design/gdd/game-concept.md` or `design/gdd/game-pillars.md`)
+- Game pillars (from `planning/design/gdd/game-concept.md` or `planning/design/gdd/game-pillars.md`)
 - MDA aesthetics target for this game
 - System's stated Player Fantasy section
 
@@ -179,8 +179,8 @@ workflow that produces a GDD)
 complete system set before GDD authoring begins
 
 **Context to pass**:
-- Systems index path (`design/gdd/systems-index.md`)
-- Game pillars and core fantasy (from `design/gdd/game-concept.md`)
+- Systems index path (`planning/design/gdd/systems-index.md`)
+- Game pillars and core fantasy (from `planning/design/gdd/game-concept.md`)
 - Priority tier assignments (MVP / Vertical Slice / Alpha / Full Vision)
 - Any high-risk or bottleneck systems identified in the dependency map
 
@@ -208,7 +208,7 @@ deliverables)
 **Context to pass**:
 - Document file path(s)
 - Game pillars
-- Narrative direction brief or tone guide (if exists at `design/narrative/`)
+- Narrative direction brief or tone guide (if exists at `planning/design/narrative/`)
 - Any existing lore that the new document references
 
 **Prompt**:
@@ -329,7 +329,7 @@ sound before teams invest in writing GDDs against it
 Phase 7), and after any major architecture revision
 
 **Context to pass**:
-- Architecture document path (`docs/architecture/architecture.md`)
+- Architecture document path (`planning/docs/architecture/architecture.md`)
 - Technical requirements baseline (TR-IDs and count)
 - ADR list with statuses
 - Engine knowledge gap inventory
@@ -375,7 +375,7 @@ or before finalizing any engine-specific implementation approach
 
 **Context to pass**:
 - The specific API or feature being used
-- Engine version and LLM knowledge cutoff (from `docs/engine-reference/[engine]/VERSION.md`)
+- Engine version and LLM knowledge cutoff (from `planning/docs/engine-reference/[engine]/VERSION.md`)
 - Relevant excerpt from breaking-changes or deprecated-apis docs
 
 **Prompt**:
@@ -494,7 +494,7 @@ is invoked
 
 **Context to pass**:
 - Epic definition file paths (all epics just created)
-- Epic index path (`production/epics/index.md`)
+- Epic index path (`planning/production/epics/index.md`)
 - Milestone timeline and target dates
 - Team capacity (solo / small team / size)
 - Layer being epiced (Foundation / Core / Feature / etc.)
@@ -571,10 +571,10 @@ Agent: `art-director` | Model tier: Sonnet | Domain: Visual identity, art bible,
 **Trigger**: After the art bible is drafted (`/art-bible`), before asset production begins
 
 **Context to pass**:
-- Art bible path (`design/art/art-bible.md`)
+- Art bible path (`planning/design/art/art-bible.md`)
 - Game pillars and core fantasy
 - Platform and performance constraints (from `.claude/docs/technical-preferences.md` if configured)
-- Visual identity anchor chosen during brainstorm (from `design/gdd/game-concept.md`)
+- Visual identity anchor chosen during brainstorm (from `planning/design/gdd/game-concept.md`)
 
 **Prompt**:
 > "Review this art bible for completeness and internal consistency. Does the color
@@ -598,8 +598,8 @@ Agent: `art-director` | Model tier: Sonnet | Domain: Visual identity, art bible,
 **Context to pass**:
 - Target phase name
 - List of all art/visual artifacts present (file paths)
-- Visual identity anchor from `design/gdd/game-concept.md` (if present)
-- Art bible path if it exists (`design/art/art-bible.md`)
+- Visual identity anchor from `planning/design/gdd/game-concept.md` (if present)
+- Art bible path if it exists (`planning/design/art/art-bible.md`)
 
 **Prompt**:
 > "Review the current project state for [target phase] gate readiness from a visual
@@ -744,7 +744,7 @@ authored, or when a design decision has narrative implications
 introduced, or when a tech art decision affects visual style
 
 **Context to pass**:
-- Art bible path (if exists at `design/art-bible.md`)
+- Art bible path (if exists at `planning/design/art-bible.md`)
 - The specific asset type, style decision, or visual direction being reviewed
 - Reference images or style descriptions
 - Platform and performance constraints

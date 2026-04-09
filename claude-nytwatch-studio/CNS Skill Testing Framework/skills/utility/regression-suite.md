@@ -9,7 +9,7 @@ a matching assertion. It produces a coverage report identifying which ACs are
 fully covered, partially covered, or untested, and which test files have no
 matching AC (orphan tests).
 
-The skill may write a coverage report to `production/qa/` after a "May I write"
+The skill may write a coverage report to `planning/production/qa/` after a "May I write"
 ask. No director gates apply. Verdicts: FULL COVERAGE (all ACs have tests),
 GAPS FOUND (some ACs are untested), or CRITICAL GAPS (a critical-priority AC
 has no test).
@@ -39,7 +39,7 @@ None. `/regression-suite` is a QA analysis utility. No director gates apply.
 ### Case 1: Full Coverage — All ACs in sprint have corresponding tests
 
 **Fixture:**
-- `production/sprints/sprint-004.md` lists 3 stories with 2 ACs each (6 total)
+- `planning/production/sprints/sprint-004.md` lists 3 stories with 2 ACs each (6 total)
 - `tests/unit/` and `tests/integration/` contain test files that match all 6 ACs
   (by system name and scenario description)
 
@@ -50,7 +50,7 @@ None. `/regression-suite` is a QA analysis utility. No director gates apply.
 2. Skill scans test files and matches each AC to at least one test assertion
 3. All 6 ACs have coverage
 4. Skill produces coverage report: "6/6 ACs covered"
-5. Skill asks "May I write to `production/qa/regression-sprint-004.md`?"
+5. Skill asks "May I write to `planning/production/qa/regression-sprint-004.md`?"
 6. File is written on approval; verdict is FULL COVERAGE
 
 **Assertions:**
@@ -73,7 +73,7 @@ None. `/regression-suite` is a QA analysis utility. No director gates apply.
 1. Skill reads all 8 ACs
 2. Skill scans tests — 5 matched, 3 unmatched
 3. Coverage report lists the 3 untested ACs by story and AC text
-4. Skill asks "May I write to `production/qa/regression-[sprint]-[date].md`?"
+4. Skill asks "May I write to `planning/production/qa/regression-[sprint]-[date].md`?"
 5. Report is written; verdict is GAPS FOUND
 
 **Assertions:**

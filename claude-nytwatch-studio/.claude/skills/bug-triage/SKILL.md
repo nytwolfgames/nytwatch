@@ -1,6 +1,6 @@
 ---
 name: bug-triage
-description: "Read all open bugs in production/qa/bugs/, re-evaluate priority vs. severity, assign to sprints, surface systemic trends, and produce a triage report. Run at sprint start or when the bug count grows enough to need re-prioritization."
+description: "Read all open bugs in planning/production/qa/bugs/, re-evaluate priority vs. severity, assign to sprints, surface systemic trends, and produce a triage report. Run at sprint start or when the bug count grows enough to need re-prioritization."
 argument-hint: "[sprint | full | trend]"
 user-invocable: true
 allowed-tools: Read, Glob, Grep, Write, Edit
@@ -13,7 +13,7 @@ action list. It distinguishes between **severity** (how bad is the impact?) and
 **priority** (how urgently must we fix it?), detects systemic trends, and
 ensures no critical bug is lost between sprints.
 
-**Output:** `production/qa/bug-triage-[date].md`
+**Output:** `planning/production/qa/bug-triage-[date].md`
 
 **When to run:**
 - Sprint start — assign open bugs to the new sprint or backlog
@@ -38,12 +38,12 @@ ensures no critical bug is lost between sprints.
 ### Step 2a — Discover bug files
 
 Glob for bug reports in priority order:
-1. `production/qa/bugs/*.md` — individual bug report files (preferred format)
-2. `production/qa/bugs.md` — single consolidated bug log (fallback)
-3. Any `production/qa/qa-plan-*.md` "Bugs Found" table (last resort)
+1. `planning/production/qa/bugs/*.md` — individual bug report files (preferred format)
+2. `planning/production/qa/bugs.md` — single consolidated bug log (fallback)
+3. Any `planning/production/qa/qa-plan-*.md` "Bugs Found" table (last resort)
 
 If no bug files found:
-> "No bug files found in `production/qa/bugs/`. If bugs are tracked in a
+> "No bug files found in `planning/production/qa/bugs/`. If bugs are tracked in a
 > different location, adjust the glob pattern. If no bugs exist yet, there is
 > nothing to triage."
 
@@ -51,7 +51,7 @@ Stop and report. Do not proceed if no bugs exist.
 
 ### Step 2b — Load sprint context
 
-Read the most recently modified file in `production/sprints/` to understand:
+Read the most recently modified file in `planning/production/sprints/` to understand:
 - Current sprint number / name
 - Stories in scope (for assignment target)
 - Sprint capacity constraints (if noted)
@@ -216,7 +216,7 @@ After classifying all bugs, generate trend metrics:
 
 Present the report in conversation, then ask:
 
-"May I write this triage report to `production/qa/bug-triage-[date].md`?"
+"May I write this triage report to `planning/production/qa/bug-triage-[date].md`?"
 
 Write only after approval.
 

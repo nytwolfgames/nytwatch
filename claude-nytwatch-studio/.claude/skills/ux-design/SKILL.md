@@ -15,9 +15,9 @@ Three authoring modes exist based on the argument:
 
 | Argument | Mode | Output file |
 |----------|------|-------------|
-| `hud` | HUD design | `design/ux/hud.md` |
-| `patterns` | Interaction pattern library | `design/ux/interaction-patterns.md` |
-| Any other value (e.g., `main-menu`, `inventory`) | UX spec for a screen or flow | `design/ux/[argument].md` |
+| `hud` | HUD design | `planning/design/ux/hud.md` |
+| `patterns` | Interaction pattern library | `planning/design/ux/interaction-patterns.md` |
+| Any other value (e.g., `main-menu`, `inventory`) | UX spec for a screen or flow | `planning/design/ux/[argument].md` |
 | No argument | Ask the user | (see below) |
 
 **If no argument is provided**, do not fail — ask instead. Use `AskUserQuestion`:
@@ -36,27 +36,27 @@ comes from arriving informed.
 
 ### 2a: Required Reads
 
-- **Game concept**: Read `design/gdd/game-concept.md` — if missing, warn:
+- **Game concept**: Read `planning/design/gdd/game-concept.md` — if missing, warn:
   > "No game concept found. Run `/brainstorm` first to establish the game's
   > foundation before designing UX."
   > Continue anyway if the user asks.
 
 ### 2b: Player Journey
 
-Read `design/player-journey.md` if it exists. For each relevant section, extract:
+Read `planning/design/player-journey.md` if it exists. For each relevant section, extract:
 - Which journey phase(s) does this screen appear in?
 - What is the player's emotional state on arrival at this screen?
 - What player need is this screen serving in the journey?
 - What critical moments (from the journey map) does this screen deliver?
 
 If the player journey file does not exist, note the gap and proceed:
-> "No player journey map found at `design/player-journey.md`. Designing without it
+> "No player journey map found at `planning/design/player-journey.md`. Designing without it
 > means we'll be making assumptions about player context. Consider running a player
 > journey session after this spec is drafted."
 
 ### 2c: GDD UI Requirements
 
-Glob `design/gdd/*.md` and grep for `UI Requirements` sections. Read any GDD whose
+Glob `planning/design/gdd/*.md` and grep for `UI Requirements` sections. Read any GDD whose
 UI Requirements section references this screen by name or category.
 
 These GDD UI Requirements are the **requirements input** to this spec. Collect them
@@ -67,25 +67,25 @@ requirements from every system.
 
 ### 2d: Existing UX Specs
 
-Glob `design/ux/*.md` and note which screens already have specs. For screens that
+Glob `planning/design/ux/*.md` and note which screens already have specs. For screens that
 will link to or from the current screen, read their navigation/flow sections to
 find the entry and exit points this spec must match.
 
 ### 2e: Interaction Pattern Library
 
-If `design/ux/interaction-patterns.md` exists, read the pattern catalog index
+If `planning/design/ux/interaction-patterns.md` exists, read the pattern catalog index
 (the list of pattern names and their one-line descriptions). Do not read full
 pattern details — just the catalog. This tells you which patterns already exist
 so you can reference them rather than reinvent them.
 
 ### 2f: Art Bible
 
-Check for `design/art/art-bible.md`. If found, read the visual direction
+Check for `planning/design/art/art-bible.md`. If found, read the visual direction
 section. UX layout must align with the aesthetic commitments already made.
 
 ### 2g: Accessibility Requirements
 
-Check for `design/accessibility-requirements.md`. If found, read it. The spec
+Check for `planning/design/accessibility-requirements.md`. If found, read it. The spec
 must satisfy the accessibility tier committed to there.
 
 ### 2h: Input Method (from Project Config)
@@ -130,14 +130,14 @@ Then ask: "Anything else I should read before we start, or shall we proceed?"
 
 Before creating a skeleton, check if the target output file already exists.
 
-Glob `design/ux/[filename].md` (where `[filename]` is the resolved output path from Phase 1).
+Glob `planning/design/ux/[filename].md` (where `[filename]` is the resolved output path from Phase 1).
 
 **If the file exists — retrofit mode:**
 - Read the file in full
 - For each expected section, check whether the body has real content (more than a `[To be designed]` placeholder) or is empty/placeholder
 - Present a section status summary to the user:
 
-> "Found existing UX spec at `design/ux/[filename].md`. Here's what's already done:
+> "Found existing UX spec at `planning/design/ux/[filename].md`. Here's what's already done:
 >
 > | Section | Status |
 > |---------|--------|
@@ -166,7 +166,7 @@ Proceed to Phase 3 (Create File Skeleton) as normal.
 Once the user confirms, **immediately** create the output file with empty section
 headers. This ensures incremental writes have a target and work survives interruptions.
 
-Ask: "May I create the skeleton file at `design/ux/[filename].md`?"
+Ask: "May I create the skeleton file at `planning/design/ux/[filename].md`?"
 
 ---
 
@@ -392,10 +392,10 @@ Ask: "May I create the skeleton file at `design/ux/[filename].md`?"
 
 ---
 
-After writing the skeleton, update `production/session-state/active.md` with:
+After writing the skeleton, update `planning/production/session-state/active.md` with:
 - Task: Designing [screen/flow name] UX spec
 - Current section: Starting (skeleton created)
-- File: design/ux/[filename].md
+- File: planning/design/ux/[filename].md
 
 ---
 
@@ -420,7 +420,7 @@ Context  ->  Questions  ->  Options  ->  Decision  ->  Draft  ->  Approval  ->  
 7. **Write**: Use `Edit` to replace the `[To be designed]` placeholder with approved
    content. Confirm the write.
 
-After writing each section, update `production/session-state/active.md`.
+After writing each section, update `planning/production/session-state/active.md`.
 
 ---
 
@@ -621,7 +621,7 @@ Present the data requirements as a table:
 
 #### Section G: Accessibility
 
-Cross-reference `design/accessibility-requirements.md` if it exists.
+Cross-reference `planning/design/accessibility-requirements.md` if it exists.
 
 Walk through the ux-designer agent's standard checklist for this screen:
 - Keyboard-only navigation path through all interactive elements
@@ -774,7 +774,7 @@ Pattern library authoring is additive and catalog-driven, not linear.
 
 #### Phase 1: Catalog Existing Patterns
 
-Glob `design/ux/*.md` (excluding `interaction-patterns.md`) and read the Component
+Glob `planning/design/ux/*.md` (excluding `interaction-patterns.md`) and read the Component
 Inventory and Interaction Map sections of each spec. Extract every interaction
 pattern used.
 
@@ -846,7 +846,7 @@ it for addition to the pattern library:
 navigation map in any related specs? Flag mismatches.
 
 **4. Accessibility coverage**: Does the spec address the accessibility tier
-committed to in `design/accessibility-requirements.md`? If not, flag open questions.
+committed to in `planning/design/accessibility-requirements.md`? If not, flag open questions.
 
 **5. Empty states**: Does every data-dependent element have an empty state defined?
 Flag any that don't.
@@ -867,10 +867,10 @@ When all sections are approved and written:
 
 ### 6a: Update Session State
 
-Update `production/session-state/active.md` with:
+Update `planning/production/session-state/active.md` with:
 - Task: [screen-name] UX spec
 - Status: Complete (or In Review)
-- File: design/ux/[filename].md
+- File: planning/design/ux/[filename].md
 - Sections: All written
 - Next: [suggestion]
 
@@ -904,9 +904,9 @@ this spec. Do not edit those files without asking — just name them.
 
 If the session is interrupted (compaction, crash, new session):
 
-1. Read `production/session-state/active.md` — it records the current screen
+1. Read `planning/production/session-state/active.md` — it records the current screen
    and which sections are complete.
-2. Read `design/ux/[filename].md` — sections with real content are done;
+2. Read `planning/design/ux/[filename].md` — sections with real content are done;
    sections with `[To be designed]` still need work.
 3. Resume from the next incomplete section — no need to re-discuss completed ones.
 

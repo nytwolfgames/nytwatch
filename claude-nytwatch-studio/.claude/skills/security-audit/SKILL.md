@@ -21,7 +21,7 @@ remediation plan.
 - After implementing any system that reads from disk or network
 - When a security-related bug is reported
 
-**Output:** `production/security/security-audit-[date].md`
+**Output:** `planning/production/security/security-audit-[date].md`
 
 ---
 
@@ -216,7 +216,7 @@ The Polish → Release gate requires this report with no open CRITICAL or HIGH i
 
 Present the report summary (executive summary + CRITICAL/HIGH findings only) in conversation.
 
-Ask: "May I write the full security audit report to `production/security/security-audit-[date].md`?"
+Ask: "May I write the full security audit report to `planning/production/security/security-audit-[date].md`?"
 
 Write only after approval.
 
@@ -232,7 +232,7 @@ If CRITICAL findings exist:
 > "⛔ CRITICAL security findings must be resolved before any public release. Do not proceed to `/launch-checklist` until these are addressed."
 
 If no CRITICAL/HIGH findings:
-> "✅ No blocking security findings. Report written to `production/security/`. Include this path when running `/gate-check release`."
+> "✅ No blocking security findings. Report written to `planning/production/security/`. Include this path when running `/gate-check release`."
 
 ---
 

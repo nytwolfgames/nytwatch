@@ -24,10 +24,10 @@
 #             /architecture-review (data structure and interface validation)
 #
 # SEARCH PATTERNS (for skills using Grep):
-#   All entity names:        Grep pattern="^  - name:" path="design/registry/entities.yaml"
-#   Specific entity:         Grep pattern="  - name: goblin" path="design/registry/entities.yaml"
-#   All items:               Grep pattern="^  - name:" path="design/registry/entities.yaml" (items section)
-#   What combat.md owns:     Grep pattern="source: design/gdd/combat.md"
+#   All entity names:        Grep pattern="^  - name:" path="planning/design/registry/entities.yaml"
+#   Specific entity:         Grep pattern="  - name: goblin" path="planning/design/registry/entities.yaml"
+#   All items:               Grep pattern="^  - name:" path="planning/design/registry/entities.yaml" (items section)
+#   What combat.md owns:     Grep pattern="source: planning/design/gdd/combat.md"
 #   What inventory.md uses:  Grep pattern="referenced_by.*inventory"
 #   All gold values:          Grep pattern="value_gold:"
 #   Deprecated entries:      Grep pattern="status: deprecated"
@@ -55,10 +55,10 @@ entities: []
 # entities:
 #   - name: goblin
 #     status: active              # active | deprecated
-#     source: design/gdd/combat.md
+#     source: planning/design/gdd/combat.md
 #     referenced_by:
-#       - design/gdd/combat.md
-#       - design/gdd/inventory.md
+#       - planning/design/gdd/combat.md
+#       - planning/design/gdd/inventory.md
 #     health: 40
 #     damage: 8
 #     drops:
@@ -84,11 +84,11 @@ items: []
 # items:
 #   - name: goblin_arm
 #     status: active
-#     source: design/gdd/combat.md   # drop defined in combat GDD
+#     source: planning/design/gdd/combat.md   # drop defined in combat GDD
 #     referenced_by:
-#       - design/gdd/combat.md
-#       - design/gdd/inventory.md    # inventory GDD lists its weight/stack rules
-#       - design/gdd/economy.md      # economy GDD references its sell price
+#       - planning/design/gdd/combat.md
+#       - planning/design/gdd/inventory.md    # inventory GDD lists its weight/stack rules
+#       - planning/design/gdd/economy.md      # economy GDD references its sell price
 #     value_gold: 5
 #     weight: 1
 #     stackable: true
@@ -113,10 +113,10 @@ formulas: []
 # formulas:
 #   - name: damage_formula
 #     status: active
-#     source: design/gdd/combat.md
+#     source: planning/design/gdd/combat.md
 #     referenced_by:
-#       - design/gdd/combat.md
-#       - design/gdd/progression.md   # progression GDD scales attack variable
+#       - planning/design/gdd/combat.md
+#       - planning/design/gdd/progression.md   # progression GDD scales attack variable
 #     variables:
 #       - attack
 #       - defense
@@ -146,11 +146,11 @@ constants: []
 # constants:
 #   - name: gold_carry_limit
 #     status: active
-#     source: design/gdd/economy.md
+#     source: planning/design/gdd/economy.md
 #     referenced_by:
-#       - design/gdd/economy.md
-#       - design/gdd/inventory.md   # inventory enforces the carry limit
-#       - design/gdd/ui.md          # HUD displays current gold vs limit
+#       - planning/design/gdd/economy.md
+#       - planning/design/gdd/inventory.md   # inventory enforces the carry limit
+#       - planning/design/gdd/ui.md          # HUD displays current gold vs limit
 #     value: 9999
 #     unit: gold
 #     added: 2026-03-26
@@ -158,10 +158,10 @@ constants: []
 #
 #   - name: base_inventory_slots
 #     status: active
-#     source: design/gdd/inventory.md
+#     source: planning/design/gdd/inventory.md
 #     referenced_by:
-#       - design/gdd/inventory.md
-#       - design/gdd/progression.md  # progression unlocks additional slots
+#       - planning/design/gdd/inventory.md
+#       - planning/design/gdd/progression.md  # progression unlocks additional slots
 #     value: 20
 #     unit: slots
 #     added: 2026-03-26

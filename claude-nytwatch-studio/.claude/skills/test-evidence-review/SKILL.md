@@ -13,7 +13,7 @@ goes further — it reviews the **quality** of those tests and evidence document
 A test file that exists and passes may still leave critical behaviour uncovered.
 A manual evidence doc that exists may lack the sign-offs required for closure.
 
-**Output:** Summary report (in conversation) + optional `production/qa/evidence-review-[date].md`
+**Output:** Summary report (in conversation) + optional `planning/production/qa/evidence-review-[date].md`
 
 **When to run:**
 - Before QA hand-off sign-off (`/team-qa` Phase 5)
@@ -39,10 +39,10 @@ Based on the argument:
 **Single story**: Read the story file directly. Extract: Story Type, Test
 Evidence section, story slug, system name.
 
-**Sprint**: Read the most recently modified file in `production/sprints/`.
+**Sprint**: Read the most recently modified file in `planning/production/sprints/`.
 Extract the list of story file paths from the sprint plan. Read each story file.
 
-**System**: Glob `production/epics/[system-name]/story-*.md`. Read each.
+**System**: Glob `planning/production/epics/[system-name]/story-*.md`. Read each.
 
 For each story, collect:
 - `Type:` field (Logic / Integration / Visual/Feel / UI / Config/Data)
@@ -62,11 +62,11 @@ For each story, find the evidence:
     containing the story slug
 
 **Integration stories**: Glob `tests/integration/[system]/[story-slug]_test.*`
-  - Also check `production/session-logs/` for playtest records mentioning the story
+  - Also check `planning/production/session-logs/` for playtest records mentioning the story
 
-**Visual/Feel and UI stories**: Glob `production/qa/evidence/[story-slug]-evidence.*`
+**Visual/Feel and UI stories**: Glob `planning/production/qa/evidence/[story-slug]-evidence.*`
 
-**Config/Data stories**: Glob `production/qa/smoke-*.md` (any smoke check report)
+**Config/Data stories**: Glob `planning/production/qa/smoke-*.md` (any smoke check report)
 
 Note what was found (path) or not found (gap) for each story.
 
@@ -221,7 +221,7 @@ The overall sprint/system verdict is the worst story verdict present.
 Present the report in conversation.
 
 Ask: "May I write this test evidence review to
-`production/qa/evidence-review-[date].md`?"
+`planning/production/qa/evidence-review-[date].md`?"
 
 This is optional — the report is useful standalone. Write only if the user
 wants a persistent record.

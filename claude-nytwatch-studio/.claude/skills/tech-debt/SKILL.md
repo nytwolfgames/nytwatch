@@ -42,7 +42,7 @@ Categorize each finding:
 
 Present the findings to the user.
 
-Ask: "May I write these findings to `docs/tech-debt-register.md`?"
+Ask: "May I write these findings to `planning/docs/tech-debt-register.md`?"
 
 If yes, update the register (append new entries, do not overwrite existing ones). Verdict: **COMPLETE** — scan findings written to register.
 
@@ -56,7 +56,7 @@ Prompt for: description, category, affected files, estimated fix effort, impact 
 
 Present the new entry to the user.
 
-Ask: "May I append this entry to `docs/tech-debt-register.md`?"
+Ask: "May I append this entry to `planning/docs/tech-debt-register.md`?"
 
 If yes, append the entry. Verdict: **COMPLETE** — entry added to register.
 
@@ -66,7 +66,7 @@ If no, stop here. Verdict: **BLOCKED** — user declined write.
 
 ## Phase 2C: Prioritize Mode
 
-Read the debt register at `docs/tech-debt-register.md`.
+Read the debt register at `planning/docs/tech-debt-register.md`.
 
 Score each item by: `(impact_if_unfixed × frequency_of_encounter) / fix_effort`
 
@@ -74,7 +74,7 @@ Re-sort the register by priority score and recommend which items to include in t
 
 Present the re-prioritized register to the user.
 
-Ask: "May I write the re-prioritized register back to `docs/tech-debt-register.md`?"
+Ask: "May I write the re-prioritized register back to `planning/docs/tech-debt-register.md`?"
 
 If yes, write the updated file. Verdict: **COMPLETE** — register re-prioritized and saved.
 

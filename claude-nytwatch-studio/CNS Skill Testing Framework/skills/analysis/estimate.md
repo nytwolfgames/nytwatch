@@ -33,14 +33,14 @@ None. Estimation is an advisory informational skill; no gates are invoked.
 ### Case 1: Happy Path — Clear story with known tech stack
 
 **Fixture:**
-- `production/epics/combat/story-hitbox-detection.md` exists with:
+- `planning/production/epics/combat/story-hitbox-detection.md` exists with:
   - 4 clear Acceptance Criteria
   - ADR reference (Accepted status)
   - No "unknown" or "TBD" language in story body
-- `production/sprints/sprint-003.md` through `sprint-005.md` exist with velocity data
+- `planning/production/sprints/sprint-003.md` through `sprint-005.md` exist with velocity data
 - Tech stack is GDScript (well-understood by team per sprint history)
 
-**Input:** `/estimate production/epics/combat/story-hitbox-detection.md`
+**Input:** `/estimate planning/production/epics/combat/story-hitbox-detection.md`
 
 **Expected behavior:**
 1. Skill reads the story file — assesses clarity, AC count, tech stack
@@ -59,12 +59,12 @@ None. Estimation is an advisory informational skill; no gates are invoked.
 ### Case 2: High Uncertainty — Unknown system, no ADR yet
 
 **Fixture:**
-- `production/epics/online/story-lobby-matchmaking.md` exists with:
+- `planning/production/epics/online/story-lobby-matchmaking.md` exists with:
   - 2 vague Acceptance Criteria (using "should" and "TBD")
   - No ADR reference — matchmaking architecture not yet decided
   - References new subsystem ("online/matchmaking") with no existing source files
 
-**Input:** `/estimate production/epics/online/story-lobby-matchmaking.md`
+**Input:** `/estimate planning/production/epics/online/story-lobby-matchmaking.md`
 
 **Expected behavior:**
 1. Skill reads story — finds vague AC, no ADR, no existing source
@@ -84,9 +84,9 @@ None. Estimation is an advisory informational skill; no gates are invoked.
 
 **Fixture:**
 - Story file exists and is well-defined
-- `production/sprints/` is empty — no historical sprints
+- `planning/production/sprints/` is empty — no historical sprints
 
-**Input:** `/estimate production/epics/core/story-save-load.md`
+**Input:** `/estimate planning/production/epics/core/story-save-load.md`
 
 **Expected behavior:**
 1. Skill reads story — assesses complexity
@@ -106,10 +106,10 @@ None. Estimation is an advisory informational skill; no gates are invoked.
 ### Case 4: Multiple Stories — Each estimated individually plus sprint total
 
 **Fixture:**
-- User provides a sprint file: `production/sprints/sprint-007.md` with 4 stories
+- User provides a sprint file: `planning/production/sprints/sprint-007.md` with 4 stories
 - Sprint history exists (3 previous sprints)
 
-**Input:** `/estimate production/sprints/sprint-007.md`
+**Input:** `/estimate planning/production/sprints/sprint-007.md`
 
 **Expected behavior:**
 1. Skill reads sprint file — identifies 4 stories
@@ -132,7 +132,7 @@ None. Estimation is an advisory informational skill; no gates are invoked.
 - Story file exists with medium complexity
 - `review-mode.txt` contains `full`
 
-**Input:** `/estimate production/epics/core/story-item-pickup.md`
+**Input:** `/estimate planning/production/epics/core/story-item-pickup.md`
 
 **Expected behavior:**
 1. Skill reads story and sprint history; computes estimate

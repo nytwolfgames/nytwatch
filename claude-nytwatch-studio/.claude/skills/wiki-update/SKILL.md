@@ -16,7 +16,7 @@ based on recent commits or a specific area.
 
 ## Phase 1: Check for Pending Update
 
-Read `production/wiki/.pending-update.md`.
+Read `planning/production/wiki/.pending-update.md`.
 
 If it exists:
 - Note the list of changed files
@@ -32,7 +32,7 @@ If it does not exist:
 
 ## Phase 2: Map Files to Wiki Sections
 
-Read `production/wiki/_index.md`.
+Read `planning/production/wiki/_index.md`.
 
 For each changed file, find the matching wiki section using the routing table.
 Build a list of:
@@ -77,9 +77,9 @@ Write each updated wiki section using the Write or Edit tool.
 
 ## Phase 5: Clean Up
 
-If `production/wiki/.pending-update.md` exists, delete it:
+If `planning/production/wiki/.pending-update.md` exists, delete it:
 ```bash
-rm production/wiki/.pending-update.md
+rm planning/production/wiki/.pending-update.md
 ```
 
 ---

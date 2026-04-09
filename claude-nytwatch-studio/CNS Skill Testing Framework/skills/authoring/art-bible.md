@@ -42,18 +42,18 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 1: Happy Path — Full mode, art bible drafted, AD-ART-BIBLE approves
 
 **Fixture:**
-- No existing `design/art-bible.md`
-- `production/session-state/review-mode.txt` contains `full`
-- `design/gdd/game-concept.md` exists with visual tone described
+- No existing `planning/design/art-bible.md`
+- `planning/production/session-state/review-mode.txt` contains `full`
+- `planning/design/gdd/game-concept.md` exists with visual tone described
 
 **Input:** `/art-bible`
 
 **Expected behavior:**
-1. Skill creates skeleton `design/art-bible.md` with all section headers
+1. Skill creates skeleton `planning/design/art-bible.md` with all section headers
 2. Skill discusses and drafts each section with user collaboration
 3. After all sections are drafted, AD-ART-BIBLE gate is invoked (art director review)
 4. AD-ART-BIBLE returns APPROVED
-5. Skill asks "May I write section [N] to `design/art-bible.md`?" per section
+5. Skill asks "May I write section [N] to `planning/design/art-bible.md`?" per section
 6. All sections written after approval; verdict is COMPLETE
 
 **Assertions:**
@@ -69,7 +69,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Fixture:**
 - Art bible draft complete
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - AD-ART-BIBLE gate returns CONCERNS: "Color palette clashes with the dark
   atmospheric tone described in the game concept"
 
@@ -95,7 +95,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Fixture:**
 - No existing art bible
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Input:** `/art-bible`
 
@@ -117,7 +117,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 4: Existing Art Bible — Retrofit Mode
 
 **Fixture:**
-- `design/art-bible.md` already exists with all sections populated
+- `planning/design/art-bible.md` already exists with all sections populated
 - User wants to update the Character Design Rules section
 
 **Input:** `/art-bible`
@@ -128,7 +128,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 3. User selects Character Design Rules
 4. Skill drafts updated content; in full mode, AD-ART-BIBLE is invoked for the
    revised section before writing
-5. Skill asks "May I write Character Design Rules to `design/art-bible.md`?"
+5. Skill asks "May I write Character Design Rules to `planning/design/art-bible.md`?"
 6. Only that section is updated; other sections preserved; verdict is COMPLETE
 
 **Assertions:**
@@ -144,7 +144,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Fixture:**
 - No existing art bible
-- `production/session-state/review-mode.txt` contains `solo`
+- `planning/production/session-state/review-mode.txt` contains `solo`
 
 **Input:** `/art-bible`
 

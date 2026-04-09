@@ -13,7 +13,7 @@ No gate IDs assigned.
 - [ ] `description:` field is present and domain-specific (references Godot shading language / materials / post-processing)
 - [ ] `allowed-tools:` list includes Read, Write, Edit, Glob, Grep
 - [ ] Model tier is Sonnet (default for specialists)
-- [ ] Agent definition references `docs/engine-reference/godot/VERSION.md` as the authoritative source for Godot shader API changes
+- [ ] Agent definition references `planning/docs/engine-reference/godot/VERSION.md` as the authoritative source for Godot shader API changes
 
 ---
 
@@ -79,6 +79,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Dissolve shader (Case 1) should be paired with a visual test screenshot in `production/qa/evidence/`
+- Dissolve shader (Case 1) should be paired with a visual test screenshot in `planning/production/qa/evidence/`
 - Texture API flag (Case 3) confirms the agent checks VERSION.md before using APIs that changed post-4.3
 - Glow rework (Case 5) is a Godot 4.6-specific test — verifies the agent applies the most recent migration notes

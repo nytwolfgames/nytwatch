@@ -55,19 +55,19 @@ See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for full protocol and examples.
 
 ## LLM Wiki
 
-The project maintains a living knowledge base in `production/wiki/`.
+The project maintains a living knowledge base in `planning/production/wiki/`.
 Read relevant wiki sections at the start of any task touching a known subsystem.
 
 | Section | When to read |
 |---|---|
-| `production/wiki/architecture.md` | Any task touching routes, data model, or module structure |
-| `production/wiki/conventions.md` | Any Python authoring task |
-| `production/wiki/decisions.md` | Before proposing architectural changes |
-| `production/wiki/known-gotchas.md` | Before touching routes, modals, or markdown writer |
-| `production/wiki/features/tracker.md` | Any tracker feature work |
-| `production/wiki/features/auditor.md` | Any auditor feature work |
-| `production/wiki/features/project-management.md` | Any PM feature work (sprints, stories, sub-tasks) |
-| `production/wiki/features/settings.md` | Any settings or configuration work |
+| `planning/production/wiki/architecture.md` | Any task touching routes, data model, or module structure |
+| `planning/production/wiki/conventions.md` | Any Python authoring task |
+| `planning/production/wiki/decisions.md` | Before proposing architectural changes |
+| `planning/production/wiki/known-gotchas.md` | Before touching routes, modals, or markdown writer |
+| `planning/production/wiki/features/tracker.md` | Any tracker feature work |
+| `planning/production/wiki/features/auditor.md` | Any auditor feature work |
+| `planning/production/wiki/features/project-management.md` | Any PM feature work (sprints, stories, sub-tasks) |
+| `planning/production/wiki/features/settings.md` | Any settings or configuration work |
 
 **Wiki is queued automatically**: The Stop hook writes a pending update at session end.
 Run `/wiki-update` to apply the queued changes after any significant session.

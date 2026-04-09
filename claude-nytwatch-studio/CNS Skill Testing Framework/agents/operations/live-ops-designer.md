@@ -11,7 +11,7 @@
 ## Static Assertions (Structural)
 
 - [ ] `description:` field is present and domain-specific (references live ops, seasonal events, battle pass, retention)
-- [ ] `allowed-tools:` list matches the agent's role (Read/Write for design/live-ops/ documents; no code or analytics tools)
+- [ ] `allowed-tools:` list matches the agent's role (Read/Write for planning/design/live-ops/ documents; no code or analytics tools)
 - [ ] Model tier is Sonnet (default for design specialists)
 - [ ] Agent definition does not claim authority over economy math, analytics pipelines, or narrative direction
 

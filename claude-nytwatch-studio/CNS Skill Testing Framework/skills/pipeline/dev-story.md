@@ -46,17 +46,17 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 ### Case 1: Happy Path — Story implemented and marked Complete (full mode)
 
 **Fixture:**
-- A story file exists at `production/epics/[layer]/story-[name].md` with:
+- A story file exists at `planning/production/epics/[layer]/story-[name].md` with:
   - `Status: Ready`
   - A TR-ID referencing a registered requirement
   - At least 2 Given-When-Then acceptance criteria
   - A test evidence path
 - Referenced ADR has `Status: Accepted`
-- `docs/architecture/control-manifest.md` exists
+- `planning/docs/architecture/control-manifest.md` exists
 - `.claude/docs/technical-preferences.md` has engine and language configured
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 
-**Input:** `/dev-story production/epics/[layer]/story-[name].md`
+**Input:** `/dev-story planning/production/epics/[layer]/story-[name].md`
 
 **Expected behavior:**
 1. Skill reads the story file and all referenced context
@@ -84,7 +84,7 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 - A story file exists with `Status: Ready`
 - The story's TR-ID points to a requirement covered by an ADR with `Status: Proposed`
 
-**Input:** `/dev-story production/epics/[layer]/story-[name].md`
+**Input:** `/dev-story planning/production/epics/[layer]/story-[name].md`
 
 **Expected behavior:**
 1. Skill reads the story file
@@ -109,7 +109,7 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 - Referenced ADR is Accepted
 - One acceptance criterion is ambiguous (not Given-When-Then; uses subjective language like "feels responsive")
 
-**Input:** `/dev-story production/epics/[layer]/story-[name].md`
+**Input:** `/dev-story planning/production/epics/[layer]/story-[name].md`
 
 **Expected behavior:**
 1. Skill reads the story and identifies the ambiguous criterion
@@ -130,14 +130,14 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 
 **Fixture:**
 - No argument is provided
-- `production/session-state/active.md` references an active story file
+- `planning/production/session-state/active.md` references an active story file
 - That story file exists with `Status: In Progress`
 
 **Input:** `/dev-story` (no argument)
 
 **Expected behavior:**
 1. Skill detects no argument is provided
-2. Skill reads `production/session-state/active.md`
+2. Skill reads `planning/production/session-state/active.md`
 3. Skill finds the active story reference
 4. Skill confirms with user: "Continuing work on [story title] — is that correct?"
 5. After confirmation, skill proceeds with that story
@@ -154,7 +154,7 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 
 **Fixture (full mode):**
 - Story is implemented and all criteria appear met
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - LP-CODE-REVIEW gate returns NEEDS CHANGES with specific feedback
 
 **Full mode expected behavior:**
@@ -169,7 +169,7 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 - [ ] Story status stays In Progress until issues are resolved and gate passes
 
 **Fixture (lean mode):**
-- Same story, `production/session-state/review-mode.txt` contains `lean`
+- Same story, `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Lean mode expected behavior:**
 1. Implementation completes
@@ -190,7 +190,7 @@ In `solo` mode: LP-CODE-REVIEW is skipped with equivalent notes.
 - [ ] Reads all context (story, TR-ID, ADR, manifest, engine prefs) before implementation
 - [ ] "May I write" asked before updating story status and before writing code files
 - [ ] Skipped gates noted by name and mode in output
-- [ ] Updates `production/session-state/active.md` after story completion
+- [ ] Updates `planning/production/session-state/active.md` after story completion
 - [ ] Ends with next-step handoff: `/story-done`
 
 ---

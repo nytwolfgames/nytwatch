@@ -8,7 +8,7 @@ acceptance criterion against the implementation. It checks for GDD and ADR
 deviations, prompts a code review, updates the story status to `Complete`,
 logs any tech debt, and surfaces the next ready story from the sprint. It
 produces a COMPLETE / COMPLETE WITH NOTES / BLOCKED verdict and writes to
-the story file and optionally to `docs/tech-debt-register.md`.
+the story file and optionally to `planning/docs/tech-debt-register.md`.
 
 ---
 
@@ -29,16 +29,16 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 1: Happy Path — All acceptance criteria met, no deviations
 
 **Fixture:**
-- Story file at `production/epics/core/story-light-pickup.md` with:
+- Story file at `planning/production/epics/core/story-light-pickup.md` with:
   - 3 acceptance criteria, all implemented as described
   - `TR-ID: TR-light-001` referencing a GDD requirement
-  - `ADR: docs/architecture/adr-003-inventory.md` (Accepted)
+  - `ADR: planning/docs/architecture/adr-003-inventory.md` (Accepted)
   - `Status: In Progress`
 - Implementation files listed in story exist in `src/`
 - GDD requirement text at TR-light-001 matches how the feature was implemented
 - ADR guidance was followed (no deviations)
 
-**Input:** `/story-done production/epics/core/story-light-pickup.md`
+**Input:** `/story-done planning/production/epics/core/story-light-pickup.md`
 
 **Expected behavior:**
 1. Skill reads the story file and extracts all key fields
@@ -54,14 +54,14 @@ Verified automatically by `/skill-test static` — no fixture needed.
 11. Skill surfaces the next `Ready for Dev` story from the sprint
 
 **Assertions:**
-- [ ] Skill reads `docs/architecture/tr-registry.yaml` for TR-ID requirement text (not just story)
+- [ ] Skill reads `planning/docs/architecture/tr-registry.yaml` for TR-ID requirement text (not just story)
 - [ ] Skill reads the referenced ADR file (not just the story reference)
 - [ ] Each acceptance criterion is listed with VERIFIED / DEFERRED / FAILED status
 - [ ] Skill prompts the user for code review outcome (does not skip this step)
 - [ ] Verdict is COMPLETE when all criteria are verified and no deviations exist
 - [ ] Skill asks "May I write" before updating the story file
 - [ ] Skill does NOT auto-update story status without user confirmation
-- [ ] After completion, skill surfaces the next ready story from `production/sprints/`
+- [ ] After completion, skill surfaces the next ready story from `planning/production/sprints/`
 
 ---
 
@@ -73,7 +73,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - Manual verification has not been performed
 - All other criteria are met
 
-**Input:** `/story-done production/epics/core/story-light-pickup.md`
+**Input:** `/story-done planning/production/epics/core/story-light-pickup.md`
 
 **Expected behavior:**
 1. Skill processes all acceptance criteria
@@ -99,7 +99,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - Implementation in `src/` uses a variable `MAX_CARRIED_LIGHTS = 5`
 - This is a deliberate deviation from the GDD
 
-**Input:** `/story-done production/epics/core/story-light-pickup.md`
+**Input:** `/story-done planning/production/epics/core/story-light-pickup.md`
 
 **Expected behavior:**
 1. Skill reads the GDD requirement text (max 3)
@@ -123,20 +123,20 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 4: Edge Case — No argument, auto-detect current story
 
 **Fixture:**
-- `production/session-state/active.md` contains a reference to
-  `production/epics/core/story-oxygen-drain.md` as the active story
+- `planning/production/session-state/active.md` contains a reference to
+  `planning/production/epics/core/story-oxygen-drain.md` as the active story
 - That story file exists with `Status: In Progress`
 
 **Input:** `/story-done` (no argument)
 
 **Expected behavior:**
-1. Skill reads `production/session-state/active.md`
+1. Skill reads `planning/production/session-state/active.md`
 2. Skill finds the active story reference
 3. Skill reads that story file and proceeds normally
 4. Output confirms which story was auto-detected
 
 **Assertions:**
-- [ ] Skill reads `production/session-state/active.md` when no argument is given
+- [ ] Skill reads `planning/production/session-state/active.md` when no argument is given
 - [ ] Skill identifies and confirms the auto-detected story before proceeding
 - [ ] If no story is found in session state, skill asks the user to provide a path
 
@@ -147,14 +147,14 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 5: Director Gate — LP-CODE-REVIEW behavior across review modes
 
 **Fixture:**
-- Story file at `production/epics/core/story-light-pickup.md`
+- Story file at `planning/production/epics/core/story-light-pickup.md`
 - All acceptance criteria verified, no GDD deviations
-- `production/session-state/review-mode.txt` exists
+- `planning/production/session-state/review-mode.txt` exists
 
 **Case 5a — full mode:**
 - `review-mode.txt` contains `full`
 
-**Input:** `/story-done production/epics/core/story-light-pickup.md` (full mode)
+**Input:** `/story-done planning/production/epics/core/story-light-pickup.md` (full mode)
 
 **Expected behavior:**
 1. Skill reads review mode — determines `full`
@@ -189,7 +189,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ## Protocol Compliance
 
 - [ ] Uses "May I write" before updating the story file
-- [ ] Uses "May I write" before adding entries to `docs/tech-debt-register.md`
+- [ ] Uses "May I write" before adding entries to `planning/docs/tech-debt-register.md`
 - [ ] Presents complete findings (criteria check, deviation check) before asking approval
 - [ ] Ends by surfacing the next ready story from the sprint plan
 - [ ] Does not mark a story Complete if any criteria are in ERROR state
@@ -201,7 +201,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 - The full 8-phase flow of the skill is exercised across Cases 1-3; not all
   edge cases within each phase are covered.
-- Tech debt logging (deferred items written to `docs/tech-debt-register.md`)
+- Tech debt logging (deferred items written to `planning/docs/tech-debt-register.md`)
   is mentioned in Case 2 but not the primary assertion focus; dedicated
   coverage deferred.
 - The `sprint-status.yaml` update (Phase 7 in the skill) is implied by Case 1

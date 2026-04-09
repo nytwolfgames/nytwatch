@@ -41,7 +41,7 @@ phases:
         command: /brainstorm
         required: true
         artifact:
-          glob: "design/gdd/game-concept.md"
+          glob: "planning/design/gdd/game-concept.md"
         description: "Formalize concept with pillars, MDA analysis, and scope tiers"
 
       - id: design-review-concept
@@ -55,7 +55,7 @@ phases:
         command: /art-bible
         required: true
         artifact:
-          glob: "design/art/art-bible.md"
+          glob: "planning/design/art/art-bible.md"
         description: "Author the visual identity specification (9 sections). Uses the Visual Identity Anchor produced by /brainstorm. Run after game concept is formed, before systems design."
 
       - id: map-systems
@@ -63,7 +63,7 @@ phases:
         command: /map-systems
         required: true
         artifact:
-          glob: "design/gdd/systems-index.md"
+          glob: "planning/design/gdd/systems-index.md"
         description: "Decompose concept into systems with dependency ordering and priority tiers"
 
   systems-design:
@@ -77,7 +77,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          note: "Check design/gdd/systems-index.md — each MVP system needs Status: Approved"
+          note: "Check planning/design/gdd/systems-index.md — each MVP system needs Status: Approved"
         description: "Author per-system GDDs (guided, section-by-section). Run once per system."
 
       - id: design-review
@@ -92,7 +92,7 @@ phases:
         command: /review-all-gdds
         required: true
         artifact:
-          glob: "design/gdd/gdd-cross-review-*.md"
+          glob: "planning/design/gdd/gdd-cross-review-*.md"
         description: "Holistic consistency check + design theory review across all GDDs simultaneously"
 
       - id: consistency-check
@@ -112,7 +112,7 @@ phases:
         command: /create-architecture
         required: true
         artifact:
-          glob: "docs/architecture/architecture.md"
+          glob: "planning/docs/architecture/architecture.md"
         description: "Author the master architecture document covering all systems"
 
       - id: architecture-decision
@@ -121,7 +121,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          glob: "docs/architecture/adr-*.md"
+          glob: "planning/docs/architecture/adr-*.md"
           min_count: 3
         description: "Document key technical decisions as ADRs. Minimum 3 Foundation-layer ADRs required."
 
@@ -130,7 +130,7 @@ phases:
         command: /architecture-review
         required: true
         artifact:
-          glob: "docs/architecture/architecture-review-*.md"
+          glob: "planning/docs/architecture/architecture-review-*.md"
         description: "Validate completeness, dependency ordering, engine compatibility"
 
       - id: control-manifest
@@ -138,14 +138,14 @@ phases:
         command: /create-control-manifest
         required: true
         artifact:
-          glob: "docs/architecture/control-manifest.md"
+          glob: "planning/docs/architecture/control-manifest.md"
         description: "Flat programmer rules sheet generated from all Accepted ADRs"
 
       - id: accessibility-doc
         name: "Accessibility Requirements"
         required: true
         artifact:
-          glob: "design/accessibility-requirements.md"
+          glob: "planning/design/accessibility-requirements.md"
         description: "Commit accessibility tier (Basic/Standard/Comprehensive/Exemplary) and feature matrix. UX specs (Phase 4) reference this tier."
 
   pre-production:
@@ -159,7 +159,7 @@ phases:
         required: false
         repeatable: true
         artifact:
-          glob: "design/assets/asset-manifest.md"
+          glob: "planning/design/assets/asset-manifest.md"
         description: "Generate per-asset visual specifications and AI generation prompts from approved GDDs and level docs. Run once per system/level/character."
 
       - id: ux-design
@@ -168,7 +168,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          glob: "design/ux/*.md"
+          glob: "planning/design/ux/*.md"
           min_count: 1
         description: "Author UX specs for main menu, core gameplay HUD, and interaction patterns. Reads input method and platform from technical-preferences.md."
 
@@ -183,7 +183,7 @@ phases:
         command: /prototype
         required: true
         artifact:
-          glob: "prototypes/*/README.md"
+          glob: "planning/prototypes/*/README.md"
           min_count: 1
         description: "Build throwaway prototypes in isolated worktree to validate core mechanic"
 
@@ -193,7 +193,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          glob: "production/epics/*/EPIC.md"
+          glob: "planning/production/epics/*/EPIC.md"
           min_count: 1
         description: "Translate GDDs + ADRs into epics — one per architectural module. Run per layer: /create-epics layer: foundation, then /create-epics layer: core"
 
@@ -203,7 +203,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          glob: "production/epics/**/*.md"
+          glob: "planning/production/epics/**/*.md"
           min_count: 2
         description: "Break each epic into implementable story files. Run per epic: /create-stories [epic-slug]"
 
@@ -220,7 +220,7 @@ phases:
         command: /sprint-plan
         required: true
         artifact:
-          glob: "production/sprints/sprint-*.md"
+          glob: "planning/production/sprints/sprint-*.md"
           min_count: 1
         description: "Plan the first sprint with prioritized stories from epics"
 
@@ -229,7 +229,7 @@ phases:
         command: /playtest-report
         required: true
         artifact:
-          glob: "production/playtests/*.md"
+          glob: "planning/production/playtests/*.md"
           min_count: 1
         description: "Document vertical slice playtest sessions using /playtest-report. Run at least once here (≥1 session required before Production; ≥3 required before Polish). Each session should cover one complete run-through of the core loop."
 
@@ -244,7 +244,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          glob: "production/sprints/sprint-*.md"
+          glob: "planning/production/sprints/sprint-*.md"
         description: "Plan the current sprint with prioritized, ready stories"
 
       - id: story-readiness
@@ -259,7 +259,7 @@ phases:
         required: true
         repeatable: true
         artifact:
-          note: "Check src/ for active code and production/epics/**/*.md for In Progress stories"
+          note: "Check src/ for active code and planning/production/epics/**/*.md for In Progress stories"
         description: "Pick the next ready story and implement it with /dev-story [story-path]. Routes to the correct programmer agent."
 
       - id: code-review
@@ -309,7 +309,7 @@ phases:
         required: false
         repeatable: true
         artifact:
-          glob: "production/sprints/sprint-*.md"
+          glob: "planning/production/sprints/sprint-*.md"
           note: "Run when stories are added mid-sprint, or before sprint retrospectives"
         description: "Detect scope creep by comparing current sprint scope to original epic scope. Run (a) when stories are added mid-sprint, or (b) before sprint retrospectives."
 
@@ -347,7 +347,7 @@ phases:
         command: /playtest-report
         required: true
         artifact:
-          glob: "production/playtests/*.md"
+          glob: "planning/production/playtests/*.md"
           min_count: 3
         description: "Cover: new player experience, mid-game systems, difficulty curve"
 

@@ -38,7 +38,7 @@ Before proposing any design:
    - Ask about ambiguities rather than assuming
    - Flag potential issues or edge cases for user input
    - Write each section to the file as soon as it's approved
-   - Update `production/session-state/active.md` after each section with:
+   - Update `planning/production/session-state/active.md` after each section with:
      current task, completed sections, key decisions, next section
    - After writing a section, earlier discussion can be safely compacted
 
@@ -82,7 +82,7 @@ they appear in combat GDDs, economy GDDs, and quest GDDs simultaneously.
 Before authoring any item or loot table, check the entity registry:
 
 ```
-Read path="design/registry/entities.yaml"
+Read path="planning/design/registry/entities.yaml"
 ```
 
 Use registered item values (gold value, weight, rarity) as your canonical
@@ -94,7 +94,7 @@ explicitly flagging it as a proposed registry change:
 After completing a loot table or resource flow model, flag all new cross-system
 items for registration:
 > "These items appear in multiple systems. May I add them to
-> `design/registry/entities.yaml`?"
+> `planning/design/registry/entities.yaml`?"
 
 ### Reward Output Format (When Applicable)
 

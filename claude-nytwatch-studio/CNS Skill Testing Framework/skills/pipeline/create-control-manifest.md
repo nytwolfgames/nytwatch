@@ -2,7 +2,7 @@
 
 ## Skill Summary
 
-`/create-control-manifest` reads all Accepted ADRs from `docs/architecture/` and
+`/create-control-manifest` reads all Accepted ADRs from `planning/docs/architecture/` and
 generates a control manifest — a summary document that captures all architectural
 constraints, required patterns, and forbidden patterns in one place. The manifest
 is the reference document that story authors use when writing story files, ensuring
@@ -11,7 +11,7 @@ individually.
 
 The skill only includes Accepted ADRs; Proposed ADRs are excluded and noted. It
 has no director gates. The skill asks "May I write" before writing
-`docs/architecture/control-manifest.md`.
+`planning/docs/architecture/control-manifest.md`.
 
 ---
 
@@ -41,18 +41,18 @@ review gate is needed.
 ### Case 1: Happy Path — 4 Accepted ADRs create a correct manifest
 
 **Fixture:**
-- `docs/architecture/` contains 4 ADR files, all with `Status: Accepted`
+- `planning/docs/architecture/` contains 4 ADR files, all with `Status: Accepted`
 - Each ADR has a "Required Patterns" and/or "Forbidden Patterns" section
-- No existing `docs/architecture/control-manifest.md`
+- No existing `planning/docs/architecture/control-manifest.md`
 
 **Input:** `/create-control-manifest`
 
 **Expected behavior:**
-1. Skill reads all ADR files in `docs/architecture/`
+1. Skill reads all ADR files in `planning/docs/architecture/`
 2. Extracts Required Patterns, Forbidden Patterns, and key constraints from each
 3. Drafts the manifest with correct section structure
 4. Shows the draft manifest to the user
-5. Asks "May I write `docs/architecture/control-manifest.md`?"
+5. Asks "May I write `planning/docs/architecture/control-manifest.md`?"
 6. Writes the manifest after approval
 
 **Assertions:**
@@ -68,12 +68,12 @@ review gate is needed.
 ### Case 2: Failure Path — No ADRs found
 
 **Fixture:**
-- `docs/architecture/` directory exists but contains no ADR files
+- `planning/docs/architecture/` directory exists but contains no ADR files
 
 **Input:** `/create-control-manifest`
 
 **Expected behavior:**
-1. Skill reads `docs/architecture/` and finds no ADR files
+1. Skill reads `planning/docs/architecture/` and finds no ADR files
 2. Skill outputs: "No ADRs found. Run `/architecture-decision` to create ADRs before generating the control manifest."
 3. Skill exits without creating any file
 4. Verdict is BLOCKED
@@ -89,7 +89,7 @@ review gate is needed.
 ### Case 3: Mixed ADR Statuses — Only Accepted ADRs included
 
 **Fixture:**
-- `docs/architecture/` contains 3 Accepted ADRs and 2 Proposed ADRs
+- `planning/docs/architecture/` contains 3 Accepted ADRs and 2 Proposed ADRs
 
 **Input:** `/create-control-manifest`
 
@@ -98,7 +98,7 @@ review gate is needed.
 2. Manifest is drafted from the 3 Accepted ADRs only
 3. Output notes: "2 Proposed ADRs were excluded: [adr-NNN-name, adr-NNN-name]"
 4. User sees which ADRs were excluded before approving the write
-5. Asks "May I write `docs/architecture/control-manifest.md`?"
+5. Asks "May I write `planning/docs/architecture/control-manifest.md`?"
 
 **Assertions:**
 - [ ] Only the 3 Accepted ADRs appear in the manifest content
@@ -111,8 +111,8 @@ review gate is needed.
 ### Case 4: Edge Case — Manifest already exists
 
 **Fixture:**
-- `docs/architecture/control-manifest.md` already exists (version 1, dated last week)
-- `docs/architecture/` contains Accepted ADRs (some new since last manifest)
+- `planning/docs/architecture/control-manifest.md` already exists (version 1, dated last week)
+- `planning/docs/architecture/` contains Accepted ADRs (some new since last manifest)
 
 **Input:** `/create-control-manifest`
 
@@ -120,7 +120,7 @@ review gate is needed.
 1. Skill detects existing manifest and reads its version number / date
 2. Skill offers to regenerate: "control-manifest.md already exists (v1, [date]). Regenerate with current ADRs?"
 3. If user confirms: skill drafts updated manifest, increments version number
-4. Asks "May I write `docs/architecture/control-manifest.md`?" (overwrite)
+4. Asks "May I write `planning/docs/architecture/control-manifest.md`?" (overwrite)
 5. Writes updated manifest after approval
 
 **Assertions:**
@@ -135,20 +135,20 @@ review gate is needed.
 
 **Fixture:**
 - 4 Accepted ADRs exist
-- `production/session-state/review-mode.txt` exists with `full`
+- `planning/production/session-state/review-mode.txt` exists with `full`
 
 **Input:** `/create-control-manifest`
 
 **Expected behavior:**
 1. Skill reads ADRs and drafts manifest
-2. Skill does NOT read `production/session-state/review-mode.txt`
+2. Skill does NOT read `planning/production/session-state/review-mode.txt`
 3. No director gate agents are spawned at any point
 4. Skill proceeds directly to "May I write" after drafting
 5. Review mode setting has no effect on this skill's behavior
 
 **Assertions:**
 - [ ] No director gate agents are spawned (no CD-, TD-, PR-, AD- prefixed gates)
-- [ ] Skill does NOT read `production/session-state/review-mode.txt`
+- [ ] Skill does NOT read `planning/production/session-state/review-mode.txt`
 - [ ] Output contains no "Gate: [GATE-ID]" or gate-skipped entries
 - [ ] The manifest is generated from ADRs alone, with no external gate review
 
@@ -159,7 +159,7 @@ review gate is needed.
 - [ ] Reads all ADR files before drafting manifest
 - [ ] Only Accepted ADRs included — Proposed ones noted as excluded
 - [ ] Manifest draft shown to user before "May I write" ask
-- [ ] "May I write `docs/architecture/control-manifest.md`?" asked before writing
+- [ ] "May I write `planning/docs/architecture/control-manifest.md`?" asked before writing
 - [ ] No director gates — no review-mode.txt read
 - [ ] Ends with next-step handoff: `/create-epics` or `/create-stories`
 

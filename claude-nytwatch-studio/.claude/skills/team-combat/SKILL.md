@@ -42,7 +42,7 @@ Always provide full context in each agent's prompt (design doc path, relevant co
 
 ### Phase 1: Design
 Delegate to **game-designer**:
-- Create or update the design document in `design/gdd/` covering: mechanic overview, player fantasy, detailed rules, formulas with variable definitions, edge cases, dependencies, tuning knobs with safe ranges, and acceptance criteria
+- Create or update the design document in `planning/design/gdd/` covering: mechanic overview, player fantasy, detailed rules, formulas with variable definitions, edge cases, dependencies, tuning knobs with safe ranges, and acceptance criteria
 - Output: completed design document
 
 ### Phase 2: Architecture

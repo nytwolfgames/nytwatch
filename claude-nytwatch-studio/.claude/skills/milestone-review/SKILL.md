@@ -10,7 +10,7 @@ allowed-tools: Read, Glob, Grep, Write, Task, AskUserQuestion
 
 Extract the milestone name (`current` or a specific name) and resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
@@ -19,16 +19,16 @@ See `.claude/docs/director-gates.md` for the full check pattern.
 
 ## Phase 1: Load Milestone Data
 
-Read the milestone definition from `production/milestones/`. If the argument is `current`, use the most recently modified milestone file.
+Read the milestone definition from `planning/production/milestones/`. If the argument is `current`, use the most recently modified milestone file.
 
-Read all sprint reports for sprints within this milestone from `production/sprints/`.
+Read all sprint reports for sprints within this milestone from `planning/production/sprints/`.
 
 ---
 
 ## Phase 2: Scan Codebase Health
 
 - Scan for `TODO`, `FIXME`, `HACK` markers that indicate incomplete work
-- Check the risk register at `production/risk-register/`
+- Check the risk register at `planning/production/risk-register/`
 
 ---
 
@@ -125,7 +125,7 @@ Present the producer's assessment inline within the Go/No-Go section. The produc
 
 Present the review to the user.
 
-Ask: "May I write this to `production/milestones/[milestone-name]-review.md`?"
+Ask: "May I write this to `planning/production/milestones/[milestone-name]-review.md`?"
 
 If yes, write the file, creating the directory if needed. Verdict: **COMPLETE** — milestone review saved.
 

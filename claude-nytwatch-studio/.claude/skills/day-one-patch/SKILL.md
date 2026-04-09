@@ -25,20 +25,20 @@ ships. It is a mini-sprint — not a hotfix, not a full sprint.
 - No refactoring — minimum viable change
 - Any fix that requires more than 4 hours of dev time belongs in patch 1.1, not day-one
 
-**Output:** `production/releases/day-one-patch-[version].md`
+**Output:** `planning/production/releases/day-one-patch-[version].md`
 
 ---
 
 ## Phase 1: Load Release Context
 
 Read:
-- `production/stage.txt` — confirm project is in Release stage
-- The most recent file in `production/gate-checks/` — read the release gate verdict
-- `production/qa/bugs/*.md` — load all bugs with Status: Open or Fixed — Pending Verification
-- `production/sprints/` most recent — understand what shipped
-- `production/security/security-audit-*.md` most recent — check for any open security items
+- `planning/production/stage.txt` — confirm project is in Release stage
+- The most recent file in `planning/production/gate-checks/` — read the release gate verdict
+- `planning/production/qa/bugs/*.md` — load all bugs with Status: Open or Fixed — Pending Verification
+- `planning/production/sprints/` most recent — understand what shipped
+- `planning/production/security/security-audit-*.md` most recent — check for any open security items
 
-If `production/stage.txt` is not `Release` or `Polish`:
+If `planning/production/stage.txt` is not `Release` or `Polish`:
 > "Day-one patch prep is for Release-stage projects. Current stage: [stage]. This skill is not appropriate until you are approaching launch."
 
 ---
@@ -89,7 +89,7 @@ Spawn `release-manager` via Task. Ask them to produce a rollback plan covering:
 - Who is responsible for triggering the rollback
 - What player communication is required if a rollback occurs
 
-Present the rollback plan. Ask: "May I write this rollback plan to `production/releases/rollback-plan-[version].md`?"
+Present the rollback plan. Ask: "May I write this rollback plan to `planning/production/releases/rollback-plan-[version].md`?"
 
 Do not proceed to Phase 4 until the rollback plan is written.
 
@@ -169,7 +169,7 @@ QA verdict must be PASS or PASS WITH WARNINGS before proceeding. If FAIL: scope 
 
 ## Rollback Plan
 
-See: `production/releases/rollback-plan-[version].md`
+See: `planning/production/releases/rollback-plan-[version].md`
 
 **Trigger condition**: If [N] or more S1 bugs are reported within [X] hours of launch, execute rollback.
 **Rollback owner**: [user / producer]
@@ -192,7 +192,7 @@ See: `production/releases/rollback-plan-[version].md`
 [list player-facing changes in plain language]
 ```
 
-Ask: "May I write this patch record to `production/releases/day-one-patch-[version].md`?"
+Ask: "May I write this patch record to `planning/production/releases/day-one-patch-[version].md`?"
 
 ---
 

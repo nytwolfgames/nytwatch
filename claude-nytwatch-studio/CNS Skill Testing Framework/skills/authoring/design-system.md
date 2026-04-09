@@ -50,13 +50,13 @@ In `solo` mode: CD-GDD-ALIGN is skipped. Output notes:
 ### Case 1: Happy Path — New GDD, skeleton-first, CD-GDD-ALIGN in lean mode
 
 **Fixture:**
-- No existing GDD for the target system in `design/gdd/`
-- `production/session-state/review-mode.txt` contains `lean`
+- No existing GDD for the target system in `planning/design/gdd/`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Input:** `/design-system [system-name]`
 
 **Expected behavior:**
-1. Skill creates skeleton file `design/gdd/[system-name].md` with all 8 section headers (empty bodies)
+1. Skill creates skeleton file `planning/design/gdd/[system-name].md` with all 8 section headers (empty bodies)
 2. For each section: discusses with user, drafts content, shows draft
 3. CD-GDD-ALIGN gate runs on each section draft (lean mode — gate is active)
 4. Gate returns APPROVED for each section
@@ -76,7 +76,7 @@ In `solo` mode: CD-GDD-ALIGN is skipped. Output notes:
 ### Case 2: Retrofit Mode — Existing GDD, update specific section
 
 **Fixture:**
-- `design/gdd/[system-name].md` already exists with all 8 sections populated
+- `planning/design/gdd/[system-name].md` already exists with all 8 sections populated
 
 **Input:** `/design-system [system-name]`
 
@@ -100,7 +100,7 @@ In `solo` mode: CD-GDD-ALIGN is skipped. Output notes:
 
 **Fixture:**
 - New GDD being authored
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 - CD-GDD-ALIGN gate returns MAJOR REVISION on the Player Fantasy section
 
 **Input:** `/design-system [system-name]`
@@ -126,7 +126,7 @@ In `solo` mode: CD-GDD-ALIGN is skipped. Output notes:
 
 **Fixture:**
 - New GDD being authored
-- `production/session-state/review-mode.txt` contains `solo`
+- `planning/production/session-state/review-mode.txt` contains `solo`
 
 **Input:** `/design-system [system-name]`
 

@@ -11,7 +11,7 @@
 ## Static Assertions (Structural)
 
 - [ ] `description:` field is present and domain-specific (references world lore, factions, history, world rules, ecology)
-- [ ] `allowed-tools:` list matches the agent's role (Read/Write for design/narrative/world/ documents; no game source, mechanic design, or dialogue files)
+- [ ] `allowed-tools:` list matches the agent's role (Read/Write for planning/design/narrative/world/ documents; no game source, mechanic design, or dialogue files)
 - [ ] Model tier is Sonnet (default for creative specialists)
 - [ ] Agent definition does not claim authority over dialogue writing, mechanic design, or narrative arc structure
 

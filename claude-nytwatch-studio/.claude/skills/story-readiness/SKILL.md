@@ -26,7 +26,7 @@ gap list for each non-ready story.
 Resolve the review mode once at startup (store for all gate spawns this run):
 
 1. If skill was called with `--review [full|lean|solo]` → use that value
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern and mode definitions.
@@ -37,18 +37,18 @@ See `.claude/docs/director-gates.md` for the full check pattern and mode definit
 
 **Scope:** `$ARGUMENTS[0]` (blank = ask user via AskUserQuestion)
 
-- **Specific path** (e.g., `/story-readiness production/epics/combat/story-001-basic-attack.md`):
+- **Specific path** (e.g., `/story-readiness planning/production/epics/combat/story-001-basic-attack.md`):
   validate that single story file.
-- **`sprint`**: read the current sprint plan from `production/sprints/` (most
+- **`sprint`**: read the current sprint plan from `planning/production/sprints/` (most
   recent file), extract every story path it references, validate each one.
-- **`all`**: glob `production/epics/**/*.md`, exclude `EPIC.md` index files,
+- **`all`**: glob `planning/production/epics/**/*.md`, exclude `EPIC.md` index files,
   validate every story file found.
 - **No argument**: ask the user which scope to validate.
 
 If no argument is given, use `AskUserQuestion`:
 - "What would you like to validate?"
   - Options: "A specific story file", "All stories in the current sprint",
-    "All stories in production/epics/", "Stories for a specific epic"
+    "All stories in planning/production/epics/", "Stories for a specific epic"
 
 Report the scope before proceeding: "Validating [N] story files."
 
@@ -58,11 +58,11 @@ Report the scope before proceeding: "Validating [N] story files."
 
 Before checking any stories, load reference documents once (not per-story):
 
-- `design/gdd/systems-index.md` — to know which systems have approved GDDs
-- `docs/architecture/control-manifest.md` — to know which manifest rules exist
+- `planning/design/gdd/systems-index.md` — to know which systems have approved GDDs
+- `planning/docs/architecture/control-manifest.md` — to know which manifest rules exist
   (if the file does not exist, note it as missing once; do not re-flag per story)
   Also extract the `Manifest Version:` date from the header block if the file exists.
-- `docs/architecture/tr-registry.yaml` — index all entries by `id`. Used to
+- `planning/docs/architecture/tr-registry.yaml` — index all entries by `id`. Used to
   validate TR-IDs in stories. If the file does not exist, note it once; TR-ID
   checks will auto-pass for all stories (registry predates stories, so missing
   registry means stories are from before TR tracking was introduced).
@@ -81,7 +81,7 @@ items pass or are explicitly marked N/A with a stated reason.
 
 ### Design Completeness
 
-- [ ] **GDD requirement referenced**: The story includes a `design/gdd/` path
+- [ ] **GDD requirement referenced**: The story includes a `planning/design/gdd/` path
   and quotes or links a specific requirement, acceptance criterion, or rule from
   that GDD — not just the GDD filename. A link to the document without tracing
   to a specific requirement does not pass.
@@ -120,7 +120,7 @@ items pass or are explicitly marked N/A with a stated reason.
     (story may predate registry, or registry needs an `/architecture-review` run).
   - Auto-pass if the story has no TR-ID reference OR if the registry does not exist.
 - [ ] **Manifest version is current**: If the story has a `Manifest Version:` date
-  in its header AND `docs/architecture/control-manifest.md` exists:
+  in its header AND `planning/docs/architecture/control-manifest.md` exists:
   - If story version matches current manifest `Manifest Version:` → pass.
   - If story version is older than current manifest → NEEDS WORK: new rules may
     apply. Fix: review changed manifest rules, update story if any forbidden/required
@@ -133,7 +133,7 @@ items pass or are explicitly marked N/A with a stated reason.
   pure data/config change), "N/A — no engine API involved" is acceptable.
 - [ ] **Control manifest rules noted**: Relevant layer rules from the control
   manifest are referenced, OR "N/A — manifest not yet created" is stated.
-  This item auto-passes if `docs/architecture/control-manifest.md` does not
+  This item auto-passes if `planning/docs/architecture/control-manifest.md` does not
   exist yet (do not penalize stories written before the manifest was created).
 
 ### Scope Clarity
@@ -295,7 +295,7 @@ in conversation. Do not use Write or Edit tools — the user (or
 
 After completing a single-story readiness check (not `all` or `sprint` scope):
 
-1. Read the current sprint file from `production/sprints/` (most recent).
+1. Read the current sprint file from `planning/production/sprints/` (most recent).
 2. Find stories that are:
    - Status: READY or NOT STARTED
    - Not the story just checked

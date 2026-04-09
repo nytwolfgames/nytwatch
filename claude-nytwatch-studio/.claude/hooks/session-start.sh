@@ -22,7 +22,7 @@ fi
 # Current sprint — walk the Previous Sprint chain to find the active open sprint.
 # Active sprint = Status: open AND (Previous Sprint: none OR previous sprint is closed).
 ACTIVE_SPRINT=""
-for sprint_file in $(ls production/sprints/sprint-*.md 2>/dev/null | sort); do
+for sprint_file in $(ls planning/production/sprints/sprint-*.md 2>/dev/null | sort); do
     STATUS=$(grep -im1 "^\*\*Status\*\*:" "$sprint_file" | sed 's/.*: *//' | tr -d ' \r')
     if [ "$(echo "$STATUS" | tr '[:upper:]' '[:lower:]')" = "open" ]; then
         PREV=$(grep -im1 "^\*\*Previous Sprint\*\*:" "$sprint_file" | sed 's/.*: *//' | tr -d ' \r')
@@ -30,7 +30,7 @@ for sprint_file in $(ls production/sprints/sprint-*.md 2>/dev/null | sort); do
             ACTIVE_SPRINT="$sprint_file"
             break
         fi
-        PREV_FILE="production/sprints/${PREV}.md"
+        PREV_FILE="planning/production/sprints/${PREV}.md"
         if [ -f "$PREV_FILE" ]; then
             PREV_STATUS=$(grep -im1 "^\*\*Status\*\*:" "$PREV_FILE" | sed 's/.*: *//' | tr -d ' \r')
             if [ "$(echo "$PREV_STATUS" | tr '[:upper:]' '[:lower:]')" = "closed" ]; then
@@ -47,7 +47,7 @@ if [ -n "$ACTIVE_SPRINT" ]; then
 fi
 
 # Current milestone
-LATEST_MILESTONE=$(ls -t production/milestones/*.md 2>/dev/null | head -1)
+LATEST_MILESTONE=$(ls -t planning/production/milestones/*.md 2>/dev/null | head -1)
 if [ -n "$LATEST_MILESTONE" ]; then
     echo "Active milestone: $(basename "$LATEST_MILESTONE" .md)"
 fi
@@ -75,7 +75,7 @@ if [ -d "src" ]; then
 fi
 
 # --- Active session state recovery ---
-STATE_FILE="production/session-state/active.md"
+STATE_FILE="planning/production/session-state/active.md"
 if [ -f "$STATE_FILE" ]; then
     echo ""
     echo "=== ACTIVE SESSION STATE DETECTED ==="

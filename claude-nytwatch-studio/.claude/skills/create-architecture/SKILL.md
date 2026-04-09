@@ -9,7 +9,7 @@ agent: technical-director
 
 # Create Architecture
 
-This skill produces `docs/architecture/architecture.md` — the master architecture
+This skill produces `planning/docs/architecture/architecture.md` — the master architecture
 document that translates all approved GDDs into a concrete technical blueprint.
 It sits between design and implementation, and must exist before sprint planning begins.
 
@@ -18,7 +18,7 @@ This skill creates the whole-system blueprint that gives ADRs their context.
 
 Resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
@@ -40,15 +40,15 @@ Before anything else, load the full project context in this order:
 
 Read the engine reference library completely:
 
-1. `docs/engine-reference/[engine]/VERSION.md`
+1. `planning/docs/engine-reference/[engine]/VERSION.md`
    → Extract: engine name, version, LLM cutoff, post-cutoff risk levels
-2. `docs/engine-reference/[engine]/breaking-changes.md`
+2. `planning/docs/engine-reference/[engine]/breaking-changes.md`
    → Extract: all HIGH and MEDIUM risk changes
-3. `docs/engine-reference/[engine]/deprecated-apis.md`
+3. `planning/docs/engine-reference/[engine]/deprecated-apis.md`
    → Extract: APIs to avoid
-4. `docs/engine-reference/[engine]/current-best-practices.md`
+4. `planning/docs/engine-reference/[engine]/current-best-practices.md`
    → Extract: post-cutoff best practices that differ from training data
-5. All files in `docs/engine-reference/[engine]/modules/`
+5. All files in `planning/docs/engine-reference/[engine]/modules/`
    → Extract: current API patterns per domain
 
 If no engine is configured, stop and prompt:
@@ -59,11 +59,11 @@ If no engine is configured, stop and prompt:
 
 Read all approved design documents and extract technical requirements from each:
 
-1. `design/gdd/game-concept.md` — game pillars, genre, core loop
-2. `design/gdd/systems-index.md` — all systems, dependencies, priority tiers
+1. `planning/design/gdd/game-concept.md` — game pillars, genre, core loop
+2. `planning/design/gdd/systems-index.md` — all systems, dependencies, priority tiers
 3. `.claude/docs/technical-preferences.md` — naming conventions, performance budgets,
    allowed libraries, forbidden patterns
-4. **Every GDD in `design/gdd/`** — for each, extract technical requirements:
+4. **Every GDD in `planning/design/gdd/`** — for each, extract technical requirements:
    - Data structures implied by the game rules
    - Performance constraints stated or implied
    - Engine capabilities the system requires
@@ -91,7 +91,7 @@ left without an architectural decision to support it by the end of this session.
 
 ### 0c. Existing Architecture Decisions
 
-Read all files in `docs/architecture/` to understand what has already been decided.
+Read all files in `planning/docs/architecture/` to understand what has already been decided.
 List any ADRs found and their domains.
 
 ### 0d. Generate Knowledge Gap Inventory
@@ -173,7 +173,7 @@ relevant module reference doc. If an API is post-cutoff, flag it:
 
 ```
 ⚠️  [ClassName.method()] — Godot 4.6 (post-cutoff, HIGH risk)
-    Verified against: docs/engine-reference/godot/modules/[domain].md
+    Verified against: planning/docs/engine-reference/godot/modules/[domain].md
     Behaviour confirmed: [yes / NEEDS VERIFICATION]
 ```
 
@@ -284,9 +284,9 @@ but don't yet. Group by priority:
 ## Phase 7: Write the Master Architecture Document
 
 Once all sections are approved, write the complete document to
-`docs/architecture/architecture.md`.
+`planning/docs/architecture/architecture.md`.
 
-Ask: "May I write the master architecture document to `docs/architecture/architecture.md`?"
+Ask: "May I write the master architecture document to `planning/docs/architecture/architecture.md`?"
 
 The document structure:
 
@@ -363,7 +363,7 @@ Update the Document Status section:
 - Lead Programmer Feasibility: FEASIBLE / CONCERNS ACCEPTED / REVISED
 ```
 
-Ask: "May I update the Document Status section in `docs/architecture/architecture.md` with the sign-off?"
+Ask: "May I update the Document Status section in `planning/docs/architecture/architecture.md` with the sign-off?"
 
 ---
 
@@ -374,7 +374,7 @@ After writing the document, provide a clear handoff:
 1. **Run these ADRs next** (from Phase 6, prioritised): list the top 3
 2. **Gate check**: "The master architecture document is complete. Run `/gate-check
    pre-production` when all required ADRs are also written."
-3. **Update session state**: Write a summary to `production/session-state/active.md`
+3. **Update session state**: Write a summary to `planning/production/session-state/active.md`
 
 ---
 

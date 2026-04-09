@@ -24,11 +24,11 @@ files, and makes at most one concrete recommendation.
 **Argument:** `$ARGUMENTS[0]` (blank = use current sprint)
 
 - If an argument is given (e.g., `/sprint-status 3`), search
-  `production/sprints/` for a file matching `sprint-03.md`, `sprint-3.md`,
+  `planning/production/sprints/` for a file matching `sprint-03.md`, `sprint-3.md`,
   or similar. Report which file was found.
 - If no argument is given, find the most recently modified file in
-  `production/sprints/` and treat it as the current sprint.
-- If `production/sprints/` does not exist or is empty, report: "No sprint
+  `planning/production/sprints/` and treat it as the current sprint.
+- If `planning/production/sprints/` does not exist or is empty, report: "No sprint
   files found. Start a sprint with `/sprint-plan new`." Then stop.
 
 Read the sprint file in full. Extract:

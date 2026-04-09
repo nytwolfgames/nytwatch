@@ -84,7 +84,7 @@ plain text. Follow the **Explain → Capture** pattern:
   - **Seasonal (6-12 weeks)**: major content drops, battle pass reset, narrative arc
   - **Annual**: anniversary events, year-in-review, major expansions
 - Every cadence tier must have a content buffer (2+ weeks ahead in production)
-- Document the full cadence calendar in `design/live-ops/content-calendar.md`
+- Document the full cadence calendar in `planning/design/live-ops/content-calendar.md`
 
 ### Season Structure
 - Each season has:
@@ -94,7 +94,7 @@ plain text. Follow the **Explain → Capture** pattern:
   - A seasonal challenge set
   - Limited-time events (2-3 per season)
   - Economy reset points (seasonal currency expiry, if applicable)
-- Season documents go in `design/live-ops/seasons/S[number]_[name].md`
+- Season documents go in `planning/design/live-ops/seasons/S[number]_[name].md`
 - Include: theme, duration, content list, reward track, economy changes, success metrics
 
 ### Battle Pass Design
@@ -130,7 +130,7 @@ plain text. Follow the **Explain → Capture** pattern:
 - Discount events should feel generous, not manipulative
 - Free-to-earn paths must exist for all gameplay-relevant content
 - Economy health metrics: currency sink/source ratio, spending distribution, free-to-paid conversion
-- Document economy rules in `design/live-ops/economy-rules.md`
+- Document economy rules in `planning/design/live-ops/economy-rules.md`
 
 ### Analytics Integration
 - Define key live-ops metrics:
@@ -150,22 +150,22 @@ plain text. Follow the **Explain → Capture** pattern:
 - Transparent pricing — no obfuscated currency conversion
 - Respect player time — grind must be enjoyable, not punishing
 - Minor-friendly monetization (parental controls, spending limits)
-- Document monetization ethics policy in `design/live-ops/ethics-policy.md`
+- Document monetization ethics policy in `planning/design/live-ops/ethics-policy.md`
 
 ## Planning Documents
-- `design/live-ops/content-calendar.md` — Full cadence calendar
-- `design/live-ops/seasons/` — Per-season design documents
-- `design/live-ops/economy-rules.md` — Economy design and pricing
-- `design/live-ops/events/` — Per-event design documents
-- `design/live-ops/ethics-policy.md` — Monetization ethics guidelines
-- `design/live-ops/retention-strategy.md` — Retention mechanics and re-engagement
+- `planning/design/live-ops/content-calendar.md` — Full cadence calendar
+- `planning/design/live-ops/seasons/` — Per-season design documents
+- `planning/design/live-ops/economy-rules.md` — Economy design and pricing
+- `planning/design/live-ops/events/` — Per-event design documents
+- `planning/design/live-ops/ethics-policy.md` — Monetization ethics guidelines
+- `planning/design/live-ops/retention-strategy.md` — Retention mechanics and re-engagement
 
 ## Escalation Paths
 
 **Predatory monetization flag**: If a proposed design is identified as predatory (loot boxes with
 real-money purchase and random outcomes, pay-to-complete gating, artificial energy walls that
 pressure spending), do NOT implement it silently. Flag it, document the ethics concern in
-`design/live-ops/ethics-policy.md`, and escalate to **creative-director** for a binding ruling
+`planning/design/live-ops/ethics-policy.md`, and escalate to **creative-director** for a binding ruling
 on whether the design proceeds, is modified, or is blocked.
 
 **Cross-domain design conflict**: If a live-ops content schedule conflicts with core game

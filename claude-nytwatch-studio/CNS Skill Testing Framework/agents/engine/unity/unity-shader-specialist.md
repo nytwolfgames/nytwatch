@@ -78,6 +78,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Outline effect (Case 1) should be paired with a visual screenshot test in `production/qa/evidence/`
+- Outline effect (Case 1) should be paired with a visual screenshot test in `planning/production/qa/evidence/`
 - HDRP CustomPass (Case 3) confirms the agent produces the correct Unity pattern, not a generic post-process approach
 - Pipeline separation (Case 5) verifies the agent never assumes the render pipeline without context

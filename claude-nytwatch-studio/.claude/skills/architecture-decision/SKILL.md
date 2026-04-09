@@ -12,13 +12,13 @@ When this skill is invoked:
 
 Resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
 
 **If the argument starts with `retrofit` followed by a file path**
-(e.g., `/architecture-decision retrofit docs/architecture/adr-0001-event-system.md`):
+(e.g., `/architecture-decision retrofit planning/docs/architecture/adr-0001-event-system.md`):
 
 Enter **retrofit mode**:
 
@@ -74,7 +74,7 @@ Use the user's response as the title, then proceed to Step 0.
 
 Before doing anything else, establish the engine environment:
 
-1. Read `docs/engine-reference/[engine]/VERSION.md` to get:
+1. Read `planning/docs/engine-reference/[engine]/VERSION.md` to get:
    - Engine name and version
    - LLM knowledge cutoff date
    - Post-cutoff version risk levels (LOW / MEDIUM / HIGH)
@@ -84,12 +84,12 @@ Before doing anything else, establish the engine environment:
    Animation, Networking, Core, Input, Scripting.
 
 3. Read the corresponding module reference if it exists:
-   `docs/engine-reference/[engine]/modules/[domain].md`
+   `planning/docs/engine-reference/[engine]/modules/[domain].md`
 
-4. Read `docs/engine-reference/[engine]/breaking-changes.md` — flag any
+4. Read `planning/docs/engine-reference/[engine]/breaking-changes.md` — flag any
    changes in the relevant domain that post-date the LLM's training cutoff.
 
-5. Read `docs/engine-reference/[engine]/deprecated-apis.md` — flag any APIs
+5. Read `planning/docs/engine-reference/[engine]/deprecated-apis.md` — flag any APIs
    in the relevant domain that should not be used.
 
 6. **Display a knowledge gap warning** before proceeding if the domain carries
@@ -116,17 +116,17 @@ Before doing anything else, establish the engine environment:
 
 ## 1. Determine the next ADR number
 
-Scan `docs/architecture/` for existing ADRs to find the next number.
+Scan `planning/docs/architecture/` for existing ADRs to find the next number.
 
 ---
 
 ## 2. Gather context
 
-Read related code, existing ADRs, and relevant GDDs from `design/gdd/`.
+Read related code, existing ADRs, and relevant GDDs from `planning/design/gdd/`.
 
 ### 2a: Architecture Registry Check (BLOCKING gate)
 
-Read `docs/registry/architecture.yaml`. Extract entries relevant to this ADR's
+Read `planning/docs/registry/architecture.yaml`. Extract entries relevant to this ADR's
 domain and decision (grep by system name, domain keyword, or state being touched).
 
 Present any relevant stances to the user **before** the collaborative design
@@ -245,7 +245,7 @@ Following this format:
 | **Engine** | [e.g. Godot 4.6] |
 | **Domain** | [Physics / Rendering / UI / Audio / Navigation / Animation / Networking / Core / Input] |
 | **Knowledge Risk** | [LOW / MEDIUM / HIGH — from VERSION.md] |
-| **References Consulted** | [List engine-reference docs read, e.g. `docs/engine-reference/godot/modules/physics.md`] |
+| **References Consulted** | [List engine-reference docs read, e.g. `planning/docs/engine-reference/godot/modules/physics.md`] |
 | **Post-Cutoff APIs Used** | [Any APIs from post-LLM-cutoff versions this decision depends on, or "None"] |
 | **Verification Required** | [Specific behaviours to test before shipping, or "None"] |
 
@@ -381,7 +381,7 @@ If GDD sync issues were found:
 
 If no GDD sync issues:
 - "ADR draft is complete. May I write it?"
-  - [A] Write ADR to `docs/architecture/adr-[NNNN]-[slug].md`
+  - [A] Write ADR to `planning/docs/architecture/adr-[NNNN]-[slug].md`
   - [B] Not yet — I need to review further
 
 If yes to any write option, write the file, creating the directory if needed.
@@ -406,16 +406,16 @@ Registry candidates from this ADR:
   EXISTING (referenced_by update only): player_health → already registered ✅
 ```
 
-**Registry append logic**: When writing to `docs/registry/architecture.yaml`, do NOT assume sections are empty. The file may already have entries from previous ADRs written in this session. Before each Edit call:
-1. Read the current state of `docs/registry/architecture.yaml`
+**Registry append logic**: When writing to `planning/docs/registry/architecture.yaml`, do NOT assume sections are empty. The file may already have entries from previous ADRs written in this session. Before each Edit call:
+1. Read the current state of `planning/docs/registry/architecture.yaml`
 2. Find the correct section (state_ownership, interfaces, forbidden_patterns, api_decisions)
 3. Append the new entry AFTER the last existing entry in that section — do not try to replace a `[]` placeholder that may no longer exist
 4. If the section has entries already, use the closing content of the last entry as the `old_string` anchor, and append the new entry after it
 
-**BLOCKING — do not write to `docs/registry/architecture.yaml` without explicit user approval.**
+**BLOCKING — do not write to `planning/docs/registry/architecture.yaml` without explicit user approval.**
 
 Ask using `AskUserQuestion`:
-- "May I update `docs/registry/architecture.yaml` with these [N] new stances?"
+- "May I update `planning/docs/registry/architecture.yaml` with these [N] new stances?"
   - Options: "Yes — update the registry", "Not yet — I want to review the candidates", "Skip registry update"
 
 Only proceed if the user selects yes. If yes: append new entries. Never modify existing entries — if a stance is
@@ -428,7 +428,7 @@ changing, set the old entry to `status: superseded_by: ADR-[NNNN]` and add the n
 After the ADR is written (and registry optionally updated), close with `AskUserQuestion`.
 
 Before generating the widget:
-1. Read `docs/registry/architecture.yaml` — check if any priority ADRs are still unwritten (look for ADRs flagged in technical-preferences.md or systems-index.md as prerequisites)
+1. Read `planning/docs/registry/architecture.yaml` — check if any priority ADRs are still unwritten (look for ADRs flagged in technical-preferences.md or systems-index.md as prerequisites)
 2. Check if all prerequisite ADRs are now written. If yes, include a "Start writing GDDs" option.
 3. List ALL remaining priority ADRs as individual options — not just the next one or two.
 

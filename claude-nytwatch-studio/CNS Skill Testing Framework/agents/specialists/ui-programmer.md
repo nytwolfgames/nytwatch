@@ -20,7 +20,7 @@ No gate IDs assigned.
 ## Test Cases
 
 ### Case 1: In-domain request — appropriate output
-**Input:** "Implement the inventory screen from the UX spec in `design/ux/inventory-flow.md`."
+**Input:** "Implement the inventory screen from the UX spec in `planning/design/ux/inventory-flow.md`."
 **Expected behavior:**
 - Reads the UX spec before producing any code
 - Produces implementation using the project's configured UI framework (UI Toolkit, UGUI, UMG, or Godot Control nodes)
@@ -74,6 +74,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Inventory implementation (Case 1) should have a UI interaction test or manual walkthrough doc in `production/qa/evidence/`
+- Inventory implementation (Case 1) should have a UI interaction test or manual walkthrough doc in `planning/production/qa/evidence/`
 - Animation coordination (Case 3) confirms the agent does not invent feel parameters without a spec
 - Ambiguous spec (Case 4) verifies the agent routes spec gaps back to the authoring agent rather than guessing

@@ -28,24 +28,24 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 1: Happy Path — Fully ready story
 
 **Fixture:**
-- Story file exists at `production/epics/core/story-light-pickup.md`
+- Story file exists at `planning/production/epics/core/story-light-pickup.md`
 - Story contains:
   - `TR-ID: TR-light-001` (GDD requirement reference)
-  - `ADR: docs/architecture/adr-003-inventory.md`
+  - `ADR: planning/docs/architecture/adr-003-inventory.md`
   - Referenced ADR exists and has status `Accepted`
-  - Referenced TR-ID exists in `docs/architecture/tr-registry.yaml`
+  - Referenced TR-ID exists in `planning/docs/architecture/tr-registry.yaml`
   - Story has `## Acceptance Criteria` with ≥3 testable items
   - Story has `## Definition of Done` section
   - Story has `Status: Ready for Dev`
-  - Manifest version in story header matches current `docs/architecture/control-manifest.md`
+  - Manifest version in story header matches current `planning/docs/architecture/control-manifest.md`
 
-**Input:** `/story-readiness production/epics/core/story-light-pickup.md`
+**Input:** `/story-readiness planning/production/epics/core/story-light-pickup.md`
 
 **Expected behavior:**
 1. Skill reads the story file
 2. Skill reads the referenced ADR — verifies status is `Accepted`
-3. Skill reads `docs/architecture/tr-registry.yaml` — verifies TR-ID exists
-4. Skill reads `docs/architecture/control-manifest.md` — verifies manifest version matches
+3. Skill reads `planning/docs/architecture/tr-registry.yaml` — verifies TR-ID exists
+4. Skill reads `planning/docs/architecture/control-manifest.md` — verifies manifest version matches
 5. Skill evaluates all 4 dimensions (Design, Architecture, Scope, DoD)
 6. Skill outputs READY verdict with all checks passing
 
@@ -62,11 +62,11 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 2: Blocked Path — Referenced ADR is Proposed (not Accepted)
 
 **Fixture:**
-- Story file exists with `ADR: docs/architecture/adr-005-light-system.md`
+- Story file exists with `ADR: planning/docs/architecture/adr-005-light-system.md`
 - `adr-005-light-system.md` exists but has `Status: Proposed`
 - All other story content is otherwise complete
 
-**Input:** `/story-readiness production/epics/core/story-light-system.md`
+**Input:** `/story-readiness planning/production/epics/core/story-light-system.md`
 
 **Expected behavior:**
 1. Skill reads the story
@@ -91,7 +91,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - TR-ID exists in registry
 - Manifest version matches
 
-**Input:** `/story-readiness production/epics/core/story-oxygen-drain.md`
+**Input:** `/story-readiness planning/production/epics/core/story-oxygen-drain.md`
 
 **Expected behavior:**
 1. Skill reads the story
@@ -112,10 +112,10 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Fixture:**
 - Story file has `Manifest Version: 2026-01-15` in its header
-- `docs/architecture/control-manifest.md` has `Manifest Version: 2026-03-10`
+- `planning/docs/architecture/control-manifest.md` has `Manifest Version: 2026-03-10`
 - Versions do not match (story was created before manifest was updated)
 
-**Input:** `/story-readiness production/epics/core/story-mirror-rotation.md`
+**Input:** `/story-readiness planning/production/epics/core/story-mirror-rotation.md`
 
 **Expected behavior:**
 1. Skill reads the story and extracts manifest version `2026-01-15`
@@ -125,7 +125,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 5. Verdict is NEEDS WORK with manifest staleness noted
 
 **Assertions:**
-- [ ] Skill reads `docs/architecture/control-manifest.md` to get current version
+- [ ] Skill reads `planning/docs/architecture/control-manifest.md` to get current version
 - [ ] Skill compares story's embedded manifest version against current manifest version
 - [ ] Stale manifest version results in NEEDS WORK (not BLOCKED, not READY)
 - [ ] Output explains that the story's embedded guidance may be outdated
@@ -138,12 +138,12 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Fixture:**
 - Story file exists and is READY (all 4 dimensions pass, ADR Accepted, criteria present)
-- `production/session-state/review-mode.txt` exists
+- `planning/production/session-state/review-mode.txt` exists
 
 **Case 5a — full mode:**
 - `review-mode.txt` contains `full`
 
-**Input:** `/story-readiness production/epics/core/story-light-pickup.md` (full mode)
+**Input:** `/story-readiness planning/production/epics/core/story-light-pickup.md` (full mode)
 
 **Expected behavior:**
 1. Skill reads review mode — determines `full`
@@ -189,7 +189,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - Case where TR-ID is missing from the registry entirely is not explicitly
   tested here; it follows the same NEEDS WORK pattern as Case 3.
 - The "no argument" path (skill auto-detecting the current story) is not
-  tested because it depends on `production/session-state/active.md` content,
+  tested because it depends on `planning/production/session-state/active.md` content,
   which is hard to fixture reliably.
 - Stories with multiple ADR references are not tested; behavior is assumed to
   be additive (all ADRs must be Accepted for READY verdict).

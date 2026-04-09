@@ -8,7 +8,7 @@ allowed-tools: Read, Glob, Grep, Bash, Write, Edit
 
 ## Overview
 
-Creates or rebuilds the full wiki in `production/wiki/`. Reads all sprint files,
+Creates or rebuilds the full wiki in `planning/production/wiki/`. Reads all sprint files,
 source code, routes, and templates to produce grounded entries.
 
 If an argument is provided, only re-init that section. Otherwise, rebuild all sections.
@@ -17,8 +17,8 @@ If an argument is provided, only re-init that section. Otherwise, rebuild all se
 
 ## Phase 1: Survey Existing State
 
-List all files in `production/wiki/` recursively (if it exists).
-List all sprint files in `production/sprints/` (if any).
+List all files in `planning/production/wiki/` recursively (if it exists).
+List all sprint files in `planning/production/sprints/` (if any).
 
 Determine which wiki sections already exist and which need to be created.
 
@@ -76,14 +76,14 @@ Set the current date.
 
 ## Phase 6: Update `.gitignore`
 
-Ensure `production/wiki/.last-hook-sha` and `production/wiki/.pending-update.md`
+Ensure `planning/production/wiki/.last-hook-sha` and `planning/production/wiki/.pending-update.md`
 are listed in `.gitignore`. Read `.gitignore` first, then append if missing.
 
 ---
 
 ## Phase 7: Update `CLAUDE.md`
 
-If `production/wiki/` is not yet referenced in `CLAUDE.md`, add a wiki section
+If `planning/production/wiki/` is not yet referenced in `CLAUDE.md`, add a wiki section
 pointing to the key wiki files with guidance on when to read each one.
 
 ---

@@ -6,7 +6,7 @@ user-invocable: true
 allowed-tools: Read, Glob, Grep, Write, Edit, Task, AskUserQuestion
 ---
 
-If no argument is provided, check whether `design/assets/asset-manifest.md` exists:
+If no argument is provided, check whether `planning/design/assets/asset-manifest.md` exists:
 - If it exists: read it, find the first context (system/level/character) with any asset at status "Needed" but no spec file written yet, and use `AskUserQuestion`:
   - Prompt: "The next unspecced context is **[target]**. Generate asset specs for it?"
   - Options: `[A] Yes — spec [target]` / `[B] Pick a different target` / `[C] Stop here`
@@ -36,22 +36,22 @@ Extract:
 Read all source material **before** asking the user anything.
 
 ### Required reads:
-- **Art bible**: Read `design/art/art-bible.md` — fail if missing:
+- **Art bible**: Read `planning/design/art/art-bible.md` — fail if missing:
   > "No art bible found. Run `/art-bible` first — asset specs are anchored to the art bible's visual rules and asset standards."
   Extract: Visual Identity Statement, Color System (semantic colors), Shape Language, Asset Standards (Section 8 — dimensions, formats, polycount budgets, texture resolution tiers).
 
 - **Technical preferences**: Read `.claude/docs/technical-preferences.md` — extract performance budgets and naming conventions.
 
 ### Source doc reads (by target type):
-- **system**: Read `design/gdd/[target-name].md`. Extract the **Visual/Audio Requirements** section. If it doesn't exist or reads `[To be designed]`:
-  > "The Visual/Audio section of `design/gdd/[target-name].md` is empty. Either run `/design-system [target-name]` to complete the GDD, or describe the visual needs manually."
+- **system**: Read `planning/design/gdd/[target-name].md`. Extract the **Visual/Audio Requirements** section. If it doesn't exist or reads `[To be designed]`:
+  > "The Visual/Audio section of `planning/design/gdd/[target-name].md` is empty. Either run `/design-system [target-name]` to complete the GDD, or describe the visual needs manually."
   Use `AskUserQuestion`: `[A] Describe needs manually` / `[B] Stop — complete the GDD first`
-- **level**: Read `design/levels/[target-name].md`. Extract art requirements, asset list, VFX needs, and the art-director's production concept specs from Step 4.
-- **character**: Read `design/narrative/characters/[target-name].md` or search `design/narrative/` for the character profile. Extract visual description, role, and any specified distinguishing features.
+- **level**: Read `planning/design/levels/[target-name].md`. Extract art requirements, asset list, VFX needs, and the art-director's production concept specs from Step 4.
+- **character**: Read `planning/design/narrative/characters/[target-name].md` or search `planning/design/narrative/` for the character profile. Extract visual description, role, and any specified distinguishing features.
 
 ### Optional reads:
-- **Existing manifest**: Read `design/assets/asset-manifest.md` if it exists — extract already-specced assets for this target to avoid duplicates.
-- **Related specs**: Glob `design/assets/specs/*.md` — scan for assets that could be shared (e.g., a common UI element specced for one system might apply here too).
+- **Existing manifest**: Read `planning/design/assets/asset-manifest.md` if it exists — extract already-specced assets for this target to avoid duplicates.
+- **Related specs**: Glob `planning/design/assets/specs/*.md` — scan for assets that could be shared (e.g., a common UI element specced for one system might apply here too).
 
 ### Present context summary:
 > **Asset Spec: [Target Type] — [Target Name]**
@@ -152,7 +152,7 @@ If [C]: ask what direction to change. Re-spawn the relevant agent with the updat
 
 ## Phase 5: Write Spec File
 
-After approval, ask: "May I write the spec to `design/assets/specs/[target-name]-assets.md`?"
+After approval, ask: "May I write the spec to `planning/design/assets/specs/[target-name]-assets.md`?"
 
 Write the file with:
 
@@ -160,14 +160,14 @@ Write the file with:
 # Asset Specs — [Target Type]: [Target Name]
 
 > **Source**: [path to source GDD/level/character doc]
-> **Art Bible**: design/art/art-bible.md
+> **Art Bible**: planning/design/art/art-bible.md
 > **Generated**: [date]
 > **Status**: [N] assets specced / [N] approved / [N] in production / [N] done
 
 [all asset specs in ASSET-NNN format]
 ```
 
-Then update `design/assets/asset-manifest.md`. If it doesn't exist, create it:
+Then update `planning/design/assets/asset-manifest.md`. If it doesn't exist, create it:
 
 ```markdown
 # Asset Manifest
@@ -185,12 +185,12 @@ Then update `design/assets/asset-manifest.md`. If it doesn't exist, create it:
 ### [Target Type]: [Target Name]
 | Asset ID | Name | Category | Status | Spec File |
 |----------|------|----------|--------|-----------|
-| ASSET-001 | [name] | [category] | Needed | design/assets/specs/[target]-assets.md |
+| ASSET-001 | [name] | [category] | Needed | planning/design/assets/specs/[target]-assets.md |
 ```
 
 If the manifest already exists, append the new context block and update the Progress Summary counts.
 
-Ask: "May I update `design/assets/asset-manifest.md`?"
+Ask: "May I update `planning/design/assets/asset-manifest.md`?"
 
 ---
 
@@ -212,7 +212,7 @@ Use `AskUserQuestion`:
 Asset IDs are assigned sequentially across the entire project — not per-context. Read the manifest before assigning IDs to find the current highest number:
 
 ```
-Grep pattern="ASSET-" path="design/assets/asset-manifest.md"
+Grep pattern="ASSET-" path="planning/design/assets/asset-manifest.md"
 ```
 
 Start new assets from `ASSET-[highest + 1]`. This ensures IDs are stable and unique across the whole project.

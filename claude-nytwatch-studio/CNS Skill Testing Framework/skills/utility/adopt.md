@@ -5,7 +5,7 @@
 `/adopt` audits an existing project's artifacts — GDDs, ADRs, stories, infrastructure
 files, and `technical-preferences.md` — for format compliance with the template's
 skill pipeline. It classifies every gap by severity (BLOCKING / HIGH / MEDIUM / LOW),
-composes a numbered, ordered migration plan, and writes it to `docs/adoption-plan-[date].md`
+composes a numbered, ordered migration plan, and writes it to `planning/docs/adoption-plan-[date].md`
 after explicit user approval via `AskUserQuestion`.
 
 This skill is distinct from `/project-stage-detect` (which checks what exists).
@@ -38,11 +38,11 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
 ### Case 1: Happy Path — All GDDs compliant, no gaps, COMPLIANT
 
 **Fixture:**
-- `design/gdd/` contains 3 GDD files; each has all 8 required sections with content
-- `docs/architecture/adr-0001.md` exists with `## Status`, `## Engine Compatibility`,
+- `planning/design/gdd/` contains 3 GDD files; each has all 8 required sections with content
+- `planning/docs/architecture/adr-0001.md` exists with `## Status`, `## Engine Compatibility`,
   and all other required sections
-- `production/stage.txt` exists
-- `docs/architecture/tr-registry.yaml` and `docs/architecture/control-manifest.md` exist
+- `planning/production/stage.txt` exists
+- `planning/docs/architecture/tr-registry.yaml` and `planning/docs/architecture/control-manifest.md` exist
 - Engine configured in `technical-preferences.md`
 
 **Input:** `/adopt`
@@ -56,7 +56,7 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
 6. Phase 3: zero BLOCKING, zero HIGH, zero MEDIUM, zero LOW gaps
 7. Summary reports: "No blocking gaps — this project is template-compatible"
 8. Uses `AskUserQuestion` to ask about writing the plan; user selects write
-9. Adoption plan is written to `docs/adoption-plan-[date].md`
+9. Adoption plan is written to `planning/docs/adoption-plan-[date].md`
 10. Phase 7 offers next action: no blocking gaps, offers options for next steps
 
 **Assertions:**
@@ -64,7 +64,7 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
 - [ ] "Scanning project artifacts..." appears before the silent read phase
 - [ ] Gap counts show 0 BLOCKING, 0 HIGH, 0 MEDIUM (or only LOW)
 - [ ] `AskUserQuestion` is used before writing the adoption plan
-- [ ] Adoption plan file is written to `docs/adoption-plan-[date].md`
+- [ ] Adoption plan file is written to `planning/docs/adoption-plan-[date].md`
 - [ ] Phase 7 offers a specific next action (not just a list)
 
 ---
@@ -72,11 +72,11 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
 ### Case 2: Non-Compliant Documents — GDDs missing sections, NEEDS MIGRATION
 
 **Fixture:**
-- `design/gdd/` contains 2 GDD files:
+- `planning/design/gdd/` contains 2 GDD files:
   - `combat.md` — missing `## Acceptance Criteria` and `## Formulas` sections
   - `movement.md` — all 8 sections present
 - One ADR (`adr-0001.md`) is missing `## Status` section
-- `docs/architecture/tr-registry.yaml` does not exist
+- `planning/docs/architecture/tr-registry.yaml` does not exist
 
 **Input:** `/adopt`
 
@@ -145,8 +145,8 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
 ### Case 4: No Artifacts Found — Fresh project, guidance to run /start
 
 **Fixture:**
-- Repository has no files in `design/gdd/`, `docs/architecture/`, `production/epics/`
-- `production/stage.txt` does not exist
+- Repository has no files in `planning/design/gdd/`, `planning/docs/architecture/`, `planning/production/epics/`
+- `planning/production/stage.txt` does not exist
 - `src/` directory does not exist or has fewer than 10 files
 - No game-concept.md, no systems-index.md
 
@@ -195,7 +195,7 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
 - [ ] Reads all artifacts silently before presenting any results
 - [ ] Shows Adoption Audit Summary and Gap Preview before asking to write
 - [ ] Uses `AskUserQuestion` before writing the adoption plan file
-- [ ] Adoption plan written to `docs/adoption-plan-[date].md` — not to any other path
+- [ ] Adoption plan written to `planning/docs/adoption-plan-[date].md` — not to any other path
 - [ ] Migration plan items ordered: BLOCKING first, HIGH second, MEDIUM third, LOW last
 - [ ] Phase 7 always offers a single specific next action (not a generic list)
 - [ ] Never regenerates existing artifacts — only fills gaps in what exists
@@ -210,5 +210,5 @@ None. `/adopt` is a brownfield audit utility. No director gates apply.
   Not separately fixture-tested here.
 - The systems-index.md parenthetical status value check (BLOCKING) is a special case
   that triggers an immediate fix offer before writing the plan; not separately tested.
-- The review-mode.txt prompt (Phase 6b) runs after plan writing if `production/review-mode.txt`
+- The review-mode.txt prompt (Phase 6b) runs after plan writing if `planning/production/review-mode.txt`
   does not exist; not separately tested here.

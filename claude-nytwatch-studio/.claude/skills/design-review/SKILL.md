@@ -10,7 +10,7 @@ allowed-tools: Read, Glob, Grep, Write, Edit, Task, AskUserQuestion
 
 Extract `--depth [full|lean|solo]` if present. Default is `full` when no flag is given.
 
-**Note**: `--depth` controls the *analysis depth* of this skill (how many specialist agents are spawned). It is independent of the global review mode in `production/review-mode.txt`, which controls director gate spawning. These are two different concepts — `--depth` is about how thoroughly *this* skill analyses the document.
+**Note**: `--depth` controls the *analysis depth* of this skill (how many specialist agents are spawned). It is independent of the global review mode in `planning/production/review-mode.txt`, which controls director gate spawning. These are two different concepts — `--depth` is about how thoroughly *this* skill analyses the document.
 
 - **`full`**: Complete review — all phases + specialist agent delegation (Phase 3b)
 - **`lean`**: All phases, no specialist agents — faster, single-session analysis
@@ -20,13 +20,13 @@ Extract `--depth [full|lean|solo]` if present. Default is `full` when no flag is
 
 ## Phase 1: Load Documents
 
-Read the target design document in full. Read CLAUDE.md to understand project context and standards. Read related design documents referenced or implied by the target doc (check `design/gdd/` for related systems).
+Read the target design document in full. Read CLAUDE.md to understand project context and standards. Read related design documents referenced or implied by the target doc (check `planning/design/gdd/` for related systems).
 
-**Dependency graph validation:** For every system listed in the Dependencies section, use Glob to check whether its GDD file exists in `design/gdd/`. Flag any that don't exist yet — these are broken references that downstream authors will hit.
+**Dependency graph validation:** For every system listed in the Dependencies section, use Glob to check whether its GDD file exists in `planning/design/gdd/`. Flag any that don't exist yet — these are broken references that downstream authors will hit.
 
-**Lore/narrative alignment:** If `design/gdd/game-concept.md` or any file in `design/narrative/` exists, read it. Note any mechanical choices in this GDD that contradict established world rules, tone, or design pillars. Pass this context to `game-designer` in Phase 3b.
+**Lore/narrative alignment:** If `planning/design/gdd/game-concept.md` or any file in `planning/design/narrative/` exists, read it. Note any mechanical choices in this GDD that contradict established world rules, tone, or design pillars. Pass this context to `game-designer` in Phase 3b.
 
-**Prior review check:** Check whether `design/gdd/reviews/[doc-name]-review-log.md` exists. If it does, read the most recent entry — note what verdict was given and what blocking items were listed. This session is a re-review; track whether prior items were addressed.
+**Prior review check:** Check whether `planning/design/gdd/reviews/[doc-name]-review-log.md` exists. If it does, read the most recent entry — note what verdict was given and what blocking items were listed. This session is a re-review; track whether prior items were addressed.
 
 ---
 
@@ -215,13 +215,13 @@ Never end the revision flow with plain text. Always close with this widget.
 **Second widget — systems index update (always show this separately):**
 
 Use a second `AskUserQuestion`:
-- Prompt: "May I update `design/gdd/systems-index.md` to mark [system] as [In Review / Approved]?"
+- Prompt: "May I update `planning/design/gdd/systems-index.md` to mark [system] as [In Review / Approved]?"
 - Options: `[A] Yes — update it` / `[B] No — leave it as-is`
 
 **Third widget — review log (always offer):**
 
 Use a third `AskUserQuestion`:
-- Prompt: "May I append this review summary to `design/gdd/reviews/[doc-name]-review-log.md`? This creates a revision history so future re-reviews can track what changed."
+- Prompt: "May I append this review summary to `planning/design/gdd/reviews/[doc-name]-review-log.md`? This creates a revision history so future re-reviews can track what changed."
 - Options: `[A] Yes — append to review log` / `[B] No — skip`
 
 If yes, append an entry in this format:
@@ -241,8 +241,8 @@ Prior verdict resolved: [Yes / No / First review]
 Once the systems-index and review-log widgets are answered, check project state and show one final `AskUserQuestion`:
 
 Before building options, read:
-- `design/gdd/systems-index.md` — find any system with Status: In Review or NEEDS REVISION (other than the one just reviewed)
-- Count `.md` files in `design/gdd/` (excluding game-concept.md, systems-index.md) to determine if `/review-all-gdds` is worth offering (≥2 GDDs)
+- `planning/design/gdd/systems-index.md` — find any system with Status: In Review or NEEDS REVISION (other than the one just reviewed)
+- Count `.md` files in `planning/design/gdd/` (excluding game-concept.md, systems-index.md) to determine if `/review-all-gdds` is worth offering (≥2 GDDs)
 - Find the next system with Status: Not Started in design order
 
 Build the option list dynamically — only include options that are genuinely next:

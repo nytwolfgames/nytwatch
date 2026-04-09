@@ -47,7 +47,7 @@ No gate IDs assigned.
 ### Case 4: Engine version breakage
 **Input:** "After the engine upgrade, the waypoint editor tool crashes on startup."
 **Expected behavior:**
-- Checks the engine version reference (`docs/engine-reference/`) for breaking changes in editor plugin APIs
+- Checks the engine version reference (`planning/docs/engine-reference/`) for breaking changes in editor plugin APIs
 - Identifies the specific API or signal that changed in the new version
 - Produces a targeted fix for the breaking change
 - Notes any other tools that may be affected by the same API change

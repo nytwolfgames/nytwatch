@@ -12,7 +12,7 @@ Config/Data) which determines the required test evidence path.
 In `full` review mode, a QL-STORY-READY check runs per story after creation. In
 `lean` or `solo` mode, QL-STORY-READY is skipped. The skill asks "May I write"
 before writing each story file. Stories are written to
-`production/epics/[layer]/story-[name].md`.
+`planning/production/epics/[layer]/story-[name].md`.
 
 ---
 
@@ -47,12 +47,12 @@ In `solo` mode: QL-STORY-READY is skipped with equivalent notes.
 ### Case 1: Happy Path — Epic with 3 stories, all ADRs Accepted
 
 **Fixture:**
-- `production/epics/[layer]/EPIC-[name].md` exists with 3 GDD requirements
+- `planning/production/epics/[layer]/EPIC-[name].md` exists with 3 GDD requirements
 - Corresponding GDD exists with matching acceptance criteria
 - All governing ADRs have `Status: Accepted`
-- `docs/architecture/control-manifest.md` exists
-- `docs/architecture/tr-registry.yaml` has TR-IDs for all 3 requirements
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/docs/architecture/control-manifest.md` exists
+- `planning/docs/architecture/tr-registry.yaml` has TR-IDs for all 3 requirements
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Input:** `/create-stories [epic-name]`
 
@@ -77,7 +77,7 @@ In `solo` mode: QL-STORY-READY is skipped with equivalent notes.
 ### Case 2: Failure Path — No epic file found
 
 **Fixture:**
-- The epic path provided does not exist in `production/epics/`
+- The epic path provided does not exist in `planning/production/epics/`
 
 **Input:** `/create-stories nonexistent-epic`
 
@@ -85,7 +85,7 @@ In `solo` mode: QL-STORY-READY is skipped with equivalent notes.
 1. Skill attempts to read the EPIC.md file
 2. File not found
 3. Skill outputs a clear error with the path it searched
-4. Skill suggests checking `production/epics/` or running `/create-epics` first
+4. Skill suggests checking `planning/production/epics/` or running `/create-epics` first
 5. No story files are created
 
 **Assertions:**
@@ -124,14 +124,14 @@ In `solo` mode: QL-STORY-READY is skipped with equivalent notes.
 ### Case 4: Edge Case — No argument provided
 
 **Fixture:**
-- `production/epics/` directory exists with ≥2 epic subdirectories
+- `planning/production/epics/` directory exists with ≥2 epic subdirectories
 
 **Input:** `/create-stories` (no argument)
 
 **Expected behavior:**
 1. Skill detects no argument is provided
 2. Outputs a usage error: "No epic specified. Usage: /create-stories [epic-name]"
-3. Skill lists available epics from `production/epics/`
+3. Skill lists available epics from `planning/production/epics/`
 4. No story files are created
 
 **Assertions:**
@@ -147,7 +147,7 @@ In `solo` mode: QL-STORY-READY is skipped with equivalent notes.
 **Fixture:**
 - EPIC.md exists with 2 requirements
 - Both governing ADRs are Accepted
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - QL-STORY-READY check finds one story has ambiguous acceptance criteria
 
 **Input:** `/create-stories [epic-name]`

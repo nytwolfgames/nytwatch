@@ -21,7 +21,7 @@ if [ -f ".claude/docs/technical-preferences.md" ]; then
 fi
 
 # Check if game concept exists
-if [ -f "design/gdd/game-concept.md" ]; then
+if [ -f "planning/design/gdd/game-concept.md" ]; then
   FRESH_PROJECT=false
 fi
 
@@ -51,8 +51,8 @@ else
   SRC_FILES=0
 fi
 
-if [ -d "design/gdd" ]; then
-  DESIGN_FILES=$(find design/gdd -type f -name "*.md" 2>/dev/null | wc -l)
+if [ -d "planning/design/gdd" ]; then
+  DESIGN_FILES=$(find planning/design/gdd -type f -name "*.md" 2>/dev/null | wc -l)
 else
   DESIGN_FILES=0
 fi
@@ -87,20 +87,20 @@ if [ -d "prototypes" ]; then
     if [ ${#UNDOCUMENTED_PROTOS[@]} -gt 0 ]; then
       echo "⚠️  GAP: ${#UNDOCUMENTED_PROTOS[@]} undocumented prototype(s) found:"
       for proto in "${UNDOCUMENTED_PROTOS[@]}"; do
-        echo "    - prototypes/$proto/ (no README or CONCEPT doc)"
+        echo "    - planning/prototypes/$proto/ (no README or CONCEPT doc)"
       done
-      echo "    Suggested action: /reverse-document concept prototypes/[name]"
+      echo "    Suggested action: /reverse-document concept planning/prototypes/[name]"
     fi
   fi
 fi
 
 # --- Check 3: Core systems without architecture docs ---
 if [ -d "src/core" ] || [ -d "src/engine" ]; then
-  if [ ! -d "docs/architecture" ]; then
-    echo "⚠️  GAP: Core engine/systems exist but no docs/architecture/ directory"
-    echo "    Suggested action: Create docs/architecture/ and run /architecture-decision"
+  if [ ! -d "planning/docs/architecture" ]; then
+    echo "⚠️  GAP: Core engine/systems exist but no planning/docs/architecture/ directory"
+    echo "    Suggested action: Create planning/docs/architecture/ and run /architecture-decision"
   else
-    ADR_COUNT=$(find docs/architecture -type f -name "*.md" 2>/dev/null | wc -l)
+    ADR_COUNT=$(find planning/docs/architecture -type f -name "*.md" 2>/dev/null | wc -l)
     ADR_COUNT=$(echo "$ADR_COUNT" | tr -d ' ')
 
     if [ "$ADR_COUNT" -lt 3 ]; then
@@ -125,12 +125,12 @@ if [ -d "src/gameplay" ]; then
       # If system has 5+ files, check for corresponding design doc
       if [ "$file_count" -ge 5 ]; then
         # Check for design doc (allow variations: combat-system.md, combat.md)
-        design_doc_1="design/gdd/${system_name}-system.md"
-        design_doc_2="design/gdd/${system_name}.md"
+        design_doc_1="planning/design/gdd/${system_name}-system.md"
+        design_doc_2="planning/design/gdd/${system_name}.md"
 
         if [ ! -f "$design_doc_1" ] && [ ! -f "$design_doc_2" ]; then
           echo "⚠️  GAP: Gameplay system 'src/gameplay/$system_name/' ($file_count files) has no design doc"
-          echo "    Expected: design/gdd/${system_name}-system.md or design/gdd/${system_name}.md"
+          echo "    Expected: planning/design/gdd/${system_name}-system.md or planning/design/gdd/${system_name}.md"
           echo "    Suggested action: /reverse-document design src/gameplay/$system_name"
         fi
       fi
@@ -141,9 +141,9 @@ fi
 # --- Check 5: Production planning ---
 if [ "$SRC_FILES" -gt 100 ]; then
   # For projects with substantial code, check for production planning
-  if [ ! -d "production/sprints" ] && [ ! -d "production/milestones" ]; then
+  if [ ! -d "planning/production/sprints" ] && [ ! -d "planning/production/milestones" ]; then
     echo "⚠️  GAP: Large codebase ($SRC_FILES files) but no production planning found"
-    echo "    Suggested action: /sprint-plan or create production/ directory"
+    echo "    Suggested action: /sprint-plan or create planning/production/ directory"
   fi
 fi
 

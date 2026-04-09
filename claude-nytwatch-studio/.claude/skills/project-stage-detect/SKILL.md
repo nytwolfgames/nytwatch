@@ -25,13 +25,13 @@ of artifacts, and gaps that need attention. It's especially useful when:
 
 Analyze project structure and content:
 
-**Design Documentation** (`design/`):
-- Count GDD files in `design/gdd/*.md`
+**Design Documentation** (`planning/design/`):
+- Count GDD files in `planning/design/gdd/*.md`
 - Check for game-concept.md, game-pillars.md, systems-index.md
 - If systems-index.md exists, count total systems vs. designed systems
 - Analyze completeness (Overview, Detailed Design, Edge Cases, etc.)
-- Count narrative docs in `design/narrative/`
-- Count level designs in `design/levels/`
+- Count narrative docs in `planning/design/narrative/`
+- Count level designs in `planning/design/levels/`
 
 **Source Code** (`src/`):
 - Count source files (language-agnostic)
@@ -39,17 +39,17 @@ Analyze project structure and content:
 - Check for core/, gameplay/, ai/, networking/, ui/ directories
 - Estimate lines of code (rough scale)
 
-**Production Artifacts** (`production/`):
+**Production Artifacts** (`planning/production/`):
 - Check for active sprint plans
 - Look for milestone definitions
 - Find roadmap documents
 
-**Prototypes** (`prototypes/`):
+**Prototypes** (`planning/prototypes/`):
 - Count prototype directories
 - Check for READMEs (documented vs undocumented)
 - Assess if prototypes are archived or active
 
-**Architecture Docs** (`docs/architecture/`):
+**Architecture Docs** (`planning/docs/architecture/`):
 - Count ADRs (Architecture Decision Records)
 - Check for overview/index documents
 
@@ -59,7 +59,7 @@ Analyze project structure and content:
 
 ### 2. Classify Project Stage
 
-Based on scanned artifacts, determine stage. Check `production/stage.txt` first —
+Based on scanned artifacts, determine stage. Check `planning/production/stage.txt` first —
 if it exists, use its value (explicit override from `/gate-check`). Otherwise,
 auto-detect using these heuristics (check from most-advanced backward):
 
@@ -77,9 +77,9 @@ auto-detect using these heuristics (check from most-advanced backward):
 
 **DO NOT** just list missing files. Instead, **ask clarifying questions**:
 
-- "I see combat code (`src/gameplay/combat/`) but no `design/gdd/combat-system.md`. Was this prototyped first, or should we reverse-document?"
+- "I see combat code (`src/gameplay/combat/`) but no `planning/design/gdd/combat-system.md`. Was this prototyped first, or should we reverse-document?"
 - "You have 15 ADRs but no architecture overview. Should I create one to help new contributors?"
-- "No sprint plans in `production/`. Are you tracking work elsewhere (Jira, Trello, etc.)?"
+- "No sprint plans in `planning/production/`. Are you tracking work elsewhere (Jira, Trello, etc.)?"
 - "I found a game concept but no systems index. Have you decomposed the concept into individual systems yet, or should we run `/map-systems`?"
 - "Prototypes directory has 3 projects with no READMEs. Were these experiments, or do they need documentation?"
 
@@ -147,7 +147,7 @@ Recommended next steps:
 - [Priority 2]
 - [Priority 3]
 
-May I write the full stage analysis to production/project-stage-report.md?
+May I write the full stage analysis to planning/production/project-stage-report.md?
 ```
 
 Wait for user approval before creating the file.
@@ -176,7 +176,7 @@ After generating the report, suggest relevant next steps:
 - **Concept exists but no systems index?** → `/map-systems` to decompose into systems
 - **Missing design docs?** → `/reverse-document design src/[system]`
 - **Missing architecture docs?** → `/architecture-decision` or `/reverse-document architecture`
-- **Prototypes need documentation?** → `/reverse-document concept prototypes/[name]`
+- **Prototypes need documentation?** → `/reverse-document concept planning/prototypes/[name]`
 - **No sprint plan?** → `/sprint-plan`
 - **Approaching milestone?** → `/milestone-review`
 
@@ -190,6 +190,6 @@ This skill follows the collaborative design principle:
 2. **Present Options**: "Should I create X, or is it tracked elsewhere?"
 3. **User Decides**: Wait for direction
 4. **Show Draft**: Display report summary
-5. **Get Approval**: "May I write to production/project-stage-report.md?"
+5. **Get Approval**: "May I write to planning/production/project-stage-report.md?"
 
 **Never** silently write files. **Always** show findings and ask before creating artifacts.

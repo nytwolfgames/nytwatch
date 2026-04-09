@@ -18,10 +18,10 @@ Read the relevant agent definition from `.claude/agents/` if a specific role is 
 ## Phase 2: Scan Relevant Area
 
 - For programmers: scan `src/` for architecture, patterns, key files
-- For designers: scan `design/` for existing design documents
-- For narrative: scan `design/narrative/` for world-building and story docs
+- For designers: scan `planning/design/` for existing design documents
+- For narrative: scan `planning/design/narrative/` for world-building and story docs
 - For QA: scan `tests/` for existing test coverage
-- For production: scan `production/` for current sprint and milestone
+- For production: scan `planning/production/` for current sprint and milestone
 
 Read recent changes (git log if available) to understand current momentum.
 
@@ -81,7 +81,7 @@ Read recent changes (git log if available) to understand current momentum.
 
 Present the onboarding document to the user.
 
-Ask: "May I write this to `production/onboarding/onboard-[role]-[date].md`?"
+Ask: "May I write this to `planning/production/onboarding/onboard-[role]-[date].md`?"
 
 If yes, write the file, creating the directory if needed.
 

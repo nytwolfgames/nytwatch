@@ -3,7 +3,7 @@
 # Records what was worked on for audit trail and sprint tracking
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-SESSION_LOG_DIR="production/session-logs"
+SESSION_LOG_DIR="planning/production/session-logs"
 
 mkdir -p "$SESSION_LOG_DIR" 2>/dev/null
 
@@ -14,7 +14,7 @@ MODIFIED_FILES=$(git diff --name-only 2>/dev/null)
 # --- Archive active session state on shutdown (do NOT delete) ---
 # active.md persists across clean exits so multi-session recovery works.
 # It is only valid to delete active.md manually or when explicitly superseded.
-STATE_FILE="production/session-state/active.md"
+STATE_FILE="planning/production/session-state/active.md"
 if [ -f "$STATE_FILE" ]; then
     {
         echo "## Archived Session State: $TIMESTAMP"

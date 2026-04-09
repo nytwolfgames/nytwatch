@@ -56,7 +56,7 @@ Delegate to **narrative-director**:
 
 ### Phase 3: Economy Design (parallel with Phase 2 if theme is clear)
 Delegate to **economy-designer**:
-- Read the season brief and existing economy rules from `design/live-ops/economy-rules.md`
+- Read the season brief and existing economy rules from `planning/design/live-ops/economy-rules.md`
 - Design the reward track: free tier progression, premium tier value proposition
 - Plan the in-season economy: seasonal currency, store rotation, pricing
 - Define pity timer mechanics and bad-luck protection for any random elements
@@ -98,8 +98,8 @@ Present a summary to the user with:
 - **Content scope**: what is being created
 - **Economy health check**: does the reward track feel fair and non-predatory?
 - **Analytics readiness**: are success criteria defined and instrumented?
-- **Ethics review**: check the Phase 3 economy design against `design/live-ops/ethics-policy.md`
-  - If the file does not exist: flag "ETHICS REVIEW SKIPPED: `design/live-ops/ethics-policy.md` not found. Economy design was not reviewed against an ethics policy. Recommend creating one before production begins." Include this flag in the season design output document. Add to next steps: create `design/live-ops/ethics-policy.md`.
+- **Ethics review**: check the Phase 3 economy design against `planning/design/live-ops/ethics-policy.md`
+  - If the file does not exist: flag "ETHICS REVIEW SKIPPED: `planning/design/live-ops/ethics-policy.md` not found. Economy design was not reviewed against an ethics policy. Recommend creating one before production begins." Include this flag in the season design output document. Add to next steps: create `planning/design/live-ops/ethics-policy.md`.
   - If the file exists and a violation is found: flag "ETHICS FLAG: [element] in Phase 3 economy design violates [policy rule]. Approval is blocked until this is resolved." Do NOT issue a COMPLETE verdict or write output documents. Use `AskUserQuestion` with options: revise economy design / override with documented rationale / cancel. If user chooses to revise: re-spawn economy-designer to produce a corrected design, then return to Phase 7 review.
 - **Open questions**: decisions still needed before production begins
 
@@ -107,7 +107,7 @@ Ask the user to approve the season plan before delegating to production teams. I
 
 ## Output Documents
 
-All documents save to `design/live-ops/`:
+All documents save to `planning/design/live-ops/`:
 - `seasons/S[N]_[name].md` — Season design document (from Phase 1-3)
 - `seasons/S[N]_[name]_analytics.md` — Analytics plan (from Phase 4)
 - `seasons/S[N]_[name]_comms.md` — Communication calendar (from Phase 6)

@@ -116,7 +116,7 @@ Dev designs the HUD and inventory screen. `/ux-design` reads the player journey 
 **Learn:**
 - How `/ux-design` uses player journey context to ground UI decisions
 - What `/ux-review` actually checks (not just "does a spec exist?")
-- The difference between HUD doc (`design/ux/hud.md`) and per-screen specs
+- The difference between HUD doc (`planning/design/ux/hud.md`) and per-screen specs
 - How accessibility issues are handled at design time vs. implementation time
 
 ---
@@ -345,13 +345,13 @@ After reading these examples, try this exercise:
    - ✅ Requests approval before writing files
 
 If the agent skips any of these, remind it:
-> "Please follow the collaborative protocol from docs/COLLABORATIVE-DESIGN-PRINCIPLE.md"
+> "Please follow the collaborative protocol from planning/docs/COLLABORATIVE-DESIGN-PRINCIPLE.md"
 
 ---
 
 ## 📝 **Additional Resources**
 
-- **Full Principle Documentation:** [docs/COLLABORATIVE-DESIGN-PRINCIPLE.md](../COLLABORATIVE-DESIGN-PRINCIPLE.md)
-- **Workflow Guide:** [docs/WORKFLOW-GUIDE.md](../WORKFLOW-GUIDE.md)
+- **Full Principle Documentation:** [planning/docs/COLLABORATIVE-DESIGN-PRINCIPLE.md](../COLLABORATIVE-DESIGN-PRINCIPLE.md)
+- **Workflow Guide:** [planning/docs/WORKFLOW-GUIDE.md](../WORKFLOW-GUIDE.md)
 - **Agent Roster:** [.claude/docs/agent-roster.md](../../.claude/docs/agent-roster.md)
 - **CLAUDE.md (Collaboration Protocol):** [CLAUDE.md](../../CLAUDE.md#collaboration-protocol)

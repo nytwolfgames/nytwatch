@@ -54,7 +54,7 @@ identifies engine-level root causes. Verdict is READY FOR RELEASE or NEEDS MORE 
 6. Phase 5: qa-tester runs edge case tests, soak tests, stress tests, and regression tests; all pass
 7. `AskUserQuestion` presents test results; user approves before Phase 6
 8. Phase 6: orchestrator collects all results; compares before/after performance metrics against budgets; all metrics pass
-9. Subagent asks "May I write the polish report to `production/qa/evidence/polish-combat-[date].md`?" before writing
+9. Subagent asks "May I write the polish report to `planning/production/qa/evidence/polish-combat-[date].md`?" before writing
 10. Verdict: READY FOR RELEASE
 
 **Assertions:**
@@ -166,7 +166,7 @@ identifies engine-level root causes. Verdict is READY FOR RELEASE or NEEDS MORE 
 2. Phase 5: qa-tester runs regression tests and detects "Item highlight glow on hover no longer renders — regression introduced by shader optimization in Phase 3"
 3. qa-tester returns test results with the regression noted
 4. Orchestrator surfaces the regression immediately: "qa-tester: REGRESSION FOUND — `item-highlight-hover` glow broken by Phase 3 shader optimization"
-5. Subagent files a bug report asking "May I write the bug report to `production/qa/evidence/bug-polish-inventory-ui-[date].md`?" before writing
+5. Subagent files a bug report asking "May I write the bug report to `planning/production/qa/evidence/bug-polish-inventory-ui-[date].md`?" before writing
 6. Bug report is written after approval; it includes: the broken behavior, the polish change that caused it, reproduction steps, and severity
 7. `AskUserQuestion` presents the regression with options:
    - Revert the shader optimization and find an alternative approach

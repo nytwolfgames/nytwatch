@@ -3,14 +3,14 @@
 # Runs at session end. Fast path — no LLM call here.
 # Use /wiki-update skill to apply the queued update.
 
-WIKI_DIR="production/wiki"
+WIKI_DIR="planning/production/wiki"
 SHA_FILE="$WIKI_DIR/.last-hook-sha"
 PENDING_FILE="$WIKI_DIR/.pending-update.md"
 
 # ── Recursion guard ──────────────────────────────────────────────────────────
 # If only wiki files changed (e.g. /wiki-update just ran), do nothing.
 ALL_CHANGED=$(git diff --name-only 2>/dev/null; git diff HEAD --name-only 2>/dev/null)
-NON_WIKI=$(echo "$ALL_CHANGED" | grep -v "^production/wiki/" | sort -u)
+NON_WIKI=$(echo "$ALL_CHANGED" | grep -v "^planning/production/wiki/" | sort -u)
 
 if [ -z "$NON_WIKI" ]; then
     exit 0
@@ -25,12 +25,12 @@ fi
 CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null)
 
 if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
-    COMMITTED_CHANGES=$(git diff --name-only "$LAST_SHA..$CURRENT_SHA" 2>/dev/null | grep -v "^production/wiki/")
+    COMMITTED_CHANGES=$(git diff --name-only "$LAST_SHA..$CURRENT_SHA" 2>/dev/null | grep -v "^planning/production/wiki/")
 else
     COMMITTED_CHANGES=""
 fi
 
-UNCOMMITTED_CHANGES=$(git diff HEAD --name-only 2>/dev/null | grep -v "^production/wiki/")
+UNCOMMITTED_CHANGES=$(git diff HEAD --name-only 2>/dev/null | grep -v "^planning/production/wiki/")
 
 CHANGED_FILES=$(printf "%s\n%s" "$COMMITTED_CHANGES" "$UNCOMMITTED_CHANGES" | grep -v "^$" | sort -u)
 

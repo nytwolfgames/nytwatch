@@ -22,7 +22,7 @@ This is a workflow hook, not a git hook. It is invoked by running:
 
 The producer agent should:
 
-1. **Read the sprint plan** from `production/sprints/sprint-[N].md`
+1. **Read the sprint plan** from `planning/production/sprints/sprint-[N].md`
 2. **Calculate metrics**:
    - Tasks planned vs completed
    - Story points planned vs completed (if used)
@@ -75,4 +75,4 @@ Trend: [Improving / Stable / Declining]
 |------|------------|-----------|----------|
 ```
 
-5. **Save** to `production/sprints/sprint-[N]-retro.md`
+5. **Save** to `planning/production/sprints/sprint-[N]-retro.md`

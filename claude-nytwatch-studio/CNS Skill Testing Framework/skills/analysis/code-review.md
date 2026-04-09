@@ -37,7 +37,7 @@ None. Code review is a read-only advisory skill; no gates are invoked.
   - All public methods have doc comments (`##` notation)
   - No singletons used; dependencies injected via constructor
   - No hardcoded values; all constants reference `assets/data/`
-  - ADR reference in file header: `# ADR: docs/architecture/adr-004-health.md`
+  - ADR reference in file header: `# ADR: planning/docs/architecture/adr-004-health.md`
   - Referenced ADR has `Status: Accepted`
 
 **Input:** `/code-review src/gameplay/health_component.gd`
@@ -87,7 +87,7 @@ None. Code review is a read-only advisory skill; no gates are invoked.
 ### Case 3: Architecture Risk — ADR reference is Proposed, not Accepted
 
 **Fixture:**
-- `src/core/save_system.gd` has a header comment: `# ADR: docs/architecture/adr-010-save.md`
+- `src/core/save_system.gd` has a header comment: `# ADR: planning/docs/architecture/adr-010-save.md`
 - `adr-010-save.md` exists but has `Status: Proposed`
 - Code itself follows all other coding standards
 

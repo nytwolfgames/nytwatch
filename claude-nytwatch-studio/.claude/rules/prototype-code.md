@@ -1,6 +1,6 @@
 ---
 paths:
-  - "prototypes/**"
+  - "planning/prototypes/**"
 ---
 
 # Prototype Code Standards (Relaxed)
@@ -19,14 +19,14 @@ relaxed to maximize iteration speed. The goal is learning, not production qualit
 - Quick-and-dirty solutions
 
 ## What's Still Required
-- Each prototype lives in its own subdirectory: `prototypes/[name]/`
+- Each prototype lives in its own subdirectory: `planning/prototypes/[name]/`
 - Every prototype MUST have a `README.md` with:
   - What hypothesis is being tested
   - How to run the prototype
   - Current status (in-progress / concluded)
   - Findings (updated when prototype concludes)
-- No production code may reference or import from `prototypes/`
-- Prototypes must not modify files outside `prototypes/`
+- No production code may reference or import from `planning/prototypes/`
+- Prototypes must not modify files outside `planning/prototypes/`
 - Prototypes must not be deployed or shipped
 
 ## When a Prototype Succeeds

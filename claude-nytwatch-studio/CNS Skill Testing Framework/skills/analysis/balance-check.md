@@ -3,7 +3,7 @@
 ## Skill Summary
 
 `/balance-check` reads balance data files (JSON or YAML in `assets/data/`) and
-checks each value against the design formulas defined in GDDs under `design/gdd/`.
+checks each value against the design formulas defined in GDDs under `planning/design/gdd/`.
 It produces a findings table with columns: Value → Formula → Deviation → Severity.
 No director gates are invoked (read-only analysis). The skill may optionally write
 a balance report but asks "May I write" before doing so. Verdicts: BALANCED,
@@ -35,14 +35,14 @@ None. Balance check is a read-only analysis skill; no gates are invoked.
 
 **Fixture:**
 - `assets/data/combat-balance.json` exists with 6 stat values
-- `design/gdd/combat-system.md` contains formulas for all 6 stats with ±10% tolerance
+- `planning/design/gdd/combat-system.md` contains formulas for all 6 stats with ±10% tolerance
 - All 6 values fall within tolerance
 
 **Input:** `/balance-check`
 
 **Expected behavior:**
 1. Skill reads all balance data files in `assets/data/`
-2. Skill reads GDD formulas from `design/gdd/`
+2. Skill reads GDD formulas from `planning/design/gdd/`
 3. Skill computes deviation for each value against its formula
 4. All deviations are within ±10% tolerance
 5. Skill outputs findings table with all rows showing PASS
@@ -61,7 +61,7 @@ None. Balance check is a read-only analysis skill; no gates are invoked.
 
 **Fixture:**
 - `assets/data/combat-balance.json` has `player_damage_base: 140`
-- `design/gdd/combat-system.md` formula specifies `player_damage_base = 100` (±10%)
+- `planning/design/gdd/combat-system.md` formula specifies `player_damage_base = 100` (±10%)
 - All other stats are within tolerance
 
 **Input:** `/balance-check`
@@ -85,7 +85,7 @@ None. Balance check is a read-only analysis skill; no gates are invoked.
 
 **Fixture:**
 - `assets/data/economy-balance.yaml` exists with 10 stat values
-- No GDD in `design/gdd/` contains formula definitions for economy stats
+- No GDD in `planning/design/gdd/` contains formula definitions for economy stats
 
 **Input:** `/balance-check`
 
@@ -108,7 +108,7 @@ None. Balance check is a read-only analysis skill; no gates are invoked.
 
 **Fixture:**
 - `assets/data/combat-balance.json` contains a stat `legacy_armor_mult: 1.5`
-- `design/gdd/combat-system.md` has no formula for `legacy_armor_mult`
+- `planning/design/gdd/combat-system.md` has no formula for `legacy_armor_mult`
 - All other stats have formula definitions and pass validation
 
 **Input:** `/balance-check`
@@ -142,7 +142,7 @@ None. Balance check is a read-only analysis skill; no gates are invoked.
 3. No director gate is invoked
 4. Skill presents findings table to user
 5. Skill offers to write an optional balance report
-6. If user says yes: skill asks "May I write to `production/qa/balance-report-[date].md`?"
+6. If user says yes: skill asks "May I write to `planning/production/qa/balance-report-[date].md`?"
 7. If user says no: skill ends without writing
 
 **Assertions:**

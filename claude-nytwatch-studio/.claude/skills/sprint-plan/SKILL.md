@@ -5,14 +5,14 @@ argument-hint: "[new|update|status] [--review full|lean|solo]"
 user-invocable: true
 allowed-tools: Read, Glob, Grep, Write, Edit, Task, AskUserQuestion
 context: |
-  !ls production/sprints/ 2>/dev/null
+  !ls planning/production/sprints/ 2>/dev/null
 ---
 
 ## Phase 0: Parse Arguments
 
 Extract the mode argument (`new`, `update`, or `status`) and resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
@@ -21,15 +21,15 @@ See `.claude/docs/director-gates.md` for the full check pattern.
 
 ## Phase 1: Gather Context
 
-1. **Read the current milestone** from `production/milestones/`.
+1. **Read the current milestone** from `planning/production/milestones/`.
 
-2. **Read the previous sprint** (if any) from `production/sprints/` to
+2. **Read the previous sprint** (if any) from `planning/production/sprints/` to
    understand velocity and carryover.
 
-3. **Scan design documents** in `design/gdd/` for features tagged as ready
+3. **Scan design documents** in `planning/design/gdd/` for features tagged as ready
    for implementation.
 
-4. **Check the risk register** at `production/risk-register/`.
+4. **Check the risk register** at `planning/production/risk-register/`.
 
 ---
 
@@ -75,7 +75,7 @@ For `new`:
 ## Definition of Done for this Sprint
 - [backlog] All P0 tasks completed
 - [backlog] All tasks pass acceptance criteria
-- [backlog] QA plan exists (`production/qa/qa-plan-sprint-[N].md`)
+- [backlog] QA plan exists (`planning/production/qa/qa-plan-sprint-[N].md`)
 - [backlog] All Logic/Integration stories have passing unit/integration tests
 - [backlog] Smoke check passed (`/smoke-check sprint`)
 - [backlog] QA sign-off report: APPROVED or APPROVED WITH CONDITIONS (`/team-qa sprint`)
@@ -151,7 +151,7 @@ Pass: proposed story list (titles, estimates, dependencies), total team capacity
 
 Present the producer's assessment. If UNREALISTIC, revise the story selection (defer stories to Should Have or Nice to Have) before asking for write approval. If CONCERNS, surface them and let the user decide whether to adjust.
 
-After handling the producer's verdict, ask: "May I write this sprint plan to `production/sprints/sprint-[N].md`?" If yes, write the file, creating the directory if needed. Verdict: **COMPLETE** — sprint plan created. If no: Verdict: **BLOCKED** — user declined write.
+After handling the producer's verdict, ask: "May I write this sprint plan to `planning/production/sprints/sprint-[N].md`?" If yes, write the file, creating the directory if needed. Verdict: **COMPLETE** — sprint plan created. If no: Verdict: **BLOCKED** — user declined write.
 
 After writing, add:
 
@@ -163,7 +163,7 @@ After writing, add:
 
 Before closing the sprint plan, check whether a QA plan exists for this sprint.
 
-Use `Glob` to look for `production/qa/qa-plan-sprint-[N].md` or any file in `production/qa/` referencing this sprint number.
+Use `Glob` to look for `planning/production/qa/qa-plan-sprint-[N].md` or any file in `planning/production/qa/` referencing this sprint number.
 
 **If a QA plan is found**: note it in the sprint plan output — "QA Plan: `[path]`" — and proceed.
 

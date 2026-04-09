@@ -180,17 +180,17 @@ CLAUDE.md                           # Master configuration
   hooks/                            # 12 hook scripts (bash, cross-platform)
   rules/                            # 11 path-scoped coding standards
   statusline.sh                     # Status line script (context%, model, stage, epic breadcrumb)
-  docs/
+  planning/docs/
     workflow-catalog.yaml           # 7-phase pipeline definition (read by /help)
     templates/                      # 39 document templates
 src/                                # Game source code
 assets/                             # Art, audio, VFX, shaders, data files
-design/                             # GDDs, narrative docs, level designs
-docs/                               # Technical documentation and ADRs
+planning/design/                             # GDDs, narrative docs, level designs
+planning/docs/                               # Technical documentation and ADRs
 tests/                              # Test suites (unit, integration, performance, playtest)
 tools/                              # Build and pipeline tools
-prototypes/                         # Throwaway prototypes (isolated from src/)
-production/                         # Sprint plans, milestones, release tracking
+planning/prototypes/                         # Throwaway prototypes (isolated from src/)
+planning/production/                         # Sprint plans, milestones, release tracking
 ```
 
 ## How It Works
@@ -251,9 +251,9 @@ Coding standards are automatically enforced based on file location:
 | `src/ai/**` | Performance budgets, debuggability, data-driven parameters |
 | `src/networking/**` | Server-authoritative, versioned messages, security |
 | `src/ui/**` | No game state ownership, localization-ready, accessibility |
-| `design/gdd/**` | Required 8 sections, formula format, edge cases |
+| `planning/design/gdd/**` | Required 8 sections, formula format, edge cases |
 | `tests/**` | Test naming, coverage requirements, fixture patterns |
-| `prototypes/**` | Relaxed standards, README required, hypothesis documented |
+| `planning/prototypes/**` | Relaxed standards, README required, hypothesis documented |
 
 ## Design Philosophy
 
@@ -275,7 +275,7 @@ This is a **template**, not a locked framework. Everything is meant to be custom
 - **Add rules** — create new path-scoped rules for your project's directory structure
 - **Tune hooks** — adjust validation strictness, add new checks
 - **Pick your engine** — use the Godot, Unity, or Unreal agent set (or none)
-- **Set review intensity** — `full` (all director gates), `lean` (phase gates only), or `solo` (none). Set during `/start` or edit `production/review-mode.txt`. Override per-run with `--review solo` on any skill.
+- **Set review intensity** — `full` (all director gates), `lean` (phase gates only), or `solo` (none). Set during `/start` or edit `planning/production/review-mode.txt`. Override per-run with `--review solo` on any skill.
 
 ## Platform Support
 

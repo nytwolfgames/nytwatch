@@ -18,13 +18,13 @@ Parse the argument:
 
 ## Phase 1 — Context Gathering
 
-1. **Read `design/gdd/systems-index.md`** for the full list of systems, their
+1. **Read `planning/design/gdd/systems-index.md`** for the full list of systems, their
    categories, and MVP/priority tier.
 
 2. **L0 pre-scan**: Before full-reading any GDDs, Grep all GDD files for
    `## Summary` sections plus common content-count keywords:
    ```
-   Grep pattern="(## Summary|N enemies|N levels|N items|N abilities|enemy types|item types)" glob="design/gdd/*.md" output_mode="files_with_matches"
+   Grep pattern="(## Summary|N enemies|N levels|N items|N abilities|enemy types|item types)" glob="planning/design/gdd/*.md" output_mode="files_with_matches"
    ```
    For a single-system audit: skip this step and go straight to full-read.
    For a full audit: full-read only the GDDs that matched content-count keywords.
@@ -130,7 +130,7 @@ Flag a system as `HIGH PRIORITY` in the report if:
 
 ### Full audit and single-system modes
 
-Present the gap table and summary to the user. Ask: "May I write the full report to `docs/content-audit-[YYYY-MM-DD].md`?"
+Present the gap table and summary to the user. Ask: "May I write the full report to `planning/docs/content-audit-[YYYY-MM-DD].md`?"
 
 If yes, write the file:
 
@@ -159,7 +159,7 @@ If yes, write the file:
 ## Per-System Breakdown
 
 ### [System Name]
-- **GDD**: `design/gdd/[file].md`
+- **GDD**: `planning/design/gdd/[file].md`
 - **Content types audited**: [list]
 - **Notes**: [any caveats about scan accuracy for this system]
 
@@ -199,6 +199,6 @@ After the audit, recommend the highest-value follow-up actions:
   add missing content counts to the GDD before implementation begins."
 - If total gap is >50% → "Run `/sprint-plan` to allocate content work across upcoming sprints."
 - If backlog stories are needed → "Run `/create-stories [epic-slug]` for each HIGH PRIORITY gap."
-- If `--summary` was used → "Run `/content-audit` (no flag) to write the full report to `docs/`."
+- If `--summary` was used → "Run `/content-audit` (no flag) to write the full report to `planning/docs/`."
 
 Verdict: **COMPLETE** — content audit finished.

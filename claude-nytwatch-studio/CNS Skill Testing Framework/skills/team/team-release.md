@@ -20,7 +20,7 @@ NO-GO. Closes with a post-release monitoring plan.
 - [ ] Contains "May I write" language in the File Write Protocol section (delegated to sub-agents)
 - [ ] Has a File Write Protocol section stating that the orchestrator does not write files directly
 - [ ] Has an Error Recovery Protocol section with four recovery options (surface / assess / offer options / partial report)
-- [ ] Has a next-step handoff referencing post-release monitoring, `/retrospective`, and `production/stage.txt`
+- [ ] Has a next-step handoff referencing post-release monitoring, `/retrospective`, and `planning/production/stage.txt`
 - [ ] Uses `AskUserQuestion` at phase transitions requiring user approval before proceeding
 - [ ] Phase 3 agents (qa-lead, devops-engineer, and optionally security-engineer, network-programmer) are explicitly stated to run in parallel
 - [ ] Phase 6 (Deployment) is conditional on a GO decision from Phase 5
@@ -33,12 +33,12 @@ NO-GO. Closes with a post-release monitoring plan.
 ### Case 1: Happy Path (Single-Player) — All phases complete, version deployed
 
 **Fixture:**
-- `production/stage.txt` exists and contains a Production-or-later stage
+- `planning/production/stage.txt` exists and contains a Production-or-later stage
 - Milestone acceptance criteria are all met (producer can confirm)
 - No online features, no multiplayer, no player data collection
 - All CI builds are clean on the current branch
 - No open S1/S2 bugs
-- `production/sprints/` contains the completed sprint stories for this milestone
+- `planning/production/sprints/` contains the completed sprint stories for this milestone
 
 **Input:** `/team-release v1.0.0`
 
@@ -60,7 +60,7 @@ NO-GO. Closes with a post-release monitoring plan.
 - [ ] `/changelog` is invoked by release-manager in Phase 6 (not written directly)
 - [ ] `/patch-notes v1.0.0` is invoked by community-manager in Phase 6
 - [ ] Phase 7 monitoring plan includes a 48-hour post-release monitoring commitment
-- [ ] Next steps recommend updating `production/stage.txt` to `Live` after successful deployment
+- [ ] Next steps recommend updating `planning/production/stage.txt` to `Live` after successful deployment
 - [ ] Verdict: COMPLETE appears in the final output
 
 ---
@@ -162,18 +162,18 @@ NO-GO. Closes with a post-release monitoring plan.
 ### Case 5: No Argument — Skill infers version or asks
 
 **Fixture (variant A — milestone data present):**
-- `production/milestones/` exists with a milestone file; most recent milestone is "v1.1.0 — Gold"
-- `production/session-state/active.md` references a version or milestone
+- `planning/production/milestones/` exists with a milestone file; most recent milestone is "v1.1.0 — Gold"
+- `planning/production/session-state/active.md` references a version or milestone
 
 **Fixture (variant B — no discoverable version):**
-- `production/milestones/` does not exist
-- `production/session-state/active.md` does not reference a version
+- `planning/production/milestones/` does not exist
+- `planning/production/session-state/active.md` does not reference a version
 - No git tags are present from which to infer a version
 
 **Input:** `/team-release` (no argument)
 
 **Expected behavior (variant A):**
-1. Phase 1: No argument provided; reads `production/session-state/active.md`; reads most recent milestone file in `production/milestones/`
+1. Phase 1: No argument provided; reads `planning/production/session-state/active.md`; reads most recent milestone file in `planning/production/milestones/`
 2. Infers v1.1.0 as the target version; reports "No version argument provided — inferred v1.1.0 from milestone data. Proceeding."
 3. Confirms with AskUserQuestion before beginning Phase 1 proper: "Releasing v1.1.0. Is this correct?"
 4. Proceeds as if `/team-release v1.1.0` was the input
@@ -185,7 +185,7 @@ NO-GO. Closes with a post-release monitoring plan.
 
 **Assertions:**
 - [ ] Skill does NOT default to a hardcoded version string when no argument is provided
-- [ ] Skill reads `production/session-state/active.md` and milestone files before asking (variant A)
+- [ ] Skill reads `planning/production/session-state/active.md` and milestone files before asking (variant A)
 - [ ] Inferred version is confirmed with the user via AskUserQuestion before proceeding (variant A)
 - [ ] When no version is discoverable, AskUserQuestion is used — skill does not guess (variant B)
 - [ ] Skill does NOT error out when milestone files are absent — it falls back to asking (variant B)
@@ -202,7 +202,7 @@ NO-GO. Closes with a post-release monitoring plan.
 - [ ] Error recovery: any BLOCKED agent is surfaced immediately before continuing to dependent phases
 - [ ] Partial reports are always produced if any phase fails or the pipeline is halted (Case 2)
 - [ ] Verdict: COMPLETE only when deployment completes; BLOCKED when go/no-go is NO or a hard blocker is unresolved
-- [ ] Next steps always include 48-hour post-release monitoring, `/retrospective` recommendation, and `production/stage.txt` update to `Live`
+- [ ] Next steps always include 48-hour post-release monitoring, `/retrospective` recommendation, and `planning/production/stage.txt` update to `Live`
 
 ---
 

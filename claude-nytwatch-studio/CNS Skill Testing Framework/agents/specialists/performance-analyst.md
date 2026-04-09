@@ -77,6 +77,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Frame time analysis (Case 1) output should be structured as a report filed in `production/qa/evidence/`
+- Frame time analysis (Case 1) output should be structured as a report filed in `planning/production/qa/evidence/`
 - Regression case (Case 3) confirms the agent investigates cause, not just measures symptoms
 - Code quality trade-off (Case 4) verifies the agent does not recommend optimizations that violate coding standards without flagging the conflict

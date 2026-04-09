@@ -10,8 +10,8 @@ required field, the skill asks follow-up questions to fill the gaps before
 producing the draft.
 
 The skill checks for possibly duplicate reports (by comparing to existing files
-in `production/bugs/`) and offers to link rather than create a new report. Each
-report is written to `production/bugs/bug-[date]-[slug].md` after a "May I write"
+in `planning/production/bugs/`) and offers to link rather than create a new report. Each
+report is written to `planning/production/bugs/bug-[date]-[slug].md` after a "May I write"
 ask. No director gates are used — bug reporting is an operational utility.
 
 ---
@@ -39,7 +39,7 @@ None. `/bug-report` is an operational documentation skill. No director gates app
 ### Case 1: Happy Path — User describes a crash, full report produced
 
 **Fixture:**
-- `production/bugs/` directory exists and is empty
+- `planning/production/bugs/` directory exists and is empty
 - No similar existing reports
 
 **Input:** `/bug-report` (user describes: "Game crashes when player enters the boss arena")
@@ -50,7 +50,7 @@ None. `/bug-report` is an operational documentation skill. No director gates app
 3. Skill confirms repro steps, expected (no crash), actual (crash), affected system
    (arena/boss), and build version with the user
 4. Skill drafts the full structured report
-5. Skill asks "May I write to `production/bugs/bug-2026-04-06-game-crashes-boss-arena.md`?"
+5. Skill asks "May I write to `planning/production/bugs/bug-2026-04-06-game-crashes-boss-arena.md`?"
 6. File is written on approval; verdict is COMPLETE
 
 **Assertions:**
@@ -90,7 +90,7 @@ None. `/bug-report` is an operational documentation skill. No director gates app
 ### Case 3: Possible Duplicate — Offers to link rather than create new
 
 **Fixture:**
-- `production/bugs/bug-2026-03-20-audio-cut-out.md` already exists with
+- `planning/production/bugs/bug-2026-03-20-audio-cut-out.md` already exists with
   similar title and MEDIUM severity
 
 **Input:** `/bug-report` (user describes: "Audio randomly stops working")
@@ -158,7 +158,7 @@ None. `/bug-report` is an operational documentation skill. No director gates app
 - [ ] Collects all 7 required fields before drafting the report
 - [ ] Asks follow-up questions for any missing required fields
 - [ ] Checks for similar existing reports before creating a new one
-- [ ] Asks "May I write to `production/bugs/bug-[date]-[slug].md`?" before writing
+- [ ] Asks "May I write to `planning/production/bugs/bug-[date]-[slug].md`?" before writing
 - [ ] Verdict is COMPLETE when the report file is written
 
 ---

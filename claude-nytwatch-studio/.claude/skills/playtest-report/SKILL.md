@@ -10,7 +10,7 @@ allowed-tools: Read, Glob, Grep, Write, Task, AskUserQuestion
 
 Resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
@@ -110,7 +110,7 @@ Present the categorized list, then route:
 - **Design changes:** "Run `/propagate-design-change [path]` on the affected design document to find downstream impacts before making changes."
 - **Balance adjustments:** "Run `/balance-check [system]` to verify the full balance picture before tuning values."
 - **Bugs:** "Use `/bug-report` to formally track these."
-- **Polish items:** "Add to the polish backlog in `production/` when the team reaches that phase."
+- **Polish items:** "Add to the polish backlog in `planning/production/` when the team reaches that phase."
 
 ---
 
@@ -123,7 +123,7 @@ Present the categorized list, then route:
 
 After categorising findings, spawn `creative-director` via Task using gate **CD-PLAYTEST** (`.claude/docs/director-gates.md`).
 
-Pass: the structured report content, game pillars and core fantasy (from `design/gdd/game-concept.md`), the specific hypothesis being tested.
+Pass: the structured report content, game pillars and core fantasy (from `planning/design/gdd/game-concept.md`), the specific hypothesis being tested.
 
 Present the creative director's assessment before saving the report. If CONCERNS or REJECT, add a `## Creative Director Assessment` section to the report capturing the verdict and feedback. If APPROVE, note the approval in the report.
 
@@ -131,7 +131,7 @@ Present the creative director's assessment before saving the report. If CONCERNS
 
 ## Phase 4: Save Report
 
-Ask: "May I write this playtest report to `production/qa/playtests/playtest-[date]-[tester].md`?"
+Ask: "May I write this playtest report to `planning/production/qa/playtests/playtest-[date]-[tester].md`?"
 
 If yes, write the file, creating the directory if needed.
 

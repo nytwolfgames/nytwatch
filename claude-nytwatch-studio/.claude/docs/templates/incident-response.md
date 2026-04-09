@@ -131,5 +131,5 @@ prevent this? This is more important than the technical cause.]
 
 ---
 
-*This document is filed in `production/hotfixes/` and linked from the
+*This document is filed in `planning/production/hotfixes/` and linked from the
 release notes for the fix version.*

@@ -33,9 +33,9 @@ None. Scope check is a read-only advisory skill; no gates are invoked.
 ### Case 1: Happy Path — Sprint stories align with milestone goals
 
 **Fixture:**
-- `production/milestones/milestone-03.md` lists 3 goals: combat system, enemy AI, level loading
-- `production/sprints/sprint-006.md` contains 5 stories, all tagged to one of the 3 goals
-- `production/session-state/active.md` references milestone-03 as the active milestone
+- `planning/production/milestones/milestone-03.md` lists 3 goals: combat system, enemy AI, level loading
+- `planning/production/sprints/sprint-006.md` contains 5 stories, all tagged to one of the 3 goals
+- `planning/production/session-state/active.md` references milestone-03 as the active milestone
 
 **Input:** `/scope-check`
 
@@ -57,8 +57,8 @@ None. Scope check is a read-only advisory skill; no gates are invoked.
 ### Case 2: Scope Creep Detected — Stories introducing systems not in milestone
 
 **Fixture:**
-- `production/milestones/milestone-03.md` goals: combat, enemy AI, level loading
-- `production/sprints/sprint-006.md` contains 5 stories:
+- `planning/production/milestones/milestone-03.md` goals: combat, enemy AI, level loading
+- `planning/production/sprints/sprint-006.md` contains 5 stories:
   - 3 stories map to milestone goals
   - 2 stories reference "online leaderboard" and "achievement system" (not in milestone-03)
 
@@ -81,15 +81,15 @@ None. Scope check is a read-only advisory skill; no gates are invoked.
 ### Case 3: No Milestone Defined — CONCERNS; scope cannot be validated
 
 **Fixture:**
-- `production/session-state/active.md` has no milestone reference
-- `production/milestones/` directory exists but is empty
-- `production/sprints/sprint-006.md` has 4 stories
+- `planning/production/session-state/active.md` has no milestone reference
+- `planning/production/milestones/` directory exists but is empty
+- `planning/production/sprints/sprint-006.md` has 4 stories
 
 **Input:** `/scope-check`
 
 **Expected behavior:**
 1. Skill reads active.md — finds no milestone reference
-2. Skill checks `production/milestones/` — no milestone files found
+2. Skill checks `planning/production/milestones/` — no milestone files found
 3. Skill outputs: "No active milestone defined — scope cannot be validated"
 4. Verdict is CONCERNS
 
@@ -104,12 +104,12 @@ None. Scope check is a read-only advisory skill; no gates are invoked.
 ### Case 4: Single Story Check — Evaluated against its parent epic
 
 **Fixture:**
-- User targets a single story: `production/epics/combat/story-parry-timing.md`
+- User targets a single story: `planning/production/epics/combat/story-parry-timing.md`
 - Story references parent epic: `epic-combat.md`
-- `production/epics/combat/epic-combat.md` has scope: "melee combat mechanics"
+- `planning/production/epics/combat/epic-combat.md` has scope: "melee combat mechanics"
 - Story title: "Implement parry timing window" — matches epic scope
 
-**Input:** `/scope-check production/epics/combat/story-parry-timing.md`
+**Input:** `/scope-check planning/production/epics/combat/story-parry-timing.md`
 
 **Expected behavior:**
 1. Skill reads the specified story file

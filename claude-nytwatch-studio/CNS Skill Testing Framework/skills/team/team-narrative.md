@@ -35,9 +35,9 @@ is unresolved.
 ### Case 1: Happy Path — All five phases complete, narrative doc delivered
 
 **Fixture:**
-- A game concept and GDD exist for the target feature (e.g., `design/gdd/faction-intro.md`)
-- Character voice profiles exist (e.g., `design/narrative/characters/`)
-- Existing lore entries exist for cross-reference (e.g., `design/narrative/lore/`)
+- A game concept and GDD exist for the target feature (e.g., `planning/design/gdd/faction-intro.md`)
+- Character voice profiles exist (e.g., `planning/design/narrative/characters/`)
+- Existing lore entries exist for cross-reference (e.g., `planning/design/narrative/lore/`)
 - No lore contradictions exist between existing entries and the new content
 
 **Input:** `/team-narrative faction introduction cutscene for the Ironveil faction`
@@ -71,7 +71,7 @@ is unresolved.
 ### Case 2: Lore Contradiction Found — world-builder finds conflict before writer proceeds
 
 **Fixture:**
-- Existing lore entry at `design/narrative/lore/ironveil-history.md` states the Ironveil faction was founded 200 years ago
+- Existing lore entry at `planning/design/narrative/lore/ironveil-history.md` states the Ironveil faction was founded 200 years ago
 - The new narrative brief (from Phase 1) states the Ironveil were founded 50 years ago
 - The writer has been spawned in parallel with the world-builder in Phase 2
 
@@ -80,7 +80,7 @@ is unresolved.
 **Expected behavior:**
 1. Phases 1–2 begin normally
 2. Phase 2 world-builder detects a factual contradiction between the narrative brief and existing lore: founding date conflict
-3. world-builder returns BLOCKED with reason: "Lore contradiction found — founding date conflicts with `design/narrative/lore/ironveil-history.md`"
+3. world-builder returns BLOCKED with reason: "Lore contradiction found — founding date conflicts with `planning/design/narrative/lore/ironveil-history.md`"
 4. Orchestrator surfaces the contradiction immediately: "world-builder: BLOCKED — Lore contradiction: founding date in narrative brief (50 years ago) conflicts with existing canon (200 years ago in `ironveil-history.md`)"
 5. Orchestrator assesses dependency: the writer's dialogue depends on canon lore — the writer's draft cannot be finalized without resolving the contradiction
 6. `AskUserQuestion` presents options:
@@ -154,7 +154,7 @@ is unresolved.
 
 **Fixture:**
 - Phase 1 narrative-director produces a narrative brief referencing two characters: Commander Varek and Advisor Selene
-- No character voice profiles exist in `design/narrative/characters/` for either character
+- No character voice profiles exist in `planning/design/narrative/characters/` for either character
 - Phase 2 begins; world-builder proceeds normally
 
 **Input:** `/team-narrative ironveil surrender negotiation scene`
@@ -162,7 +162,7 @@ is unresolved.
 **Expected behavior:**
 1. Phase 1 completes; narrative brief lists Commander Varek and Advisor Selene as characters
 2. Phase 2: writer is spawned in parallel with world-builder
-3. writer returns BLOCKED: "Cannot produce dialogue — no voice profiles found for Commander Varek or Advisor Selene in `design/narrative/characters/`. Voice profiles required to match character tone and speech patterns."
+3. writer returns BLOCKED: "Cannot produce dialogue — no voice profiles found for Commander Varek or Advisor Selene in `planning/design/narrative/characters/`. Voice profiles required to match character tone and speech patterns."
 4. Orchestrator surfaces the blocker immediately: "writer: BLOCKED — Missing prerequisite: character voice profiles for Commander Varek and Advisor Selene"
 5. world-builder output is preserved; partial report is produced with lore entries
 6. `AskUserQuestion` presents options:

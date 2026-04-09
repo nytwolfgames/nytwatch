@@ -30,11 +30,11 @@ the `/team-ui` pipeline.
 
 ## Phase 1: Parse Arguments
 
-- **Specific file path** (e.g., `/ux-review design/ux/inventory.md`): validate
+- **Specific file path** (e.g., `/ux-review planning/design/ux/inventory.md`): validate
   that one document
-- **`all`**: find all files in `design/ux/` and validate each
-- **`hud`**: validate `design/ux/hud.md` specifically
-- **`patterns`**: validate `design/ux/interaction-patterns.md` specifically
+- **`all`**: find all files in `planning/design/ux/` and validate each
+- **`hud`**: validate `planning/design/ux/hud.md` specifically
+- **`patterns`**: validate `planning/design/ux/interaction-patterns.md` specifically
 - **No argument**: ask the user which spec to validate
 
 For `all`, output a summary table first (file | verdict | primary issue) then
@@ -50,12 +50,12 @@ Before validating any spec, load:
    extract `## Input & Platform`. This is the authoritative source for which input
    methods the game supports — use it to drive the Input Method Coverage checks in
    Phase 3A, not the spec's own header. If unconfigured, fall back to the spec header.
-2. The accessibility tier committed to in `design/accessibility-requirements.md`
+2. The accessibility tier committed to in `planning/design/accessibility-requirements.md`
    (if it exists)
-3. The interaction pattern library at `design/ux/interaction-patterns.md` (if
+3. The interaction pattern library at `planning/design/ux/interaction-patterns.md` (if
    it exists)
 4. The GDDs referenced in the spec's header (read their UI Requirements sections)
-5. The player journey map at `design/player-journey.md` (if it exists) for
+5. The player journey map at `planning/design/player-journey.md` (if it exists) for
    context-arrival validation
 
 ---
@@ -177,7 +177,7 @@ Run all checks against a `hud-design.md`-based document.
 
 ### GDD Alignment
 
-- [ ] All systems in `design/gdd/systems-index.md` with UI category have
+- [ ] All systems in `planning/design/gdd/systems-index.md` with UI category have
   representation in HUD (or justified absence)
 
 ---

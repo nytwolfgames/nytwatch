@@ -2,7 +2,7 @@
 
 ## Trigger
 
-Runs before any commit that modifies files in `design/` or `assets/data/`.
+Runs before any commit that modifies files in `planning/design/` or `assets/data/`.
 
 ## Purpose
 
@@ -17,7 +17,7 @@ broken cross-references, and invalid data before they propagate.
 # Pre-commit hook: Design document and game data validation
 # Place in .git/hooks/pre-commit or configure via your hook manager
 
-DESIGN_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^design/')
+DESIGN_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^planning/design/')
 DATA_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^assets/data/')
 
 EXIT_CODE=0
@@ -27,7 +27,7 @@ if [ -n "$DESIGN_FILES" ]; then
     for file in $DESIGN_FILES; do
         if [[ "$file" == *.md ]]; then
             # Check for required sections in GDD documents
-            if [[ "$file" == design/gdd/* ]]; then
+            if [[ "$file" == planning/design/gdd/* ]]; then
                 for section in "Overview" "Detailed" "Edge Cases" "Dependencies" "Acceptance Criteria"; do
                     if ! grep -qi "$section" "$file"; then
                         echo "ERROR: $file missing required section: $section"

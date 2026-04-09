@@ -45,12 +45,12 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 1: Happy Path — Complete architecture doc in full mode
 
 **Fixture:**
-- `docs/architecture/architecture.md` exists with all 8 required sections populated
-- All sections reference the correct engine version from `docs/engine-reference/`
-- No contradictions with existing Accepted ADRs in `docs/architecture/`
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/docs/architecture/architecture.md` exists with all 8 required sections populated
+- All sections reference the correct engine version from `planning/docs/engine-reference/`
+- No contradictions with existing Accepted ADRs in `planning/docs/architecture/`
+- `planning/production/session-state/review-mode.txt` contains `full`
 
-**Input:** `/architecture-review docs/architecture/architecture.md`
+**Input:** `/architecture-review planning/docs/architecture/architecture.md`
 
 **Expected behavior:**
 1. Skill reads the architecture document
@@ -73,11 +73,11 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 2: Failure Path — Missing required sections
 
 **Fixture:**
-- `docs/architecture/architecture.md` exists but is missing at least 2 required sections
+- `planning/docs/architecture/architecture.md` exists but is missing at least 2 required sections
   (e.g., no data model section, no error handling section)
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 
-**Input:** `/architecture-review docs/architecture/architecture.md`
+**Input:** `/architecture-review planning/docs/architecture/architecture.md`
 
 **Expected behavior:**
 1. Skill reads the document and identifies missing sections
@@ -96,11 +96,11 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 3: Partial Path — Architecture contradicts an existing ADR
 
 **Fixture:**
-- `docs/architecture/architecture.md` exists with all 8 sections present
-- One Accepted ADR in `docs/architecture/` establishes a constraint that the architecture doc contradicts
+- `planning/docs/architecture/architecture.md` exists with all 8 sections present
+- One Accepted ADR in `planning/docs/architecture/` establishes a constraint that the architecture doc contradicts
   (e.g., ADR-001 mandates ECS pattern; architecture.md describes a different pattern for the same system)
 
-**Input:** `/architecture-review docs/architecture/architecture.md`
+**Input:** `/architecture-review planning/docs/architecture/architecture.md`
 
 **Expected behavior:**
 1. Skill reads the architecture doc and all existing ADRs
@@ -121,13 +121,13 @@ In `solo` mode: both gates are skipped with equivalent notes.
 **Fixture:**
 - The path provided does not exist in the project
 
-**Input:** `/architecture-review docs/architecture/nonexistent.md`
+**Input:** `/architecture-review planning/docs/architecture/nonexistent.md`
 
 **Expected behavior:**
 1. Skill attempts to read the file
 2. File not found
 3. Skill outputs a clear error naming the missing file
-4. Skill suggests checking `docs/architecture/` or running `/create-architecture`
+4. Skill suggests checking `planning/docs/architecture/` or running `/create-architecture`
 5. Skill does NOT produce a verdict
 
 **Assertions:**
@@ -141,8 +141,8 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 5: Director Gate — Full mode spawns both gates; solo mode skips both
 
 **Fixture (full mode):**
-- `docs/architecture/architecture.md` exists with all 8 sections
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/docs/architecture/architecture.md` exists with all 8 sections
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Full mode expected behavior:**
 1. TD-ARCHITECTURE gate spawns
@@ -156,7 +156,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 
 **Fixture (solo mode):**
 - Same architecture doc
-- `production/session-state/review-mode.txt` contains `solo`
+- `planning/production/session-state/review-mode.txt` contains `solo`
 
 **Solo mode expected behavior:**
 1. Skill reads the architecture doc
@@ -186,7 +186,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 
 - The 8 required architecture sections are project-specific; tests use the
   section list defined in the skill body — not re-enumerated here.
-- Engine version compatibility checking (cross-referencing `docs/engine-reference/`)
+- Engine version compatibility checking (cross-referencing `planning/docs/engine-reference/`)
   is part of Case 1's happy path but not independently fixture-tested.
 - RTM (requirement traceability matrix) mode is a separate concern covered by
   the `/architecture-review` skill's own `rtm` argument mode, not tested here.

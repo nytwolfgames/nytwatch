@@ -12,7 +12,7 @@
 ## Static Assertions (Structural)
 
 - [ ] `description:` field is present and domain-specific (references test cases, bug reports, test execution, regression testing)
-- [ ] `allowed-tools:` list matches the agent's role (Read/Write for tests/ and production/qa/evidence/; no source code editing tools)
+- [ ] `allowed-tools:` list matches the agent's role (Read/Write for tests/ and planning/production/qa/evidence/; no source code editing tools)
 - [ ] Model tier is Sonnet (default for QA specialists)
 - [ ] Agent definition does not claim authority over test strategy, fix implementation, or acceptance criterion definition
 
@@ -58,12 +58,12 @@
 - Does NOT produce a generic "test everything" checklist — the value of a targeted regression is specificity
 
 ### Case 5: Context pass — test evidence format from coding-standards.md
-**Input context**: coding-standards.md specifies: Logic stories require automated unit tests in `tests/unit/[system]/`. Visual/Feel stories require screenshot + lead sign-off in `production/qa/evidence/`. UI stories require manual walkthrough doc in `production/qa/evidence/`.
+**Input context**: coding-standards.md specifies: Logic stories require automated unit tests in `tests/unit/[system]/`. Visual/Feel stories require screenshot + lead sign-off in `planning/production/qa/evidence/`. UI stories require manual walkthrough doc in `planning/production/qa/evidence/`.
 **Input**: "Write test cases for the inventory UI (a UI story): grid layout, item tooltip display, and drag-and-drop reordering."
 **Expected behavior**:
 - Classifies this correctly as a UI story per the provided standards
 - Produces a manual walkthrough test document (not automated unit tests) — because the coding standard specifies manual walkthrough for UI stories
-- Specifies the output location: `production/qa/evidence/` (not `tests/unit/`)
+- Specifies the output location: `planning/production/qa/evidence/` (not `tests/unit/`)
 - Test cases include: grid layout verification (all items appear, no overflow), tooltip display (correct item name, stats, description appear on hover/focus), and drag-and-drop (item moves to target slot, original slot becomes empty, slot limits respected)
 - Notes that this is ADVISORY evidence level per the coding standards, not BLOCKING — explicitly states this so the team knows the gate level
 

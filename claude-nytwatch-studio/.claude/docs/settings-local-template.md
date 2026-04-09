@@ -33,7 +33,7 @@ for production code.
 
 ### During Prototyping
 Use **auto-accept mode** with limited scope — faster iteration on throwaway code.
-Only use this when working in `prototypes/` directory.
+Only use this when working in `planning/prototypes/` directory.
 
 ### During Code Review
 Use **read-only** permissions — Claude can read and search but not modify files.

@@ -137,7 +137,7 @@ Date: [date]
 (e.g., "SC 1.4.3 Contrast (Minimum)", "SC 2.2.1 Timing Adjustable") when referencing standards.
 Use WCAG 2.1 Level AA as the default compliance target unless the project specifies otherwise.
 
-Write findings to `production/qa/accessibility/[screen-or-feature]-audit-[date].md` after
+Write findings to `planning/production/qa/accessibility/[screen-or-feature]-audit-[date].md` after
 approval: "May I write this accessibility audit to [path]?"
 
 ## Coordination

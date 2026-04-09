@@ -124,11 +124,11 @@ Generate a translator context briefing document. This document is sent to the
 external translation team or localisation vendor alongside the string table export.
 
 Read:
-- `design/gdd/` — extract game genre, tone, setting, character names
+- `planning/design/gdd/` — extract game genre, tone, setting, character names
 - `assets/data/strings/strings-en.json` — the source string table
-- Any existing lore or narrative documents in `design/narrative/`
+- Any existing lore or narrative documents in `planning/design/narrative/`
 
-Generate `production/localization/translator-brief-[locale]-[date].md`:
+Generate `planning/production/localization/translator-brief-[locale]-[date].md`:
 
 ```markdown
 # Translator Brief — [Game Name] — [Locale]
@@ -173,7 +173,7 @@ Direct questions to: [placeholder for user/team contact]
 Delivery format: JSON, same schema as strings-en.json
 ```
 
-Ask: "May I write this translator brief to `production/localization/translator-brief-[locale]-[date].md`?"
+Ask: "May I write this translator brief to `planning/production/localization/translator-brief-[locale]-[date].md`?"
 
 ---
 
@@ -216,7 +216,7 @@ Present findings as a table:
 
 BLOCKING = must fix before shipping that locale. ADVISORY = recommend change. NOTE = informational only.
 
-Ask: "May I write this cultural review report to `production/localization/cultural-review-[date].md`?"
+Ask: "May I write this cultural review report to `planning/production/localization/cultural-review-[date].md`?"
 
 ---
 
@@ -231,7 +231,7 @@ Manage the voice-over localization process. Determine the sub-task from the argu
 
 ### VO Pipeline: Scan
 
-Read `assets/data/strings/` and `design/narrative/`. Identify:
+Read `assets/data/strings/` and `planning/design/narrative/`. Identify:
 - All dialogue lines (keys matching `dialogue.*`) with source text
 - Lines already recorded (audio file exists in `assets/audio/vo/`)
 - Lines not yet recorded
@@ -256,7 +256,7 @@ Generate a recording script document for each character, grouped by scene. Inclu
 - Emotion/direction note for each line (`[Warm, welcoming]`, `[Annoyed, clipped]`)
 - Any lines that are responses in a conversation (provide context: "Player just said X")
 
-Ask: "May I write the VO recording scripts to `production/localization/vo-scripts-[locale]-[date].md`?"
+Ask: "May I write the VO recording scripts to `planning/production/localization/vo-scripts-[locale]-[date].md`?"
 
 ### VO Pipeline: Validate
 
@@ -303,7 +303,7 @@ Grep patterns to check:
 
 Report findings. Flag BLOCKING issues (content unreadable without fix) vs ADVISORY (cosmetic improvements).
 
-Ask: "May I write this RTL check report to `production/localization/rtl-check-[date].md`?"
+Ask: "May I write this RTL check report to `planning/production/localization/rtl-check-[date].md`?"
 
 ---
 
@@ -314,7 +314,7 @@ without the source changing under the translators.
 
 ### freeze call
 
-Check current freeze status in `production/localization/freeze-status.md` (if it exists).
+Check current freeze status in `planning/production/localization/freeze-status.md` (if it exists).
 
 If already frozen:
 > "String freeze is currently ACTIVE (called [date]). [N] strings have been added or modified since freeze. These are freeze violations — they require re-translation or an approved freeze lift."
@@ -335,7 +335,7 @@ Use `AskUserQuestion`:
 - Prompt: "Are all items above confirmed? Calling string freeze locks the source table."
 - Options: `[A] Yes — call string freeze now` / `[B] No — I still have strings to add`
 
-If [A]: Write `production/localization/freeze-status.md`:
+If [A]: Write `planning/production/localization/freeze-status.md`:
 
 ```markdown
 # String Freeze Status
@@ -368,7 +368,7 @@ before any locale ships. This is not the same as `/validate` (which checks compl
 
 Spawn `localization-lead` via Task with:
 - The target locale(s) to QA
-- The list of all screens/flows in the game (from `design/gdd/` or `/content-audit` output)
+- The list of all screens/flows in the game (from `planning/design/gdd/` or `/content-audit` output)
 - The current `/localize validate` report
 - The cultural review report (if it exists)
 
@@ -404,7 +404,7 @@ Output a QA verdict per locale:
 [ ] Producer approves shipping [Locale]
 ```
 
-Ask: "May I write this localization QA report to `production/localization/loc-qa-[locale]-[date].md`?"
+Ask: "May I write this localization QA report to `planning/production/localization/loc-qa-[locale]-[date].md`?"
 
 **Gate integration**: The Polish → Release gate requires a PASS or PASS WITH CONDITIONS verdict for every locale being shipped. A FAIL blocks release for that locale only — other locales may still proceed if their QA passes.
 

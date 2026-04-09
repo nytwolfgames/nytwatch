@@ -74,6 +74,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Inventory flow (Case 1) should be written to `design/ux/` as a spec for ui-programmer to implement against
+- Inventory flow (Case 1) should be written to `planning/design/ux/` as a spec for ui-programmer to implement against
 - Mental model case (Case 5) verifies the agent applies research evidence, not intuition
 - Accessibility coordination (Case 4) confirms the agent does not override accessibility requirements for UX aesthetics

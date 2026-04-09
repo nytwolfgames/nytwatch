@@ -14,3 +14,5 @@ build/
 ./.claude/
 .DS_Store
 src/.DS_Store
+planning/production/wiki/.last-hook-sha
+planning/production/wiki/.pending-update.md

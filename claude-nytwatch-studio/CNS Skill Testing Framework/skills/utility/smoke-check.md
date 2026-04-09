@@ -5,7 +5,7 @@
 `/smoke-check` is the gate between implementation and QA hand-off. It detects the
 test environment, runs the automated test suite (via Bash), scans test coverage
 against sprint stories, and uses `AskUserQuestion` to batch-verify manual smoke
-checks with the developer. It writes a report to `production/qa/smoke-[date].md`
+checks with the developer. It writes a report to `planning/production/qa/smoke-[date].md`
 after explicit user approval.
 
 Verdicts: PASS (tests pass, all smoke checks pass, no missing test evidence),
@@ -42,7 +42,7 @@ None. `/smoke-check` is a pre-QA utility skill. No director gates apply.
 **Fixture:**
 - `tests/` directory exists with a GDUnit4 runner script
 - Engine detected as Godot from `technical-preferences.md`
-- `production/qa/qa-plan-sprint-005.md` exists
+- `planning/production/qa/qa-plan-sprint-005.md` exists
 - Automated test runner reports 12 tests, 12 passing, 0 failing
 - Developer confirms all Batch 1 and Batch 2 smoke checks as PASS
 - All sprint stories have matching test files (no MISSING coverage)
@@ -57,7 +57,7 @@ None. `/smoke-check` is a pre-QA utility skill. No director gates apply.
 5. Uses `AskUserQuestion` for Batch 1 (core stability) and Batch 2 (sprint mechanics)
 6. Developer selects PASS for all items
 7. Report assembled: automated tests PASS, all smoke checks PASS, no MISSING coverage
-8. Asks "May I write this smoke check report to `production/qa/smoke-[date].md`?"
+8. Asks "May I write this smoke check report to `planning/production/qa/smoke-[date].md`?"
 9. Writes report after approval
 10. Delivers verdict: PASS
 
@@ -65,7 +65,7 @@ None. `/smoke-check` is a pre-QA utility skill. No director gates apply.
 - [ ] Automated test runner is invoked via Bash
 - [ ] `AskUserQuestion` is used for manual smoke check batches
 - [ ] "May I write" is asked before writing the report file
-- [ ] Report is written to `production/qa/smoke-[date].md`
+- [ ] Report is written to `planning/production/qa/smoke-[date].md`
 - [ ] Verdict is PASS
 
 ---
@@ -123,7 +123,7 @@ None. `/smoke-check` is a pre-QA utility skill. No director gates apply.
 - [ ] MISSING test coverage entry appears in the report
 - [ ] Verdict is PASS WITH WARNINGS (not PASS, not FAIL)
 - [ ] Advisory note explains MISSING entry must be resolved before `/story-done`
-- [ ] Report file is written to `production/qa/smoke-[date].md`
+- [ ] Report file is written to `planning/production/qa/smoke-[date].md`
 
 ---
 

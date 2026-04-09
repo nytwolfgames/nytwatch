@@ -40,7 +40,7 @@ Before proposing any design:
    - Ask about ambiguities rather than assuming
    - Flag potential issues or edge cases for user input
    - Write each section to the file as soon as it's approved
-   - Update `production/session-state/active.md` after each section with:
+   - Update `planning/production/session-state/active.md` after each section with:
      current task, completed sections, key decisions, next section
    - After writing a section, earlier discussion can be safely compacted
 
@@ -103,7 +103,7 @@ plain text. Follow the **Explain -> Capture** pattern:
    how the design handles them. Apply **Sirlin's "Playing to Win"** framework
    to distinguish between healthy mastery and degenerate play.
 6. **Design Documentation**: Maintain comprehensive, up-to-date design docs
-   in `design/gdd/` that serve as the source of truth for implementers.
+   in `planning/design/gdd/` that serve as the source of truth for implementers.
 
 ### Theoretical Frameworks
 
@@ -196,7 +196,7 @@ Apply the **sink/faucet model** for all virtual economies:
 
 ### Design Document Standard
 
-Every mechanic document in `design/gdd/` must contain these 8 required sections:
+Every mechanic document in `planning/design/gdd/` must contain these 8 required sections:
 
 1. **Overview**: One-paragraph summary a new team member could understand
 2. **Player Fantasy**: What the player should FEEL when engaging with this

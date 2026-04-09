@@ -3,15 +3,15 @@
 **Context:** Solo indie dev, Pre-Production phase. The HUD and inventory screen are the first UI to design. The game has a player journey doc and GDDs for inventory and combat.
 
 **Starting State:**
-- `design/gdd/inventory-system.md` — complete
-- `design/gdd/combat-system.md` — complete
-- `design/player-journey.md` — complete (6-phase arc defined)
+- `planning/design/gdd/inventory-system.md` — complete
+- `planning/design/gdd/combat-system.md` — complete
+- `planning/design/player-journey.md` — complete (6-phase arc defined)
 - No UX specs yet
-- `design/ux/` directory does not exist
+- `planning/design/ux/` directory does not exist
 
 **Session Duration:** ~90 minutes across two sessions (HUD design, then inventory screen)
 **Turns:** 16
-**Outcome:** `design/ux/hud.md` and `design/ux/screens/inventory.md` created and reviewed; team-ui handed off for visual implementation
+**Outcome:** `planning/design/ux/hud.md` and `planning/design/ux/screens/inventory.md` created and reviewed; team-ui handed off for visual implementation
 
 ---
 
@@ -27,9 +27,9 @@
 **Agent (ux-designer, via /ux-design):**
 > Starting HUD design. Loading context...
 >
-> - `design/player-journey.md` read — key states: Calm Exploration, Tension (threat detected), Crisis (low HP/stamina), Combat
-> - `design/gdd/combat-system.md` — HUD needs: HP bar, stamina bar, active ability cooldowns (up to 3), damage numbers
-> - `design/gdd/inventory-system.md` — HUD needs: quick slots (4 slots), active item indicator
+> - `planning/design/player-journey.md` read — key states: Calm Exploration, Tension (threat detected), Crisis (low HP/stamina), Combat
+> - `planning/design/gdd/combat-system.md` — HUD needs: HP bar, stamina bar, active ability cooldowns (up to 3), damage numbers
+> - `planning/design/gdd/inventory-system.md` — HUD needs: quick slots (4 slots), active item indicator
 >
 > **HUD Philosophy question:** What is the player's primary attention focus during play?
 >
@@ -51,12 +51,12 @@
 > > **Approach: Persistent Minimal**
 > > The HUD is always visible but occupies minimal screen real estate. The player is a resource-managing survivor — denying HP/stamina visibility creates frustration, not tension. All critical stats are readable at a glance without interrupting exploration focus. Elements scale in visual weight when they become urgent (HP below 30% pulses, stamina at 0 flashes), then return to minimal state.
 >
-> May I write this to `design/ux/hud.md` as the Philosophy section?
+> May I write this to `planning/design/ux/hud.md` as the Philosophy section?
 
 **User:**
 > Yes
 
-**Agent creates `design/ux/hud.md` and writes Philosophy section.**
+**Agent creates `planning/design/ux/hud.md` and writes Philosophy section.**
 
 *(Turns 4–7 continue the section-by-section HUD authoring: Info Architecture, Zones, Element Specs, State Machine, Visual Budget, Platform Adaptation — each drafted, approved, and written to file.)*
 
@@ -65,7 +65,7 @@
 **Final HUD structure after all sections:**
 
 ```
-design/ux/hud.md
+planning/design/ux/hud.md
   - Philosophy: Persistent Minimal
   - Info Architecture: HP (top-left), Stamina (top-left below HP), Quick Slots (bottom-center),
     Ability Cooldowns (bottom-right), Damage Numbers (world-space)
@@ -90,12 +90,12 @@ design/ux/hud.md
 **Agent:**
 > Loading context for inventory screen...
 >
-> From `design/gdd/inventory-system.md`:
+> From `planning/design/gdd/inventory-system.md`:
 > - Grid inventory, 6×8 slots
 > - Items have weight (affects movement) and stack size
 > - Player can equip, drop, inspect, split stacks
 >
-> From `design/player-journey.md`:
+> From `planning/design/player-journey.md`:
 > - Inventory opens frequently during Calm Exploration
 > - Players should feel "organized and in control" when opening inventory
 > - Anxiety moment: "I need to decide what to drop" — should be clear, not panicked
@@ -119,12 +119,12 @@ design/ux/hud.md
 ### Turn 13: User Runs Review
 
 **User:**
-> /ux-review design/ux/
+> /ux-review planning/design/ux/
 
 ### Turn 14: Agent Reviews Both Documents
 
 **Agent (via /ux-review):**
-> Reviewing all UX specs in `design/ux/`...
+> Reviewing all UX specs in `planning/design/ux/`...
 >
 > ---
 > **HUD Review (`hud.md`):**
@@ -168,7 +168,7 @@ design/ux/hud.md
 >
 > > Press F (or South button) to pick up item at cursor. Item enters "held" state with visual indicator. Press F again on target slot to place. Press Escape to cancel and return item.
 >
-> May I write this to `design/ux/screens/inventory.md` and re-run the accessibility check?
+> May I write this to `planning/design/ux/screens/inventory.md` and re-run the accessibility check?
 
 **User:**
 > Yes
@@ -187,8 +187,8 @@ design/ux/hud.md
 **Agent (via /team-ui):**
 > Running UX pipeline context check...
 >
-> - `design/ux/hud.md` — reviewed ✅
-> - `design/ux/screens/inventory.md` — reviewed ✅
+> - `planning/design/ux/hud.md` — reviewed ✅
+> - `planning/design/ux/screens/inventory.md` — reviewed ✅
 > - `/ux-review` verdict: NEEDS REVISION was resolved — current state: APPROVED ✅
 >
 > Proceeding to **Phase 2: Visual Design**
@@ -206,5 +206,5 @@ design/ux/hud.md
 - **Accessibility caught early**: the missing keyboard alternative was flagged by review, not discovered by a QA tester in the final week
 - **Blocking vs. advisory**: the missing keyboard path was BLOCKING (stops handoff); the colorblind colors were ADVISORY (can be fixed in visual pass)
 - **Section-by-section UX authoring**: same incremental pattern as `/design-system` — each section written to file before moving on
-- **Separate HUD and screen files**: `design/ux/hud.md` is the whole-game HUD; per-screen specs live in `design/ux/screens/`
-- **Pattern library enforced by /team-ui**: after this session, inventory drag-drop becomes a documented pattern in `design/ux/interaction-patterns.md` for all future screens to reference
+- **Separate HUD and screen files**: `planning/design/ux/hud.md` is the whole-game HUD; per-screen specs live in `planning/design/ux/screens/`
+- **Pattern library enforced by /team-ui**: after this session, inventory drag-drop becomes a documented pattern in `planning/design/ux/interaction-patterns.md` for all future screens to reference

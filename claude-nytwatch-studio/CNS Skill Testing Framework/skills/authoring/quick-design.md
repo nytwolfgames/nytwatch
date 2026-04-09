@@ -10,7 +10,7 @@ Acceptance Criteria.
 
 The skill has no director gates — adding gate overhead would defeat the purpose
 of a lightweight design tool. The skill asks "May I write" before writing the
-design note to `design/quick-notes/[name].md`. If the feature scope is too large
+design note to `planning/design/quick-notes/[name].md`. If the feature scope is too large
 for a quick-design, the skill redirects to `/design-system` instead.
 
 ---
@@ -52,14 +52,14 @@ Full GDD review is not needed for sub-4-hour single-system features.
 2. Skill determines scope is within the sub-4h threshold
 3. Skill drafts a 3-section spec: Overview, Rules, Acceptance Criteria
 4. Draft is shown to user
-5. "May I write `design/quick-notes/[name].md`?" is asked
+5. "May I write `planning/design/quick-notes/[name].md`?" is asked
 6. File is written after approval
 
 **Assertions:**
 - [ ] Spec contains exactly 3 sections: Overview, Rules, Acceptance Criteria
 - [ ] Draft is shown to user before "May I write" ask
-- [ ] "May I write `design/quick-notes/[name].md`?" is asked before writing
-- [ ] File is written to the correct path: `design/quick-notes/[name].md`
+- [ ] "May I write `planning/design/quick-notes/[name].md`?" is asked before writing
+- [ ] File is written to the correct path: `planning/design/quick-notes/[name].md`
 - [ ] Verdict is CREATED after successful write
 
 ---
@@ -90,7 +90,7 @@ Full GDD review is not needed for sub-4-hour single-system features.
 ### Case 3: Edge Case — File already exists; offered to update
 
 **Fixture:**
-- `design/quick-notes/[name].md` already exists from a previous session
+- `planning/design/quick-notes/[name].md` already exists from a previous session
 
 **Input:** `/quick-design [name]`
 
@@ -112,7 +112,7 @@ Full GDD review is not needed for sub-4-hour single-system features.
 ### Case 4: Edge Case — No argument provided
 
 **Fixture:**
-- `design/quick-notes/` directory may or may not exist
+- `planning/design/quick-notes/` directory may or may not exist
 
 **Input:** `/quick-design` (no argument)
 
@@ -134,20 +134,20 @@ Full GDD review is not needed for sub-4-hour single-system features.
 
 **Fixture:**
 - Feature is within scope for quick-design
-- `production/session-state/review-mode.txt` exists with `full`
+- `planning/production/session-state/review-mode.txt` exists with `full`
 
 **Input:** `/quick-design [feature-name]`
 
 **Expected behavior:**
 1. Skill asks scoping questions and determines scope is within threshold
-2. Skill does NOT read `production/session-state/review-mode.txt`
+2. Skill does NOT read `planning/production/session-state/review-mode.txt`
 3. Skill does NOT spawn any director gate agent
 4. Spec is drafted, "May I write" asked, file written after approval
 5. Output explicitly notes: "No director gate review — quick-design is for sub-4h features"
 
 **Assertions:**
 - [ ] No director gate agents are spawned (no CD-, TD-, PR-, AD- prefixed gates)
-- [ ] Skill does NOT read `production/session-state/review-mode.txt`
+- [ ] Skill does NOT read `planning/production/session-state/review-mode.txt`
 - [ ] Output contains a note explaining why no gate review is needed
 - [ ] Review mode has no effect on this skill's behavior
 - [ ] Full GDD review path (`/design-system`) is mentioned as the alternative for larger features
@@ -159,7 +159,7 @@ Full GDD review is not needed for sub-4-hour single-system features.
 - [ ] Scope check runs before drafting (redirects to `/design-system` if scope too large)
 - [ ] 3-section format used (Overview, Rules, Acceptance Criteria) — NOT the 8-section GDD format
 - [ ] Draft shown to user before "May I write" ask
-- [ ] "May I write `design/quick-notes/[name].md`?" asked before writing
+- [ ] "May I write `planning/design/quick-notes/[name].md`?" asked before writing
 - [ ] No director gates — no review-mode.txt read
 - [ ] Ends with next-step handoff (e.g., proceed to implementation or `/dev-story`)
 
@@ -170,7 +170,7 @@ Full GDD review is not needed for sub-4-hour single-system features.
 - The scope threshold heuristic (sub-4h, single-system) is a judgment call —
   the skill's internal check is the authoritative definition and is not
   independently tested by counting hours.
-- The `design/quick-notes/` directory is created automatically if it does not
+- The `planning/design/quick-notes/` directory is created automatically if it does not
   exist — this filesystem behavior is not independently tested here.
 - Integration with the story pipeline (can a quick-design generate a story
   directly?) is out of scope for this spec — quick-designs are standalone.

@@ -4,8 +4,8 @@
 
 `/project-stage-detect` automatically analyzes project artifacts to determine
 the current development stage. It runs on the Haiku model (read-only) and
-examines `production/stage.txt` (if present), design documents in `design/`,
-source code in `src/`, sprint and milestone files in `production/`, and the
+examines `planning/production/stage.txt` (if present), design documents in `planning/design/`,
+source code in `src/`, sprint and milestone files in `planning/production/`, and the
 presence of engine configuration to classify the project into one of seven
 stages: Concept, Systems Design, Technical Setup, Pre-Production, Production,
 Polish, or Release.
@@ -41,15 +41,15 @@ gates apply.
 ### Case 1: stage.txt Exists — Reads directly and cross-checks artifacts
 
 **Fixture:**
-- `production/stage.txt` contains `Production`
-- `design/gdd/` has 4 GDD files
+- `planning/production/stage.txt` contains `Production`
+- `planning/design/gdd/` has 4 GDD files
 - `src/` has source code files
-- `production/sprints/sprint-002.md` exists
+- `planning/production/sprints/sprint-002.md` exists
 
 **Input:** `/project-stage-detect`
 
 **Expected behavior:**
-1. Skill reads `production/stage.txt` — detects stage `Production`
+1. Skill reads `planning/production/stage.txt` — detects stage `Production`
 2. Skill cross-checks artifacts: GDDs present, source code present, sprint present
 3. Artifacts are consistent with Production stage
 4. Skill reports: Stage = Production, Confidence = HIGH (from stage.txt, confirmed by artifacts)
@@ -67,11 +67,11 @@ gates apply.
 ### Case 2: No stage.txt but GDDs and Epics Exist — Infers Production
 
 **Fixture:**
-- No `production/stage.txt`
-- `design/gdd/` has 3 GDD files
-- `production/epics/` has 2 epic files
+- No `planning/production/stage.txt`
+- `planning/design/gdd/` has 3 GDD files
+- `planning/production/epics/` has 2 epic files
 - `src/` has source code files
-- `production/sprints/sprint-001.md` exists
+- `planning/production/sprints/sprint-001.md` exists
 
 **Input:** `/project-stage-detect`
 
@@ -94,8 +94,8 @@ gates apply.
 ### Case 3: No stage.txt, No Docs, No Source — Infers Concept
 
 **Fixture:**
-- No `production/stage.txt`
-- `design/` directory exists but is empty
+- No `planning/production/stage.txt`
+- `planning/design/` directory exists but is empty
 - `src/` exists but contains no code files
 - `technical-preferences.md` has placeholders only
 
@@ -119,8 +119,8 @@ gates apply.
 ### Case 4: Discrepancy — stage.txt says Production but no source code
 
 **Fixture:**
-- `production/stage.txt` contains `Production`
-- `design/gdd/` has GDD files
+- `planning/production/stage.txt` contains `Production`
+- `planning/design/gdd/` has GDD files
 - `src/` directory exists but contains no source code files
 - No sprint files exist
 

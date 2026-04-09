@@ -5,7 +5,7 @@ When writing or editing game code in this directory, follow these standards.
 ## Engine Version Warning
 
 The LLM's training data predates the pinned engine version.
-**Always check `docs/engine-reference/` before using any engine API.**
+**Always check `planning/docs/engine-reference/` before using any engine API.**
 Do not guess at post-cutoff API signatures — look them up first.
 
 ## Coding Standards
@@ -13,7 +13,7 @@ Do not guess at post-cutoff API signatures — look them up first.
 - All public APIs require doc comments
 - Gameplay values must be **data-driven** (external config files), never hardcoded
 - Prefer dependency injection over singletons for testability
-- Every new system needs a corresponding ADR in `docs/architecture/`
+- Every new system needs a corresponding ADR in `planning/docs/architecture/`
 - Commits must reference the relevant story ID or design document
 
 ## File Routing

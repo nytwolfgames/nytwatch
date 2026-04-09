@@ -3,10 +3,10 @@
 ## Skill Summary
 
 `/tech-debt` tracks, categorizes, and prioritizes technical debt across the
-codebase. It reads `docs/tech-debt-register.md` for the existing debt register
+codebase. It reads `planning/docs/tech-debt-register.md` for the existing debt register
 and scans source files in `src/` for inline `TODO` and `FIXME` comments. It
 merges and sorts items by severity. No director gates are invoked. The skill
-asks "May I write to `docs/tech-debt-register.md`?" before updating. Verdicts:
+asks "May I write to `planning/docs/tech-debt-register.md`?" before updating. Verdicts:
 REGISTER UPDATED or NO NEW DEBT FOUND.
 
 ---
@@ -35,18 +35,18 @@ invoked.
 ### Case 1: Happy Path — Inline TODOs plus existing register items merged
 
 **Fixture:**
-- `docs/tech-debt-register.md` exists with 2 items (LOW and MEDIUM severity)
+- `planning/docs/tech-debt-register.md` exists with 2 items (LOW and MEDIUM severity)
 - `src/gameplay/combat.gd` has 2 `# TODO` comments and 1 `# FIXME` comment
 - `src/ui/hud.gd` has 0 inline debt comments
 
 **Input:** `/tech-debt`
 
 **Expected behavior:**
-1. Skill reads `docs/tech-debt-register.md` — finds 2 existing items
+1. Skill reads `planning/docs/tech-debt-register.md` — finds 2 existing items
 2. Skill scans `src/` — finds 3 inline comments (2 TODOs, 1 FIXME)
 3. Skill checks whether inline comments already exist in the register (deduplication)
 4. Skill presents combined list sorted by severity (FIXME before TODO by default)
-5. Skill asks "May I write to `docs/tech-debt-register.md`?"
+5. Skill asks "May I write to `planning/docs/tech-debt-register.md`?"
 6. User approves; register updated; verdict REGISTER UPDATED
 
 **Assertions:**
@@ -61,16 +61,16 @@ invoked.
 ### Case 2: Register Doesn't Exist — Offered to create it
 
 **Fixture:**
-- `docs/tech-debt-register.md` does NOT exist
+- `planning/docs/tech-debt-register.md` does NOT exist
 - `src/` contains 4 inline TODO/FIXME comments
 
 **Input:** `/tech-debt`
 
 **Expected behavior:**
-1. Skill attempts to read `docs/tech-debt-register.md` — not found
+1. Skill attempts to read `planning/docs/tech-debt-register.md` — not found
 2. Skill informs user: "No tech-debt-register.md found"
 3. Skill offers to create the register with the inline items it found
-4. Skill asks "May I write to `docs/tech-debt-register.md`?" (create)
+4. Skill asks "May I write to `planning/docs/tech-debt-register.md`?" (create)
 5. User approves; register created with 4 items; verdict REGISTER UPDATED
 
 **Assertions:**
@@ -84,7 +84,7 @@ invoked.
 ### Case 3: Resolved Item Detected — Marked resolved in register
 
 **Fixture:**
-- `docs/tech-debt-register.md` has 3 items; one references `src/gameplay/legacy_input.gd`
+- `planning/docs/tech-debt-register.md` has 3 items; one references `src/gameplay/legacy_input.gd`
 - `src/gameplay/legacy_input.gd` has been deleted (refactored away)
 - The referenced TODO comment no longer exists in source
 
@@ -109,7 +109,7 @@ invoked.
 
 **Fixture:**
 - `src/core/network_sync.gd` has a comment: `# FIXME(CRITICAL): race condition in sync buffer — can corrupt save data`
-- `docs/tech-debt-register.md` exists with 5 lower-severity items
+- `planning/docs/tech-debt-register.md` exists with 5 lower-severity items
 
 **Input:** `/tech-debt`
 
@@ -140,7 +140,7 @@ invoked.
 1. Skill scans source and reads register; compiles combined debt list
 2. No director gate is invoked regardless of review mode
 3. Skill presents sorted debt table to user
-4. Skill asks "May I write to `docs/tech-debt-register.md`?"
+4. Skill asks "May I write to `planning/docs/tech-debt-register.md`?"
 5. User approves; register updated; verdict REGISTER UPDATED
 
 **Assertions:**
@@ -153,7 +153,7 @@ invoked.
 
 ## Protocol Compliance
 
-- [ ] Reads `docs/tech-debt-register.md` and scans `src/` before compiling
+- [ ] Reads `planning/docs/tech-debt-register.md` and scans `src/` before compiling
 - [ ] Deduplicates inline comments against existing register items
 - [ ] Sorts combined list by severity
 - [ ] Always asks "May I write" before updating register

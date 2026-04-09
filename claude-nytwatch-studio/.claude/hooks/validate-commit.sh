@@ -29,7 +29,7 @@ fi
 WARNINGS=""
 
 # Check design documents for required sections
-DESIGN_FILES=$(echo "$STAGED" | grep -E '^design/gdd/')
+DESIGN_FILES=$(echo "$STAGED" | grep -E '^planning/design/gdd/')
 if [ -n "$DESIGN_FILES" ]; then
     while IFS= read -r file; do
         if [[ "$file" == *.md ]] && [ -f "$file" ]; then

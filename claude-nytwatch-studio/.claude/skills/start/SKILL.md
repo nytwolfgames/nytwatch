@@ -8,7 +8,7 @@ allowed-tools: Read, Glob, Grep, Write, AskUserQuestion
 
 # Guided Onboarding
 
-This skill writes one file: `production/review-mode.txt` (review mode config set in Phase 3b).
+This skill writes one file: `planning/production/review-mode.txt` (review mode config set in Phase 3b).
 
 This skill is the entry point for new users. It does NOT assume you have a game idea, an engine preference, or any prior experience. It asks first, then routes you to the right workflow.
 
@@ -20,11 +20,11 @@ Before asking anything, silently gather context so you can tailor your guidance.
 
 Check:
 - **Engine configured?** Read `.claude/docs/technical-preferences.md`. If the Engine field contains `[TO BE CONFIGURED]`, the engine is not set.
-- **Game concept exists?** Check for `design/gdd/game-concept.md`.
+- **Game concept exists?** Check for `planning/design/gdd/game-concept.md`.
 - **Source code exists?** Glob for source files in `src/` (`*.gd`, `*.cs`, `*.cpp`, `*.h`, `*.rs`, `*.py`, `*.js`, `*.ts`).
-- **Prototypes exist?** Check for subdirectories in `prototypes/`.
-- **Design docs exist?** Count markdown files in `design/gdd/`.
-- **Production artifacts?** Check for files in `production/sprints/` or `production/milestones/`.
+- **Prototypes exist?** Check for subdirectories in `planning/prototypes/`.
+- **Design docs exist?** Count markdown files in `planning/design/gdd/`.
+- **Production artifacts?** Check for files in `planning/production/sprints/` or `planning/production/milestones/`.
 
 Store these findings internally to validate the user's self-assessment and tailor recommendations.
 
@@ -165,7 +165,7 @@ The user needs creative exploration before anything else.
 
 ## Phase 3b: Set Review Mode
 
-Check if `production/review-mode.txt` already exists.
+Check if `planning/production/review-mode.txt` already exists.
 
 **If it exists**: Read it and show the current mode — "Review mode is set to `[current]`." — then proceed to Phase 4. Do not ask again.
 
@@ -177,14 +177,14 @@ Check if `production/review-mode.txt` already exists.
   - `Lean (recommended)` — Directors only at phase gate transitions (/gate-check). Skips per-skill reviews. Balanced approach for solo devs and small teams.
   - `Solo` — No director reviews at all. Maximum speed. Best for game jams, prototypes, or if the reviews feel like overhead.
 
-Write the choice to `production/review-mode.txt` immediately after the user
+Write the choice to `planning/production/review-mode.txt` immediately after the user
 selects — no separate "May I write?" needed, as the write is a direct
 consequence of the selection:
 - `Full` → write `full`
 - `Lean (recommended)` → write `lean`
 - `Solo` → write `solo`
 
-Create the `production/` directory if it does not exist.
+Create the `planning/production/` directory if it does not exist.
 
 ---
 
@@ -211,7 +211,7 @@ Verdict: **COMPLETE** — user oriented and handed off to next step.
 
 - **User picks D but project is empty**: Gently redirect — "It looks like the project is a fresh template with no artifacts yet. Would Path A or B be a better fit?"
 - **User picks A but project has code**: Mention what you found — "I noticed there's already code in `src/`. Did you mean to pick D (existing work)?"
-- **User is returning (engine configured, concept exists)**: Skip onboarding entirely — "It looks like you're already set up! Your engine is [X] and you have a game concept at `design/gdd/game-concept.md`. Review mode: `[read from production/review-mode.txt, or 'lean (default)' if missing]`. Want to pick up where you left off? Try `/sprint-plan` or just tell me what you'd like to work on."
+- **User is returning (engine configured, concept exists)**: Skip onboarding entirely — "It looks like you're already set up! Your engine is [X] and you have a game concept at `planning/design/gdd/game-concept.md`. Review mode: `[read from planning/production/review-mode.txt, or 'lean (default)' if missing]`. Want to pick up where you left off? Try `/sprint-plan` or just tell me what you'd like to work on."
 - **User doesn't fit any option**: Let them describe their situation in their own words and adapt.
 
 ---

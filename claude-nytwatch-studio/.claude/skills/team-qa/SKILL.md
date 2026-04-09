@@ -34,11 +34,11 @@ Always provide full context in each agent's prompt (story file paths, QA plan pa
 Before doing anything else, gather the full scope:
 
 1. Detect the current sprint or feature scope from the argument:
-   - If argument is a sprint identifier (e.g., `sprint-03`): read all story files in `production/sprints/[sprint]/`
+   - If argument is a sprint identifier (e.g., `sprint-03`): read all story files in `planning/production/sprints/[sprint]/`
    - If argument is `feature: [system-name]`: glob story files tagged for that system
-   - If no argument: read `production/session-state/active.md` and `production/sprint-status.yaml` (if present) to infer the active sprint
+   - If no argument: read `planning/production/session-state/active.md` and `planning/production/sprint-status.yaml` (if present) to infer the active sprint
 
-2. Read `production/stage.txt` to confirm the current project phase.
+2. Read `planning/production/stage.txt` to confirm the current project phase.
 
 3. Count stories found and report to the user:
    > "QA cycle starting for [sprint/feature]. Found [N] stories. Current stage: [stage]. Ready to begin QA strategy?"
@@ -92,7 +92,7 @@ The test plan should cover:
 - **Entry Criteria**: what must be true before QA can begin (smoke check pass, build stable)
 - **Exit Criteria**: what constitutes a completed QA cycle (all stories PASS or FAIL with bugs filed)
 
-Ask: "May I write the QA plan to `production/qa/qa-plan-[sprint]-[date].md`?"
+Ask: "May I write the QA plan to `planning/production/qa/qa-plan-[sprint]-[date].md`?"
 
 Write only after receiving approval.
 
@@ -142,7 +142,7 @@ options:
   - "BLOCKED — cannot test yet (reason)"
 ```
 
-After each FAIL result: use `AskUserQuestion` to collect the failure description, then spawn `qa-tester` via Task to write a formal bug report in `production/qa/bugs/`.
+After each FAIL result: use `AskUserQuestion` to collect the failure description, then spawn `qa-tester` via Task to write a formal bug report in `planning/production/qa/bugs/`.
 
 Bug report naming: `BUG-[NNN]-[short-slug].md` (increment NNN from existing bugs in the directory).
 
@@ -192,7 +192,7 @@ Next step guidance by verdict:
 - APPROVED WITH CONDITIONS: "Resolve conditions before advancing. S3/S4 bugs may be deferred to polish."
 - NOT APPROVED: "Resolve S1/S2 bugs and re-run `/team-qa` or targeted manual QA before advancing."
 
-Ask: "May I write this QA sign-off report to `production/qa/qa-signoff-[sprint]-[date].md`?"
+Ask: "May I write this QA sign-off report to `planning/production/qa/qa-signoff-[sprint]-[date].md`?"
 
 Write only after receiving approval.
 

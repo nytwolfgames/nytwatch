@@ -21,7 +21,7 @@ season plan requiring user approval before handoff to production.
 - [ ] Uses `AskUserQuestion` at phase transitions to capture user approval before proceeding
 - [ ] States explicitly that Phases 3 and 4 can run simultaneously (parallel spawning)
 - [ ] Error recovery section present (or implied through BLOCKED handling)
-- [ ] Output documents section specifies paths under `design/live-ops/seasons/`
+- [ ] Output documents section specifies paths under `planning/design/live-ops/seasons/`
 
 ---
 
@@ -30,8 +30,8 @@ season plan requiring user approval before handoff to production.
 ### Case 1: Happy Path — All 7 phases complete, season plan produced
 
 **Fixture:**
-- `design/live-ops/economy-rules.md` exists with current economy configuration
-- `design/live-ops/ethics-policy.md` exists with the project ethics policy
+- `planning/design/live-ops/economy-rules.md` exists with current economy configuration
+- `planning/design/live-ops/ethics-policy.md` exists with the project ethics policy
 - Game concept document exists at its standard path
 - No existing season documents for the new season name being planned
 
@@ -41,19 +41,19 @@ season plan requiring user approval before handoff to production.
 1. Phase 1: Spawns `live-ops-designer` via Task; receives season brief with scope, content list, and retention mechanic; presents to user
 2. AskUserQuestion: user approves Phase 1 output before Phase 2 begins
 3. Phase 2: Spawns `narrative-director` via Task; reads the Phase 1 season brief; produces narrative framing document (theme, story hook, lore connections); presents to user
-4. Phase 3 and 4 (parallel): Spawns `economy-designer` and `analytics-engineer` simultaneously via two Task calls before waiting for either result; economy-designer reads `design/live-ops/economy-rules.md`
+4. Phase 3 and 4 (parallel): Spawns `economy-designer` and `analytics-engineer` simultaneously via two Task calls before waiting for either result; economy-designer reads `planning/design/live-ops/economy-rules.md`
 5. Phase 5: Spawns `narrative-director` and `writer` in parallel to produce in-game narrative text and player-facing copy; both read Phase 2 narrative framing doc
 6. Phase 6: Spawns `community-manager` via Task; reads season brief, economy design, and narrative framing; produces communication calendar with draft copy
 7. Phase 7: Collects all phase outputs; presents consolidated season plan summary including economy health check, analytics readiness, ethics review, and open questions
 8. AskUserQuestion: user approves the full season plan
-9. Sub-agents ask "May I write to `design/live-ops/seasons/S2_The_Frozen_Wastes.md`?", `...analytics.md`, and `...comms.md` before writing
+9. Sub-agents ask "May I write to `planning/design/live-ops/seasons/S2_The_Frozen_Wastes.md`?", `...analytics.md`, and `...comms.md` before writing
 10. Verdict: COMPLETE — season plan produced and handed off for production
 
 **Assertions:**
 - [ ] All 7 phases execute in order; Phase 3 and 4 are issued as parallel Task calls
 - [ ] Phase 7 consolidated summary includes all six sections (season brief, narrative framing, economy design, analytics plan, content inventory, communication calendar)
-- [ ] Ethics review section in Phase 7 explicitly references `design/live-ops/ethics-policy.md`
-- [ ] Three output documents written to `design/live-ops/seasons/` with correct naming convention
+- [ ] Ethics review section in Phase 7 explicitly references `planning/design/live-ops/ethics-policy.md`
+- [ ] Three output documents written to `planning/design/live-ops/seasons/` with correct naming convention
 - [ ] File writes are delegated to sub-agents — orchestrator does not write directly
 - [ ] Verdict: COMPLETE appears in final output
 - [ ] Next steps reference `/design-review`, `/sprint-plan`, and `/team-release`
@@ -64,7 +64,7 @@ season plan requiring user approval before handoff to production.
 
 **Fixture:**
 - All standard live-ops fixtures present (economy-rules.md, ethics-policy.md)
-- `design/live-ops/ethics-policy.md` explicitly prohibits loot boxes targeting players under 18
+- `planning/design/live-ops/ethics-policy.md` explicitly prohibits loot boxes targeting players under 18
 - economy-designer (Phase 3) proposes a "Mystery Chest" mechanic with randomized premium rewards and no pity timer
 
 **Input:** `/team-live-ops "Season 3: Shadow Tournament"`
@@ -130,19 +130,19 @@ season plan requiring user approval before handoff to production.
 
 ---
 
-### Case 5: Missing Ethics Policy — `design/live-ops/ethics-policy.md` does not exist
+### Case 5: Missing Ethics Policy — `planning/design/live-ops/ethics-policy.md` does not exist
 
 **Fixture:**
-- `design/live-ops/economy-rules.md` exists
-- `design/live-ops/ethics-policy.md` does NOT exist
+- `planning/design/live-ops/economy-rules.md` exists
+- `planning/design/live-ops/ethics-policy.md` does NOT exist
 - All other fixtures are present
 
 **Input:** `/team-live-ops "Season 4: Desert Heat"`
 
 **Expected behavior:**
 1. Phases 1–4 proceed; economy-designer and analytics-engineer are given the ethics policy path but it is absent
-2. Phase 7: Orchestrator attempts to run ethics review; detects that `design/live-ops/ethics-policy.md` is missing
-3. Phase 7 summary includes a gap flag: "ETHICS REVIEW SKIPPED: `design/live-ops/ethics-policy.md` not found. Economy design was not reviewed against an ethics policy. Recommend creating one before production begins."
+2. Phase 7: Orchestrator attempts to run ethics review; detects that `planning/design/live-ops/ethics-policy.md` is missing
+3. Phase 7 summary includes a gap flag: "ETHICS REVIEW SKIPPED: `planning/design/live-ops/ethics-policy.md` not found. Economy design was not reviewed against an ethics policy. Recommend creating one before production begins."
 4. Skill still completes the season plan and reaches COMPLETE verdict, but the gap is prominently flagged in the output and in the season design document
 5. Next steps include a recommendation to create the ethics policy document
 
@@ -152,7 +152,7 @@ season plan requiring user approval before handoff to production.
 - [ ] Phase 7 summary explicitly notes that ethics review was skipped and why
 - [ ] Verdict: COMPLETE is still reachable despite the missing file
 - [ ] Gap flag appears in the season design output document (not just in conversation)
-- [ ] Next steps recommend creating `design/live-ops/ethics-policy.md`
+- [ ] Next steps recommend creating `planning/design/live-ops/ethics-policy.md`
 
 ---
 

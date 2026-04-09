@@ -26,8 +26,8 @@ with verdict COMPLETE / BLOCKED and handoffs to `/ux-review`, `/code-review`,
 - [ ] Phase 4 is explicitly marked as parallel (ux-designer, art-director, accessibility-specialist)
 - [ ] UX Review Gate (Phase 1c) is defined as a blocking gate — skill must not proceed to Phase 2 without APPROVED verdict
 - [ ] Team Composition lists all five roles (ux-designer, ui-programmer, art-director, engine UI specialist, accessibility-specialist)
-- [ ] References the interaction pattern library (`design/ux/interaction-patterns.md`) — ui-programmer must use existing patterns
-- [ ] Phase 1a reads `design/accessibility-requirements.md` before design begins
+- [ ] References the interaction pattern library (`planning/design/ux/interaction-patterns.md`) — ui-programmer must use existing patterns
+- [ ] Phase 1a reads `planning/design/accessibility-requirements.md` before design begins
 
 ---
 
@@ -36,18 +36,18 @@ with verdict COMPLETE / BLOCKED and handoffs to `/ux-review`, `/code-review`,
 ### Case 1: Happy Path — Full pipeline from UX spec through polish succeeds
 
 **Fixture:**
-- `design/gdd/game-concept.md` exists with platform targets and intended audience
-- `design/player-journey.md` exists
-- `design/ux/interaction-patterns.md` exists with relevant patterns
-- `design/accessibility-requirements.md` exists with committed tier (e.g., Enhanced)
+- `planning/design/gdd/game-concept.md` exists with platform targets and intended audience
+- `planning/design/player-journey.md` exists
+- `planning/design/ux/interaction-patterns.md` exists with relevant patterns
+- `planning/design/accessibility-requirements.md` exists with committed tier (e.g., Enhanced)
 - Engine UI specialist configured in `.claude/docs/technical-preferences.md`
 
 **Input:** `/team-ui inventory screen`
 
 **Expected behavior:**
 1. Phase 1a — orchestrator reads game-concept.md, player-journey.md, relevant GDD UI sections, interaction-patterns.md, accessibility-requirements.md; summarizes a brief for the ux-designer
-2. Phase 1b — `/ux-design inventory-screen` invoked (or ux-designer spawned directly); produces `design/ux/inventory-screen.md` using `ux-spec.md` template; `AskUserQuestion` confirms spec before review
-3. Phase 1c — `/ux-review design/ux/inventory-screen.md` invoked; returns APPROVED; gate passed, proceed to Phase 2
+2. Phase 1b — `/ux-design inventory-screen` invoked (or ux-designer spawned directly); produces `planning/design/ux/inventory-screen.md` using `ux-spec.md` template; `AskUserQuestion` confirms spec before review
+3. Phase 1c — `/ux-review planning/design/ux/inventory-screen.md` invoked; returns APPROVED; gate passed, proceed to Phase 2
 4. Phase 2 — art-director spawned; reviews full UX spec (not only wireframes); applies visual treatment; verifies color contrast; produces visual design spec with asset manifest; `AskUserQuestion` confirms before Phase 3
 5. Phase 3 — engine UI specialist spawned first (read from technical-preferences.md); produces implementation notes for ui-programmer; ui-programmer spawned with UX spec + visual spec + engine notes; implementation produced; interaction-patterns.md updated if new patterns introduced
 6. Phase 4 — ux-designer, art-director, accessibility-specialist spawned in parallel; all three return results before Phase 5
@@ -69,14 +69,14 @@ with verdict COMPLETE / BLOCKED and handoffs to `/ux-review`, `/code-review`,
 ### Case 2: UX Review Gate — Spec fails review; skill halts before implementation
 
 **Fixture:**
-- `design/ux/inventory-screen.md` produced by Phase 1b
+- `planning/design/ux/inventory-screen.md` produced by Phase 1b
 - `/ux-review` returns verdict NEEDS REVISION with specific concerns flagged (e.g., gamepad navigation flow incomplete, contrast ratio below minimum)
 
 **Input:** `/team-ui inventory screen`
 
 **Expected behavior:**
 1. Phase 1a + 1b complete — UX spec produced
-2. Phase 1c — `/ux-review design/ux/inventory-screen.md` returns NEEDS REVISION
+2. Phase 1c — `/ux-review planning/design/ux/inventory-screen.md` returns NEEDS REVISION
 3. Skill does NOT advance to Phase 2
 4. `AskUserQuestion` presented with the specific flagged concerns and options:
    - (a) Return to ux-designer to address the issues and re-review
@@ -120,10 +120,10 @@ with verdict COMPLETE / BLOCKED and handoffs to `/ux-review`, `/code-review`,
 ### Case 4: Accessibility Parallel Review — Phase 4 runs three streams simultaneously
 
 **Fixture:**
-- `design/ux/inventory-screen.md` exists (APPROVED)
+- `planning/design/ux/inventory-screen.md` exists (APPROVED)
 - Visual design spec complete
 - Implementation complete
-- `design/accessibility-requirements.md` committed tier: Enhanced
+- `planning/design/accessibility-requirements.md` committed tier: Enhanced
 
 **Input:** `/team-ui inventory screen` (resuming from Phase 3 complete)
 
@@ -133,14 +133,14 @@ with verdict COMPLETE / BLOCKED and handoffs to `/ux-review`, `/code-review`,
 3. Each stream operates independently:
    - ux-designer: verifies implementation matches wireframes, tests keyboard-only and gamepad-only navigation, checks accessibility features function
    - art-director: verifies visual consistency with art bible at minimum and maximum supported resolutions
-   - accessibility-specialist: audits against the Enhanced accessibility tier in `design/accessibility-requirements.md`; any violation flagged as a blocker
+   - accessibility-specialist: audits against the Enhanced accessibility tier in `planning/design/accessibility-requirements.md`; any violation flagged as a blocker
 4. Skill waits for all three results before proceeding to Phase 5
 5. `AskUserQuestion` presents all three review results before Phase 5 begins
 
 **Assertions:**
 - [ ] All three Task calls issued before any result is awaited (parallel, not sequential)
 - [ ] Phase 5 does NOT begin until all three Phase 4 agents have returned
-- [ ] Accessibility-specialist explicitly reads `design/accessibility-requirements.md` for the committed tier
+- [ ] Accessibility-specialist explicitly reads `planning/design/accessibility-requirements.md` for the committed tier
 - [ ] Accessibility violations flagged as BLOCKING (not merely advisory)
 - [ ] `AskUserQuestion` shows all three review streams' results together before Phase 5 approval
 - [ ] No Phase 4 agent's output is used as input for another Phase 4 agent
@@ -150,19 +150,19 @@ with verdict COMPLETE / BLOCKED and handoffs to `/ux-review`, `/code-review`,
 ### Case 5: Missing Interaction Pattern Library — Skill notes the gap rather than inventing patterns
 
 **Fixture:**
-- `design/ux/interaction-patterns.md` does NOT exist
+- `planning/design/ux/interaction-patterns.md` does NOT exist
 - All other required files present
 
 **Input:** `/team-ui settings menu`
 
 **Expected behavior:**
-1. Phase 1a — orchestrator attempts to read `design/ux/interaction-patterns.md`; file not found
+1. Phase 1a — orchestrator attempts to read `planning/design/ux/interaction-patterns.md`; file not found
 2. Skill surfaces the gap: "interaction-patterns.md does not exist — no existing patterns to reuse"
 3. `AskUserQuestion` presented with options:
    - (a) Run `/ux-design patterns` first to establish the pattern library, then continue
    - (b) Proceed without the pattern library — ux-designer will document new patterns as they are created
 4. Skill does NOT invent or assume patterns from other sources
-5. If user chooses (b): ui-programmer is explicitly instructed to treat all patterns created as new and to add each to a new `design/ux/interaction-patterns.md` at completion
+5. If user chooses (b): ui-programmer is explicitly instructed to treat all patterns created as new and to add each to a new `planning/design/ux/interaction-patterns.md` at completion
 6. Final report notes that interaction-patterns.md was created (or is still absent if user skipped)
 
 **Assertions:**

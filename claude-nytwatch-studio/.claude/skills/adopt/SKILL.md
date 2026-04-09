@@ -20,7 +20,7 @@ A project can have GDDs, ADRs, and stories — and every format-sensitive skill
 will still fail silently or produce wrong results if those artifacts are in the
 wrong internal format.
 
-**Output:** `docs/adoption-plan-[date].md` — a persistent, checkable migration plan.
+**Output:** `planning/docs/adoption-plan-[date].md` — a persistent, checkable migration plan.
 
 **Argument modes:**
 
@@ -42,20 +42,20 @@ skill is running during the silent read phase.
 Then read silently before presenting anything else.
 
 ### Existence check
-- `production/stage.txt` — if present, read it (authoritative phase)
-- `design/gdd/game-concept.md` — concept exists?
-- `design/gdd/systems-index.md` — systems index exists?
-- Count GDD files: `design/gdd/*.md` (excluding game-concept.md and systems-index.md)
-- Count ADR files: `docs/architecture/adr-*.md`
-- Count story files: `production/epics/**/*.md` (excluding EPIC.md)
+- `planning/production/stage.txt` — if present, read it (authoritative phase)
+- `planning/design/gdd/game-concept.md` — concept exists?
+- `planning/design/gdd/systems-index.md` — systems index exists?
+- Count GDD files: `planning/design/gdd/*.md` (excluding game-concept.md and systems-index.md)
+- Count ADR files: `planning/docs/architecture/adr-*.md`
+- Count story files: `planning/production/epics/**/*.md` (excluding EPIC.md)
 - `.claude/docs/technical-preferences.md` — engine configured?
-- `docs/engine-reference/` — engine reference docs present?
-- Glob `docs/adoption-plan-*.md` — note the filename of the most recent prior plan if any exist
+- `planning/docs/engine-reference/` — engine reference docs present?
+- Glob `planning/docs/adoption-plan-*.md` — note the filename of the most recent prior plan if any exist
 
 ### Infer phase (if no stage.txt)
 Use the same heuristic as `/project-stage-detect`:
 - 10+ source files in `src/` → Production
-- Stories in `production/epics/` → Pre-Production
+- Stories in `planning/production/epics/` → Pre-Production
 - ADRs exist → Technical Setup
 - systems-index.md exists → Systems Design
 - game-concept.md exists → Concept
@@ -121,7 +121,7 @@ if the Status section exists.
 
 ### 2c: systems-index.md Format Audit
 
-If `design/gdd/systems-index.md` exists:
+If `planning/design/gdd/systems-index.md` exists:
 
 1. **Parenthetical status values** — Grep for any Status cell containing
    parentheses: `"Needs Revision ("`, `"In Progress ("`, etc.
@@ -149,13 +149,13 @@ For each story file found:
 
 | Artifact | Path | Impact if missing |
 |---|---|---|
-| TR registry | `docs/architecture/tr-registry.yaml` | HIGH — no stable requirement IDs |
-| Control manifest | `docs/architecture/control-manifest.md` | HIGH — no layer rules for stories |
+| TR registry | `planning/docs/architecture/tr-registry.yaml` | HIGH — no stable requirement IDs |
+| Control manifest | `planning/docs/architecture/control-manifest.md` | HIGH — no layer rules for stories |
 | Manifest version stamp | In manifest header: `Manifest Version:` | MEDIUM — staleness checks blind |
-| Sprint status | `production/sprint-status.yaml` | MEDIUM — `/sprint-status` falls back to markdown |
-| Stage file | `production/stage.txt` | MEDIUM — phase auto-detect unreliable |
-| Engine reference | `docs/engine-reference/[engine]/VERSION.md` | HIGH — ADR engine checks blind |
-| Architecture traceability | `docs/architecture/architecture-traceability.md` | MEDIUM — no persistent matrix |
+| Sprint status | `planning/production/sprint-status.yaml` | MEDIUM — `/sprint-status` falls back to markdown |
+| Stage file | `planning/production/stage.txt` | MEDIUM — phase auto-detect unreliable |
+| Engine reference | `planning/docs/engine-reference/[engine]/VERSION.md` | HIGH — ADR engine checks blind |
+| Architecture traceability | `planning/docs/architecture/architecture-traceability.md` | MEDIUM — no persistent matrix |
 
 ### 2f: Technical Preferences Audit
 
@@ -213,12 +213,12 @@ and the exact replacement text. Offer to fix this immediately before writing the
 
 **Special case — ADRs missing Status field:**
 For each affected ADR, the fix is:
-`/architecture-decision retrofit docs/architecture/adr-[NNNN]-[slug].md`
+`/architecture-decision retrofit planning/docs/architecture/adr-[NNNN]-[slug].md`
 List each ADR as a separate checkable item.
 
 **Special case — GDDs missing sections:**
 For each affected GDD, list which sections are missing and the fix:
-`/design-system retrofit design/gdd/[filename].md`
+`/design-system retrofit planning/design/gdd/[filename].md`
 
 **Infrastructure bootstrap ordering** — always present in this sequence:
 1. Fix ADR formats first (registry depends on reading ADR Status fields)
@@ -265,12 +265,12 @@ Before asking to write, show a **Gap Preview**:
 This gives the user enough context to judge scope before committing to writing the file.
 
 If a prior adoption plan was detected in Phase 1, add a note:
-> "A previous plan exists at `docs/adoption-plan-[prior-date].md`. The new plan will
+> "A previous plan exists at `planning/docs/adoption-plan-[prior-date].md`. The new plan will
 > reflect current project state — it does not diff against the prior run."
 
 Use `AskUserQuestion`:
 - "Ready to write the migration plan?"
-  - "Yes — write `docs/adoption-plan-[date].md`"
+  - "Yes — write `planning/docs/adoption-plan-[date].md`"
   - "Show me the full plan preview first (don't write yet)"
   - "Cancel — I'll handle migration manually"
 
@@ -281,7 +281,7 @@ fenced markdown block. Then ask again with the same three options.
 
 ## Phase 6: Write the Adoption Plan
 
-If approved, write `docs/adoption-plan-[date].md` with this structure:
+If approved, write `planning/docs/adoption-plan-[date].md` with this structure:
 
 ```markdown
 # Adoption Plan
@@ -319,17 +319,17 @@ the TR registry from your existing GDDs and ADRs.
 ### 3b. Create control manifest
 Run `/create-control-manifest`
 **Time**: 30 min
-- [ ] docs/architecture/control-manifest.md created
+- [ ] planning/docs/architecture/control-manifest.md created
 
 ### 3c. Create sprint tracking file
 Run `/sprint-plan update`
 **Time**: 5 min (if sprint plan already exists as markdown)
-- [ ] production/sprint-status.yaml created
+- [ ] planning/production/sprint-status.yaml created
 
 ### 3d. Set authoritative project stage
 Run `/gate-check [current-phase]`
 **Time**: 5 min
-- [ ] production/stage.txt written
+- [ ] planning/production/stage.txt written
 
 ---
 
@@ -365,7 +365,7 @@ are resolved. The new run will reflect the current state of the project.
 ## Phase 6b: Set Review Mode
 
 After writing the adoption plan (or if the user cancels writing), check whether
-`production/review-mode.txt` exists.
+`planning/production/review-mode.txt` exists.
 
 **If it exists**: Read it and note the current mode — "Review mode is already set to `[current]`." — skip the prompt.
 
@@ -377,12 +377,12 @@ After writing the adoption plan (or if the user cancels writing), check whether
   - `Lean (recommended)` — Directors only at phase gate transitions (/gate-check). Skips per-skill reviews. Balanced for solo devs and small teams.
   - `Solo` — No director reviews at all. Maximum speed. Best for game jams, prototypes, or if reviews feel like overhead.
 
-Write the choice to `production/review-mode.txt` immediately after selection — no separate "May I write?" needed:
+Write the choice to `planning/production/review-mode.txt` immediately after selection — no separate "May I write?" needed:
 - `Full` → write `full`
 - `Lean (recommended)` → write `lean`
 - `Solo` → write `solo`
 
-Create the `production/` directory if it does not exist.
+Create the `planning/production/` directory if it does not exist.
 
 ---
 

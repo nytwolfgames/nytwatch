@@ -2,14 +2,14 @@
 
 ## Skill Summary
 
-`/consistency-check` scans all GDDs in `design/gdd/` and checks for internal
+`/consistency-check` scans all GDDs in `planning/design/gdd/` and checks for internal
 conflicts across documents. It produces a structured findings table with columns:
 System A vs System B, Conflict Type, Severity (HIGH / MEDIUM / LOW). Conflict
 types include: formula mismatch, competing ownership, stale reference, and
 dependency gap.
 
 The skill is read-only during analysis. It has no director gates. An optional
-consistency report can be written to `design/consistency-report-[date].md` if the
+consistency report can be written to `planning/design/consistency-report-[date].md` if the
 user requests it, but the skill asks "May I write" before doing so.
 
 ---
@@ -40,7 +40,7 @@ required as part of the scan itself.
 ### Case 1: Happy Path — 4 GDDs with no conflicts
 
 **Fixture:**
-- `design/gdd/` contains exactly 4 system GDDs
+- `planning/design/gdd/` contains exactly 4 system GDDs
 - All GDDs have consistent formulas (no overlapping variables with different values)
 - No two GDDs claim ownership of the same game entity or mechanic
 - All dependency references point to GDDs that exist
@@ -48,7 +48,7 @@ required as part of the scan itself.
 **Input:** `/consistency-check`
 
 **Expected behavior:**
-1. Skill reads all 4 GDDs in `design/gdd/`
+1. Skill reads all 4 GDDs in `planning/design/gdd/`
 2. Runs cross-GDD consistency checks (formulas, ownership, references)
 3. No conflicts found
 4. Outputs structured findings table showing 0 issues
@@ -92,7 +92,7 @@ required as part of the scan itself.
 
 **Fixture:**
 - GDD-A's Dependencies section lists "system-B" as a dependency
-- No GDD for system-B exists in `design/gdd/`
+- No GDD for system-B exists in `planning/design/gdd/`
 - All other GDDs are consistent
 
 **Input:** `/consistency-check`
@@ -114,14 +114,14 @@ required as part of the scan itself.
 ### Case 4: Edge Case — No GDDs found
 
 **Fixture:**
-- `design/gdd/` directory is empty or does not exist
+- `planning/design/gdd/` directory is empty or does not exist
 
 **Input:** `/consistency-check`
 
 **Expected behavior:**
-1. Skill attempts to read files in `design/gdd/`
+1. Skill attempts to read files in `planning/design/gdd/`
 2. No GDD files found
-3. Skill outputs an error: "No GDDs found in `design/gdd/`. Run `/design-system` to create GDDs first."
+3. Skill outputs an error: "No GDDs found in `planning/design/gdd/`. Run `/design-system` to create GDDs first."
 4. No findings table is produced
 5. No verdict is issued
 
@@ -136,20 +136,20 @@ required as part of the scan itself.
 ### Case 5: Director Gate — No gate spawned; no review-mode.txt read
 
 **Fixture:**
-- `design/gdd/` contains ≥2 GDDs
-- `production/session-state/review-mode.txt` exists with `full`
+- `planning/design/gdd/` contains ≥2 GDDs
+- `planning/production/session-state/review-mode.txt` exists with `full`
 
 **Input:** `/consistency-check`
 
 **Expected behavior:**
 1. Skill reads all GDDs and runs the consistency scan
-2. Skill does NOT read `production/session-state/review-mode.txt`
+2. Skill does NOT read `planning/production/session-state/review-mode.txt`
 3. No director gate agents are spawned at any point
 4. Findings table and verdict are produced normally
 
 **Assertions:**
 - [ ] No director gate agents are spawned (no CD-, TD-, PR-, AD- prefixed gates)
-- [ ] Skill does NOT read `production/session-state/review-mode.txt`
+- [ ] Skill does NOT read `planning/production/session-state/review-mode.txt`
 - [ ] Output contains no "Gate: [GATE-ID]" or gate-skipped entries
 - [ ] Review mode has no effect on this skill's behavior
 

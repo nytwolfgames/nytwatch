@@ -8,7 +8,7 @@ and changelog readiness. It is an internal gate — not a platform/store checkli
 (that is `/launch-checklist`). When a previous release checklist exists, it shows
 a delta of resolved and newly introduced issues.
 
-The skill writes its checklist report to `production/releases/release-checklist-[date].md`
+The skill writes its checklist report to `planning/production/releases/release-checklist-[date].md`
 after a "May I write" ask. No director gates apply — `/gate-check` handles
 formal phase gate logic. Verdicts: RELEASE READY, RELEASE BLOCKED, or CONCERNS.
 
@@ -38,11 +38,11 @@ is managed by `/gate-check`.
 ### Case 1: Happy Path — All Sprint Stories Complete, QA Passed, RELEASE READY
 
 **Fixture:**
-- `production/sprints/sprint-008.md` — all stories are `Status: Done`
-- No open bugs with severity HIGH or CRITICAL in `production/bugs/`
-- `production/qa/qa-plan-sprint-008.md` has QA sign-off annotation
+- `planning/production/sprints/sprint-008.md` — all stories are `Status: Done`
+- No open bugs with severity HIGH or CRITICAL in `planning/production/bugs/`
+- `planning/production/qa/qa-plan-sprint-008.md` has QA sign-off annotation
 - Changelog entry for this version exists
-- `production/stage.txt` contains `Polish`
+- `planning/production/stage.txt` contains `Polish`
 
 **Input:** `/release-checklist`
 
@@ -52,7 +52,7 @@ is managed by `/gate-check`.
 3. Skill confirms QA plan has sign-off
 4. Skill confirms changelog entry exists
 5. All checks pass; skill asks "May I write to
-   `production/releases/release-checklist-2026-04-06.md`?"
+   `planning/production/releases/release-checklist-2026-04-06.md`?"
 6. Report written; verdict is RELEASE READY
 
 **Assertions:**
@@ -67,7 +67,7 @@ is managed by `/gate-check`.
 
 **Fixture:**
 - All sprint stories are Done
-- `production/bugs/` contains 2 open bugs with severity HIGH
+- `planning/production/bugs/` contains 2 open bugs with severity HIGH
 
 **Input:** `/release-checklist`
 
@@ -111,7 +111,7 @@ is managed by `/gate-check`.
 ### Case 4: Previous Release Checklist Exists — Delta From Last Release
 
 **Fixture:**
-- `production/releases/release-checklist-2026-03-20.md` exists
+- `planning/production/releases/release-checklist-2026-03-20.md` exists
 - Previous: 1 story was incomplete, 1 HIGH bug open
 - Current: all stories Done, HIGH bug resolved, but now 1 MEDIUM bug appeared
 

@@ -31,10 +31,10 @@ drives implementation to completion — including writing the test.
 
 **If a path is provided**: read that file directly.
 
-**If no argument**: check `production/session-state/active.md` for the active
+**If no argument**: check `planning/production/session-state/active.md` for the active
 story. If found, confirm: "Continuing work on [story title] — is that correct?"
 If not found, ask: "Which story are we implementing?" Glob
-`production/epics/**/*.md` and list stories with Status: Ready.
+`planning/production/epics/**/*.md` and list stories with Status: Ready.
 
 ---
 
@@ -44,9 +44,9 @@ If not found, ask: "Which story are we implementing?" Glob
 
 | File | Path | If missing |
 |------|------|------------|
-| TR registry | `docs/architecture/tr-registry.yaml` | **STOP** — "TR registry not found. Run `/create-epics` to generate it." |
+| TR registry | `planning/docs/architecture/tr-registry.yaml` | **STOP** — "TR registry not found. Run `/create-epics` to generate it." |
 | Governing ADR | path from story's ADR field | **STOP** — "ADR file [path] not found. Run `/architecture-decision` to create it, or correct the filename in the story's ADR field." |
-| Control manifest | `docs/architecture/control-manifest.md` | **WARN and continue** — "Control manifest not found — layer rules cannot be checked. Run `/create-control-manifest`." |
+| Control manifest | `planning/docs/architecture/control-manifest.md` | **WARN and continue** — "Control manifest not found — layer rules cannot be checked. Run `/create-control-manifest`." |
 
 If the TR registry or governing ADR is missing, set the story status to **BLOCKED** in the session state and do not spawn any programmer agent.
 
@@ -65,19 +65,19 @@ Extract and hold:
 - **Dependencies** — what must be DONE before this story
 
 ### The TR registry
-Read `docs/architecture/tr-registry.yaml`. Look up the story's TR-ID.
+Read `planning/docs/architecture/tr-registry.yaml`. Look up the story's TR-ID.
 Read the current `requirement` text — this is the source of truth for what the
 GDD requires now. Do not rely on any inline text in the story file (may be stale).
 
 ### The governing ADR
-Read `docs/architecture/[adr-file].md`. Extract:
+Read `planning/docs/architecture/[adr-file].md`. Extract:
 - The full Decision section
 - The Implementation Guidelines section (this is what the programmer follows)
 - The Engine Compatibility section (post-cutoff APIs, known risks)
 - The ADR Dependencies section
 
 ### The control manifest
-Read `docs/architecture/control-manifest.md`. Extract the rules for this story's layer:
+Read `planning/docs/architecture/control-manifest.md`. Extract the rules for this story's layer:
 - Required patterns
 - Forbidden patterns
 - Performance guardrails
@@ -98,7 +98,7 @@ If [C]: stop. Do not spawn any agent. Let the user review and re-run `/dev-story
 
 After extracting the **Dependencies** list from the story file, validate each:
 
-1. Glob `production/epics/**/*.md` to find each dependency story file.
+1. Glob `planning/production/epics/**/*.md` to find each dependency story file.
 2. Read its `Status:` field.
 3. If any dependency has Status other than `Complete` or `Done`:
    - Use `AskUserQuestion`:
@@ -218,7 +218,7 @@ Test requirements (from coding-standards.md):
 
 For **Visual/Feel** and **UI** stories: no automated test. Remind the agent to
 note in the implementation summary what manual evidence will be needed:
-"Evidence doc required at `production/qa/evidence/[slug]-evidence.md`."
+"Evidence doc required at `planning/production/qa/evidence/[slug]-evidence.md`."
 
 For **Config/Data** stories: no test file. A smoke check will serve as evidence.
 
@@ -259,7 +259,7 @@ Ready for: `/code-review [file1] [file2]` then `/story-done [story-path]`
 
 ## Phase 7: Update Session State
 
-Silently append to `production/session-state/active.md`:
+Silently append to `planning/production/session-state/active.md`:
 
 ```
 ## Session Extract — /dev-story [date]

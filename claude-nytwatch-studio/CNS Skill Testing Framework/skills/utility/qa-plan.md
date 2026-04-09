@@ -8,7 +8,7 @@ each story, cross-references test standards from `coding-standards.md` to assign
 the appropriate test type (unit, integration, visual, UI, or config/data), and
 produces a prioritized QA plan document.
 
-The skill asks "May I write to `production/qa/qa-plan-sprint-NNN.md`?" before
+The skill asks "May I write to `planning/production/qa/qa-plan-sprint-NNN.md`?" before
 persisting the output. If an existing test plan for the same sprint is found, the
 skill offers to update rather than replace. The verdict is COMPLETE when the plan
 is written. No director gates are used — gate-level story readiness is handled by
@@ -39,7 +39,7 @@ None. `/qa-plan` is a planning utility. Story readiness gates are separate.
 ### Case 1: Happy Path — Sprint with 4 stories generates full test plan
 
 **Fixture:**
-- `production/sprints/sprint-003.md` lists 4 stories with defined acceptance criteria
+- `planning/production/sprints/sprint-003.md` lists 4 stories with defined acceptance criteria
 - Stories span types: 1 logic (formula), 1 integration, 1 visual, 1 UI
 - `coding-standards.md` is present with test evidence table
 
@@ -54,7 +54,7 @@ None. `/qa-plan` is a planning utility. Story readiness gates are separate.
    - Visual story → Screenshot + lead sign-off (ADVISORY)
    - UI story → Manual walkthrough doc (ADVISORY)
 4. Skill drafts QA plan with story-by-story test type breakdown
-5. Skill asks "May I write to `production/qa/qa-plan-sprint-003.md`?"
+5. Skill asks "May I write to `planning/production/qa/qa-plan-sprint-003.md`?"
 6. File is written on approval; verdict is COMPLETE
 
 **Assertions:**
@@ -69,7 +69,7 @@ None. `/qa-plan` is a planning utility. Story readiness gates are separate.
 ### Case 2: Story With No Acceptance Criteria — Flagged as UNTESTABLE
 
 **Fixture:**
-- `production/sprints/sprint-004.md` lists 3 stories; one story has empty
+- `planning/production/sprints/sprint-004.md` lists 3 stories; one story has empty
   acceptance criteria section
 
 **Input:** `/qa-plan sprint-004`
@@ -92,7 +92,7 @@ None. `/qa-plan` is a planning utility. Story readiness gates are separate.
 ### Case 3: Existing Test Plan Found — Offers update rather than replace
 
 **Fixture:**
-- `production/qa/qa-plan-sprint-003.md` already exists from a previous run
+- `planning/production/qa/qa-plan-sprint-003.md` already exists from a previous run
 - Sprint-003 has 2 new stories added since the last plan
 
 **Input:** `/qa-plan sprint-003`
@@ -101,7 +101,7 @@ None. `/qa-plan` is a planning utility. Story readiness gates are separate.
 1. Skill reads sprint-003.md and detects 2 stories not in the existing plan
 2. Skill reports: "Existing QA plan found for sprint-003 — offering to update"
 3. Skill presents the 2 new stories and their proposed test assignments
-4. Skill asks "May I update `production/qa/qa-plan-sprint-003.md`?" (not overwrite)
+4. Skill asks "May I update `planning/production/qa/qa-plan-sprint-003.md`?" (not overwrite)
 5. Updated plan is written on approval
 
 **Assertions:**
@@ -115,7 +115,7 @@ None. `/qa-plan` is a planning utility. Story readiness gates are separate.
 ### Case 4: No Stories Found for Sprint — Error with guidance
 
 **Fixture:**
-- `production/sprints/sprint-007.md` does not exist
+- `planning/production/sprints/sprint-007.md` does not exist
 - No other sprint file matching sprint-007
 
 **Input:** `/qa-plan sprint-007`

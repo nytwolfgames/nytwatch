@@ -4,11 +4,11 @@
 
 **Starting State:**
 - `src/gameplay/` — ~4000 lines of Godot 4.6 GDScript
-- `design/` — 3 markdown files with rough design notes (not in GDD template format)
-- No `design/gdd/` directory
-- No `docs/architecture/` directory
-- No `production/` directory
-- No `design/gdd/systems-index.md`
+- `planning/design/` — 3 markdown files with rough design notes (not in GDD template format)
+- No `planning/design/gdd/` directory
+- No `planning/docs/architecture/` directory
+- No `planning/production/` directory
+- No `planning/design/gdd/systems-index.md`
 - CLAUDE.md exists (engine configured: Godot 4.6)
 
 **Session Duration:** ~30 minutes
@@ -33,27 +33,27 @@
 > |------------------|-------|-------|
 > | Engine configuration | ✅ | Godot 4.6 in CLAUDE.md |
 > | Source code | ✅ | ~4000 lines in `src/gameplay/` |
-> | Design docs | ⚠️ | 3 files in `design/`, not in GDD format |
-> | Architecture docs | ❌ | `docs/architecture/` missing |
-> | Systems index | ❌ | `design/gdd/systems-index.md` missing |
-> | Production tracking | ❌ | `production/` directory missing |
+> | Design docs | ⚠️ | 3 files in `planning/design/`, not in GDD format |
+> | Architecture docs | ❌ | `planning/docs/architecture/` missing |
+> | Systems index | ❌ | `planning/design/gdd/systems-index.md` missing |
+> | Production tracking | ❌ | `planning/production/` directory missing |
 > | Sprint/story files | ❌ | None |
 >
 > **Phase 2: Format Audit (existing files)**
 >
 > Checking internal structure of the 3 design files...
 >
-> *`design/combat-notes.md`:*
+> *`planning/design/combat-notes.md`:*
 > - Has informal notes, no GDD template sections
 > - Contains: some rule descriptions, a damage formula, rough balance numbers
 > - Missing from GDD template: Overview, Player Fantasy, Edge Cases, Dependencies, Tuning Knobs, Acceptance Criteria (6 of 8 sections)
 >
-> *`design/crafting-ideas.md`:*
+> *`planning/design/crafting-ideas.md`:*
 > - Brainstorm-style notes, no structure
 > - No formulas, no acceptance criteria
 > - Represents early concept thinking — useful as input for a GDD, not yet a GDD
 >
-> *`design/inventory.md`:*
+> *`planning/design/inventory.md`:*
 > - Closest to a GDD — has Overview and Rules sections
 > - Missing: Player Fantasy, Formulas, Edge Cases, Tuning Knobs, Acceptance Criteria (5 of 8 sections)
 >
@@ -65,7 +65,7 @@
 > | GDD files not in template format | HIGH | Skills cannot reference TR-IDs from malformed GDDs |
 > | No architecture docs | HIGH | Cannot run `/architecture-review` or `/create-control-manifest` |
 > | No production tracking | MEDIUM | Sprint and story skills won't work, but not needed until production phase |
-> | `design/crafting-ideas.md` — pre-GDD content | LOW | Useful as input; needs full GDD authoring before it blocks anything |
+> | `planning/design/crafting-ideas.md` — pre-GDD content | LOW | Useful as input; needs full GDD authoring before it blocks anything |
 
 ## Turn 3: Agent Presents the Migration Plan
 
@@ -76,17 +76,17 @@
 >
 > | # | Step | Skill | Priority | Notes |
 > |---|------|-------|----------|-------|
-> | 1 | Create `design/gdd/systems-index.md` | `/map-systems` or `/adopt` inline | BLOCKING | Unblocks all downstream skills |
-> | 2 | Retrofit `design/inventory.md` → GDD format | `/design-system retrofit design/inventory.md` | HIGH | Adds 5 missing sections, keeps your existing content |
-> | 3 | Retrofit `design/combat-notes.md` → GDD format | `/design-system retrofit design/combat-notes.md` | HIGH | Adds 6 missing sections |
-> | 4 | Convert `design/crafting-ideas.md` → full GDD | `/design-system crafting` (new authoring, uses ideas as input) | MEDIUM | Not a retrofit — too informal to retrofit |
+> | 1 | Create `planning/design/gdd/systems-index.md` | `/map-systems` or `/adopt` inline | BLOCKING | Unblocks all downstream skills |
+> | 2 | Retrofit `planning/design/inventory.md` → GDD format | `/design-system retrofit planning/design/inventory.md` | HIGH | Adds 5 missing sections, keeps your existing content |
+> | 3 | Retrofit `planning/design/combat-notes.md` → GDD format | `/design-system retrofit planning/design/combat-notes.md` | HIGH | Adds 6 missing sections |
+> | 4 | Convert `planning/design/crafting-ideas.md` → full GDD | `/design-system crafting` (new authoring, uses ideas as input) | MEDIUM | Not a retrofit — too informal to retrofit |
 > | 5 | Create architecture ADRs from existing code | `/reverse-document` + `/architecture-decision` | HIGH | Captures decisions already made in code |
 > | 6 | Create master architecture document | `/create-architecture` | HIGH | After ADRs |
 > | 7 | Set up production tracking | `/sprint-plan new` | MEDIUM | After architecture phase |
 >
 > **Important:** Step 1 must happen before any other step. Everything else can be done in parallel or reordered based on your priorities.
 >
-> May I write this plan to `docs/adoption-plan-2026-03-12.md`?
+> May I write this plan to `planning/docs/adoption-plan-2026-03-12.md`?
 
 **User:**
 > Yes. Write it.
@@ -96,7 +96,7 @@
 ## Turn 4: Agent Offers to Fix the Most Urgent Gap
 
 **Agent:**
-> The BLOCKING gap is the missing `design/gdd/systems-index.md`.
+> The BLOCKING gap is the missing `planning/design/gdd/systems-index.md`.
 >
 > I can create one now by reading your existing code and design docs to infer what systems you've built. This is faster than running `/map-systems` from scratch — I'll populate it based on what already exists, then you confirm or adjust.
 >
@@ -142,19 +142,19 @@
 >
 > Updated dependency: Movement depends on Stamina (movement drains it).
 >
-> May I write this to `design/gdd/systems-index.md`?
+> May I write this to `planning/design/gdd/systems-index.md`?
 
 ## Turn 6: User Approves
 
 **User:**
 > Yes
 
-**Agent writes `design/gdd/systems-index.md`.**
+**Agent writes `planning/design/gdd/systems-index.md`.**
 
 ## Turn 7: Agent Shows What's Now Unlocked
 
 **Agent:**
-> `design/gdd/systems-index.md` created.
+> `planning/design/gdd/systems-index.md` created.
 >
 > **BLOCKING gap resolved.** The following skills can now run:
 >
@@ -165,8 +165,8 @@
 >
 > **Recommended next steps (from adoption plan):**
 >
-> 1. Run `/design-system retrofit design/inventory.md` — your most complete existing doc, easiest win
-> 2. Run `/design-system retrofit design/combat-notes.md`
+> 1. Run `/design-system retrofit planning/design/inventory.md` — your most complete existing doc, easiest win
+> 2. Run `/design-system retrofit planning/design/combat-notes.md`
 > 3. Run `/design-system crafting` — author crafting GDD using your ideas file as input
 >
 > After those 3, you'll have 5 of 7 systems with complete GDDs. Then run `/review-all-gdds` to catch cross-system consistency issues before architecture work.
@@ -179,7 +179,7 @@
 **Agent:**
 > Run:
 > ```
-> /design-system retrofit design/inventory.md
+> /design-system retrofit planning/design/inventory.md
 > ```
 >
 > The skill will detect your existing Overview and Rules sections, show you which of the 8 sections are missing, and run the section cycle only for the gaps. Your existing content won't be touched.

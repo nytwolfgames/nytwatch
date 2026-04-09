@@ -6,7 +6,7 @@ Orchestrates the full level design team for a single level or area. Coordinates
 narrative-director, world-builder, level-designer, systems-designer, art-director,
 accessibility-specialist, and qa-tester through five sequential steps with one
 parallel phase (Step 4). Compiles all team outputs into a single level design
-document saved to `design/levels/[level-name].md`. Uses `AskUserQuestion` at each
+document saved to `planning/design/levels/[level-name].md`. Uses `AskUserQuestion` at each
 step transition. Delegates all file writes to sub-agents. Produces a summary report
 with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 `/qa-plan`.
@@ -23,10 +23,10 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 - [ ] Error Recovery Protocol section is present with all four recovery steps
 - [ ] Uses `AskUserQuestion` at step transitions for user approval before proceeding
 - [ ] Step 4 is explicitly marked as parallel (art-director and accessibility-specialist run simultaneously)
-- [ ] Context gathering reads: `design/gdd/game-concept.md`, `design/gdd/game-pillars.md`, `design/levels/`, `design/narrative/`, and relevant world-building docs
+- [ ] Context gathering reads: `planning/design/gdd/game-concept.md`, `planning/design/gdd/game-pillars.md`, `planning/design/levels/`, `planning/design/narrative/`, and relevant world-building docs
 - [ ] Team Composition lists all seven roles (narrative-director, world-builder, level-designer, systems-designer, art-director, accessibility-specialist, qa-tester)
 - [ ] accessibility-specialist output includes severity ratings (BLOCKING / RECOMMENDED / NICE TO HAVE)
-- [ ] Final level design document saved to `design/levels/[level-name].md`
+- [ ] Final level design document saved to `planning/design/levels/[level-name].md`
 
 ---
 
@@ -35,23 +35,23 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 ### Case 1: Happy Path — All team members produce outputs, document compiled and saved
 
 **Fixture:**
-- `design/gdd/game-concept.md` exists and is populated
-- `design/gdd/game-pillars.md` exists
-- `design/levels/` directory exists (may contain other level docs)
-- `design/narrative/` directory exists with relevant narrative docs
+- `planning/design/gdd/game-concept.md` exists and is populated
+- `planning/design/gdd/game-pillars.md` exists
+- `planning/design/levels/` directory exists (may contain other level docs)
+- `planning/design/narrative/` directory exists with relevant narrative docs
 
 **Input:** `/team-level forest dungeon`
 
 **Expected behavior:**
-1. Context gathering — orchestrator reads game-concept.md, game-pillars.md, existing level docs in `design/levels/`, narrative docs in `design/narrative/`, and world-building docs for the forest region
+1. Context gathering — orchestrator reads game-concept.md, game-pillars.md, existing level docs in `planning/design/levels/`, narrative docs in `planning/design/narrative/`, and world-building docs for the forest region
 2. Step 1 — narrative-director spawned: defines narrative purpose, key characters, dialogue triggers, emotional arc; world-builder spawned: provides lore context, environmental storytelling opportunities, world rules; `AskUserQuestion` confirms Step 1 outputs before Step 2
 3. Step 2 — level-designer spawned: designs spatial layout (critical path, optional paths, secrets), pacing curve, encounters, puzzles, entry/exit points and connections to adjacent areas; `AskUserQuestion` confirms layout before Step 3
 4. Step 3 — systems-designer spawned: specifies enemy compositions, loot tables, difficulty balance, area-specific mechanics, resource distribution; `AskUserQuestion` confirms systems before Step 4
 5. Step 4 — art-director and accessibility-specialist spawned in parallel; art-director: visual theme, color palette, lighting, asset list, VFX needs; accessibility-specialist: navigation clarity, colorblind safety, cognitive load check — each concern rated BLOCKING / RECOMMENDED / NICE TO HAVE; `AskUserQuestion` presents both outputs before Step 5
 6. Step 5 — qa-tester spawned: test cases for critical path, boundary/edge cases (sequence breaks, softlocks), playtest checklist, acceptance criteria
-7. Orchestrator compiles all team outputs into level design document format; sub-agent asked "May I write to `design/levels/forest-dungeon.md`?"; file saved
+7. Orchestrator compiles all team outputs into level design document format; sub-agent asked "May I write to `planning/design/levels/forest-dungeon.md`?"; file saved
 8. Summary report: area overview, encounter count, estimated asset list, narrative beats, cross-team dependencies, verdict: COMPLETE
-9. Next steps listed: `/design-review design/levels/forest-dungeon.md`, `/dev-story`, `/qa-plan`
+9. Next steps listed: `/design-review planning/design/levels/forest-dungeon.md`, `/dev-story`, `/qa-plan`
 
 **Assertions:**
 - [ ] All five sources read during context gathering before any agent is spawned
@@ -59,7 +59,7 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 - [ ] `AskUserQuestion` called at each step gate (minimum: after Step 1, Step 2, Step 3, Step 4)
 - [ ] Step 4 agents (art-director, accessibility-specialist) launched simultaneously
 - [ ] All file writes delegated to sub-agents — orchestrator does not write directly
-- [ ] Level doc saved to `design/levels/forest-dungeon.md` (slugified from argument)
+- [ ] Level doc saved to `planning/design/levels/forest-dungeon.md` (slugified from argument)
 - [ ] Verdict COMPLETE in final summary report
 - [ ] Next steps include `/design-review`, `/dev-story`, `/qa-plan`
 - [ ] Summary report includes: area overview, encounter count, estimated asset list, narrative beats
@@ -69,7 +69,7 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 ### Case 2: Blocked Agent (world-builder) — Partial report produced with gap noted
 
 **Fixture:**
-- `design/gdd/game-concept.md` exists
+- `planning/design/gdd/game-concept.md` exists
 - World-building docs for the forest region do NOT exist
 - world-builder agent returns BLOCKED: "No world-building docs found for the forest region — cannot provide lore context"
 
@@ -122,7 +122,7 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 
 **Fixture:**
 - Steps 1–3 complete successfully
-- `design/accessibility-requirements.md` committed tier: Enhanced
+- `planning/design/accessibility-requirements.md` committed tier: Enhanced
 - accessibility-specialist (Step 4, parallel) flags a BLOCKING concern: the critical path through the forest dungeon requires players to distinguish between two environmental hazards (toxic pools vs. shallow water) using color alone — no shape, icon, or audio cue differentiates them
 
 **Input:** `/team-level forest dungeon`
@@ -154,14 +154,14 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 **Fixture:**
 - Steps 1–3 in progress
 - level-designer (Step 2) produces a layout that specifies entry/exit points connecting to "the crystal caves" (an adjacent area)
-- `design/levels/crystal-caves.md` does NOT exist — the crystal caves area has not been designed yet
+- `planning/design/levels/crystal-caves.md` does NOT exist — the crystal caves area has not been designed yet
 
 **Input:** `/team-level forest dungeon`
 
 **Expected behavior:**
 1. Step 2 — level-designer produces layout including: "West exit connects to crystal-caves entry point A"
-2. Orchestrator (or level-designer subagent) checks `design/levels/` for `crystal-caves.md`; file not found
-3. Dependency gap surfaced: "Level references crystal-caves as an adjacent area but `design/levels/crystal-caves.md` does not exist"
+2. Orchestrator (or level-designer subagent) checks `planning/design/levels/` for `crystal-caves.md`; file not found
+3. Dependency gap surfaced: "Level references crystal-caves as an adjacent area but `planning/design/levels/crystal-caves.md` does not exist"
 4. `AskUserQuestion` presented with options:
    - (a) Proceed with a placeholder reference — note the dependency in the level doc as UNRESOLVED
    - (b) Pause and run `/team-level crystal caves` first to establish that area
@@ -170,7 +170,7 @@ with verdict COMPLETE / BLOCKED and handoffs to `/design-review`, `/dev-story`,
 7. Final report includes open cross-level dependencies section
 
 **Assertions:**
-- [ ] Skill detects the missing adjacent area by checking `design/levels/` — does not assume it will be created later
+- [ ] Skill detects the missing adjacent area by checking `planning/design/levels/` — does not assume it will be created later
 - [ ] Skill does NOT fabricate crystal caves content (lore, layout, connections) to resolve the reference
 - [ ] `AskUserQuestion` offers a "design crystal caves first" option referencing `/team-level`
 - [ ] If user proceeds with placeholder, level doc explicitly marks the west exit as UNRESOLVED

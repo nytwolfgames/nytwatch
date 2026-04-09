@@ -5,7 +5,7 @@ argument-hint: "[optional: what you just finished, e.g. 'finished design-review'
 user-invocable: true
 allowed-tools: Read, Glob, Grep
 context: |
-  !echo "=== Live Project State ===" && echo "Stage: $(cat production/stage.txt 2>/dev/null | tr -d '[:space:]' || echo 'not set')" && echo "Latest sprint: $(ls -t production/sprints/*.md 2>/dev/null | head -1 || echo 'none')" && echo "Session state: $(head -5 production/session-state/active.md 2>/dev/null || echo 'none')"
+  !echo "=== Live Project State ===" && echo "Stage: $(cat planning/production/stage.txt 2>/dev/null | tr -d '[:space:]' || echo 'not set')" && echo "Latest sprint: $(ls -t planning/production/sprints/*.md 2>/dev/null | head -1 || echo 'none')" && echo "Session state: $(head -5 planning/production/session-state/active.md 2>/dev/null || echo 'none')"
 model: haiku
 ---
 
@@ -46,7 +46,7 @@ Collect these for the output in Step 7 — show them as a footer block:
 
 Only show this block if at least one uncataloged skill exists. Limit to the 10
 most relevant based on the user's current phase (QA skills in production, team
-skills in production/polish, etc.).
+skills in planning/production/polish, etc.).
 
 ---
 
@@ -54,7 +54,7 @@ skills in production/polish, etc.).
 
 Check in this order:
 
-1. **Read `production/stage.txt`** — if it exists and has content, this is the
+1. **Read `planning/production/stage.txt`** — if it exists and has content, this is the
    authoritative phase name. Map it to a catalog phase key:
    - "Concept" → `concept`
    - "Systems Design" → `systems-design`
@@ -66,17 +66,17 @@ Check in this order:
 
 2. **If stage.txt is missing**, infer phase from artifacts (most-advanced match wins):
    - `src/` has 10+ source files → `production`
-   - `production/stories/*.md` exists → `pre-production`
-   - `docs/architecture/adr-*.md` exists → `technical-setup`
-   - `design/gdd/systems-index.md` exists → `systems-design`
-   - `design/gdd/game-concept.md` exists → `concept`
+   - `planning/production/stories/*.md` exists → `pre-production`
+   - `planning/docs/architecture/adr-*.md` exists → `technical-setup`
+   - `planning/design/gdd/systems-index.md` exists → `systems-design`
+   - `planning/design/gdd/game-concept.md` exists → `concept`
    - Nothing → `concept` (fresh project)
 
 ---
 
 ## Step 3: Read Session Context
 
-Read `production/session-state/active.md` if it exists. Extract:
+Read `planning/production/session-state/active.md` if it exists. Extract:
 - What was most recently worked on
 - Any in-progress tasks or open questions
 - Current epic/feature/task from STATUS block (if present)
@@ -107,7 +107,7 @@ If the step has no `artifact` field:
 
 ### Special case: production phase — read `sprint-status.yaml`
 
-When the current phase is `production`, check for `production/sprint-status.yaml`
+When the current phase is `production`, check for `planning/production/sprint-status.yaml`
 before doing any glob-based story checks. If it exists, read it directly:
 
 - Stories with `status: in-progress` → surface as "currently active"

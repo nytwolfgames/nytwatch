@@ -22,7 +22,7 @@ independent stories.
 - [ ] Has an Error Recovery Protocol section
 - [ ] Uses `AskUserQuestion` at phase transitions to capture user approval before proceeding
 - [ ] Phase 4 (smoke check) is a hard gate: FAIL stops the cycle
-- [ ] Bug reports are written to `production/qa/bugs/` with `BUG-[NNN]-[short-slug].md` naming
+- [ ] Bug reports are written to `planning/production/qa/bugs/` with `BUG-[NNN]-[short-slug].md` naming
 - [ ] Next-step guidance differs by verdict (APPROVED / APPROVED WITH CONDITIONS / NOT APPROVED)
 - [ ] Independent qa-tester tasks in Phase 5 are spawned in parallel
 
@@ -33,22 +33,22 @@ independent stories.
 ### Case 1: Happy Path — All stories pass manual QA, APPROVED verdict
 
 **Fixture:**
-- `production/sprints/sprint-03/` exists with 4 story files
+- `planning/production/sprints/sprint-03/` exists with 4 story files
 - Stories are a mix of types: 1 Logic, 1 Integration, 2 Visual/Feel
 - All stories have acceptance criteria populated
 - `tests/smoke/` contains a smoke test list; all items are verifiable
-- No existing bugs in `production/qa/bugs/`
+- No existing bugs in `planning/production/qa/bugs/`
 
 **Input:** `/team-qa sprint-03`
 
 **Expected behavior:**
-1. Phase 1: Reads all story files in `production/sprints/sprint-03/`; reads `production/stage.txt`; reports "Found 4 stories. Current stage: [stage]. Ready to begin QA strategy?"
+1. Phase 1: Reads all story files in `planning/production/sprints/sprint-03/`; reads `planning/production/stage.txt`; reports "Found 4 stories. Current stage: [stage]. Ready to begin QA strategy?"
 2. Phase 2: Spawns `qa-lead` via Task; produces strategy table classifying all 4 stories; no blockers flagged; presents to user; AskUserQuestion: user selects "Looks good — proceed to test plan"
-3. Phase 3: Produces QA plan document; asks "May I write the QA plan to `production/qa/qa-plan-sprint-03-[date].md`?"; writes after approval
+3. Phase 3: Produces QA plan document; asks "May I write the QA plan to `planning/production/qa/qa-plan-sprint-03-[date].md`?"; writes after approval
 4. Phase 4: Spawns `qa-lead` via Task; reviews `tests/smoke/`; returns PASS; reports "Smoke check passed. Proceeding to test case writing."
 5. Phase 5: Spawns `qa-tester` via Task for each Visual/Feel and Integration story (2–3 stories); run in parallel; presents test cases grouped by story; AskUserQuestion per group; user approves
 6. Phase 6: Walks through each approved story; user marks all as PASS; result summary: "Stories PASS: 4, FAIL: 0, BLOCKED: 0"
-7. Phase 7: Spawns `qa-lead` via Task to produce sign-off report; report shows all stories PASS; no bugs filed; Verdict: APPROVED; asks "May I write this QA sign-off report to `production/qa/qa-signoff-sprint-03-[date].md`?"; writes after approval
+7. Phase 7: Spawns `qa-lead` via Task to produce sign-off report; report shows all stories PASS; no bugs filed; Verdict: APPROVED; asks "May I write this QA sign-off report to `planning/production/qa/qa-signoff-sprint-03-[date].md`?"; writes after approval
 8. Verdict: COMPLETE — QA cycle finished
 
 **Assertions:**
@@ -67,7 +67,7 @@ independent stories.
 ### Case 2: Smoke Check Fail — QA cycle stops at Phase 4
 
 **Fixture:**
-- `production/sprints/sprint-04/` exists with 3 story files
+- `planning/production/sprints/sprint-04/` exists with 3 story files
 - `tests/smoke/` exists with 5 smoke test items; 2 items cannot be verified (e.g., build is unstable, core navigation broken)
 
 **Input:** `/team-qa sprint-04`
@@ -92,17 +92,17 @@ independent stories.
 ### Case 3: Bug Found — Visual/Feel story fails manual QA, bug report filed
 
 **Fixture:**
-- `production/sprints/sprint-05/` exists with 2 story files: 1 Logic (passes automated tests), 1 Visual/Feel
+- `planning/production/sprints/sprint-05/` exists with 2 story files: 1 Logic (passes automated tests), 1 Visual/Feel
 - `tests/smoke/` smoke check passes
 - The Visual/Feel story's animation timing is visibly wrong (acceptance criterion not met)
-- `production/qa/bugs/` directory exists (empty or with existing bugs)
+- `planning/production/qa/bugs/` directory exists (empty or with existing bugs)
 
 **Input:** `/team-qa sprint-05`
 
 **Expected behavior:**
 1. Phases 1–5 complete normally; test cases are written for the Visual/Feel story
 2. Phase 6: User marks Visual/Feel story as FAIL; AskUserQuestion collects failure description: "Animation plays at 2x speed — jitter visible on every loop"
-3. Phase 6: Spawns `qa-tester` via Task to write a formal bug report; bug report written to `production/qa/bugs/BUG-001-animation-speed-jitter.md` (or next increment if bugs exist); report includes severity field
+3. Phase 6: Spawns `qa-tester` via Task to write a formal bug report; bug report written to `planning/production/qa/bugs/BUG-001-animation-speed-jitter.md` (or next increment if bugs exist); report includes severity field
 4. Result summary: "Stories PASS: 1, FAIL: 1 — bugs filed: BUG-001"
 5. Phase 7: Spawns `qa-lead` to produce sign-off report; Bugs Found table lists BUG-001 with severity and status Open; Verdict: NOT APPROVED (S1/S2 bug open, or FAIL without documented workaround)
 6. Sign-off report write is offered; writes after approval
@@ -111,7 +111,7 @@ independent stories.
 **Assertions:**
 - [ ] FAIL result in Phase 6 triggers AskUserQuestion to collect the failure description before the bug report is written
 - [ ] `qa-tester` is spawned via Task to write the bug report — orchestrator does not write it directly
-- [ ] Bug report follows naming convention: `BUG-[NNN]-[short-slug].md` in `production/qa/bugs/`
+- [ ] Bug report follows naming convention: `BUG-[NNN]-[short-slug].md` in `planning/production/qa/bugs/`
 - [ ] Bug report NNN is incremented correctly from existing bugs in the directory
 - [ ] Phase 7 sign-off report Bugs Found table includes the bug ID, story name, severity, and status
 - [ ] Verdict in sign-off report is NOT APPROVED
@@ -123,27 +123,27 @@ independent stories.
 ### Case 4: No Argument — Skill infers active sprint or asks user
 
 **Fixture (variant A — state files present):**
-- `production/session-state/active.md` exists and contains a reference to `sprint-06`
-- `production/sprint-status.yaml` exists and identifies `sprint-06` as active
+- `planning/production/session-state/active.md` exists and contains a reference to `sprint-06`
+- `planning/production/sprint-status.yaml` exists and identifies `sprint-06` as active
 
 **Fixture (variant B — state files absent):**
-- `production/session-state/active.md` does NOT exist
-- `production/sprint-status.yaml` does NOT exist
+- `planning/production/session-state/active.md` does NOT exist
+- `planning/production/sprint-status.yaml` does NOT exist
 
 **Input:** `/team-qa` (no argument)
 
 **Expected behavior (variant A):**
-1. Phase 1: No argument provided; reads `production/session-state/active.md`; reads `production/sprint-status.yaml`
+1. Phase 1: No argument provided; reads `planning/production/session-state/active.md`; reads `planning/production/sprint-status.yaml`
 2. Detects `sprint-06` as the active sprint from both sources
 3. Proceeds as if `/team-qa sprint-06` was the input; reports "No sprint argument provided — inferred sprint-06 from session state. Found [N] stories."
 
 **Expected behavior (variant B):**
-1. Phase 1: No argument provided; attempts to read `production/session-state/active.md` — file missing; attempts to read `production/sprint-status.yaml` — file missing
+1. Phase 1: No argument provided; attempts to read `planning/production/session-state/active.md` — file missing; attempts to read `planning/production/sprint-status.yaml` — file missing
 2. Cannot infer sprint; uses AskUserQuestion: "Which sprint or feature should QA cover?" with options to type a sprint identifier or cancel
 
 **Assertions:**
 - [ ] Skill does NOT default to a hardcoded sprint name when no argument is provided
-- [ ] Skill reads both `production/session-state/active.md` AND `production/sprint-status.yaml` before asking the user (variant A)
+- [ ] Skill reads both `planning/production/session-state/active.md` AND `planning/production/sprint-status.yaml` before asking the user (variant A)
 - [ ] When both state files are absent, skill uses AskUserQuestion rather than guessing (variant B)
 - [ ] Inferred sprint is reported to the user before proceeding (variant A transparency)
 - [ ] Skill does NOT error out when state files are missing — it falls back to asking (variant B)
@@ -153,7 +153,7 @@ independent stories.
 ### Case 5: Mixed Results — Some PASS, one FAIL with S1 bug, one BLOCKED
 
 **Fixture:**
-- `production/sprints/sprint-07/` exists with 4 story files
+- `planning/production/sprints/sprint-07/` exists with 4 story files
 - Smoke check passes
 - Story A (Logic): automated test passes — PASS
 - Story B (UI): manual QA — PASS WITH NOTES (minor text overflow)

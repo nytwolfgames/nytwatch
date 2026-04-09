@@ -9,9 +9,9 @@ Rules in `.claude/rules/` are automatically enforced when editing files in match
 | `ai-code.md` | `src/ai/**` | Performance budgets, debuggability, data-driven params |
 | `network-code.md` | `src/networking/**` | Server-authoritative, versioned messages, security |
 | `ui-code.md` | `src/ui/**` | No game state ownership, localization-ready, accessibility |
-| `design-docs.md` | `design/gdd/**` | Required 8 sections, formula format, edge cases |
-| `narrative.md` | `design/narrative/**` | Lore consistency, character voice, canon levels |
+| `design-docs.md` | `planning/design/gdd/**` | Required 8 sections, formula format, edge cases |
+| `narrative.md` | `planning/design/narrative/**` | Lore consistency, character voice, canon levels |
 | `data-files.md` | `assets/data/**` | JSON validity, naming conventions, schema rules |
 | `test-standards.md` | `tests/**` | Test naming, coverage requirements, fixture patterns |
-| `prototype-code.md` | `prototypes/**` | Relaxed standards, README required, hypothesis documented |
+| `prototype-code.md` | `planning/prototypes/**` | Relaxed standards, README required, hypothesis documented |
 | `shader-code.md` | `assets/shaders/**` | Naming conventions, performance targets, cross-platform rules |

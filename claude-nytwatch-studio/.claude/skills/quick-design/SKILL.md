@@ -14,7 +14,7 @@ for work under approximately 4 hours of implementation — tuning adjustments,
 minor behavioral tweaks, small additions to existing systems, or standalone
 features too small to warrant a full document.
 
-**Output:** `design/quick-specs/[name]-[date].md`
+**Output:** `planning/design/quick-specs/[name]-[date].md`
 
 **When to run:** Anytime a change is too small for `/design-system` but too
 meaningful to implement without a written rationale.
@@ -52,13 +52,13 @@ proceeding. If there is no argument, ask the user to describe the change.
 
 Before drafting anything, read the relevant context:
 
-- Search `design/gdd/` for the GDD most relevant to this change. Read the
+- Search `planning/design/gdd/` for the GDD most relevant to this change. Read the
   sections that this change would affect.
-- Check whether `design/gdd/systems-index.md` exists. If it does, read it to
+- Check whether `planning/design/gdd/systems-index.md` exists. If it does, read it to
   understand where this system sits in the dependency graph and what tier it
   belongs to. If it does not exist, note "No systems index found — skipping
   dependency tier check." and continue.
-- Check `design/quick-specs/` for any prior quick specs that touched this
+- Check `planning/design/quick-specs/` for any prior quick specs that touched this
   system — avoid contradicting them.
 - If this is a Tuning change, also check `assets/data/` for the data file that
   holds the relevant values.
@@ -81,7 +81,7 @@ Produce a single table:
 
 **Type**: Tuning
 **System**: [System name]
-**GDD Reference**: `design/gdd/[filename].md` — Tuning Knobs section
+**GDD Reference**: `planning/design/gdd/[filename].md` — Tuning Knobs section
 **Date**: [today]
 
 ## Change
@@ -110,7 +110,7 @@ New value is [within / at the edge of / outside] the documented range.
 
 **Type**: [Tweak / Addition]
 **System**: [System name]
-**GDD Reference**: `design/gdd/[filename].md`
+**GDD Reference**: `planning/design/gdd/[filename].md`
 **Date**: [today]
 
 ## Change Summary
@@ -124,7 +124,7 @@ Reference the relevant MDA aesthetic or player feedback if applicable.]
 
 ## Design Delta
 
-Current GDD says (quoting `design/gdd/[filename].md`, [section]):
+Current GDD says (quoting `planning/design/gdd/[filename].md`, [section]):
 
 > [exact quote of the relevant rule or description]
 
@@ -199,7 +199,7 @@ All values must live in `assets/data/[appropriate-file].json`, not hardcoded.
 
 ## Systems Index
 
-This system is not currently in `design/gdd/systems-index.md`.
+This system is not currently in `planning/design/gdd/systems-index.md`.
 [If it should be added: suggest which layer and priority tier.]
 [If it is too small to track: state "This system is below systems-index
 tracking threshold — quick spec is sufficient."]
@@ -212,20 +212,20 @@ tracking threshold — quick spec is sufficient."]
 Present the draft to the user in full. Then ask:
 
 "May I write this Quick Design Spec to
-`design/quick-specs/[kebab-case-title]-[YYYY-MM-DD].md`?"
+`planning/design/quick-specs/[kebab-case-title]-[YYYY-MM-DD].md`?"
 
 Use today's date in the filename. The title should be a kebab-case description
 of the change (e.g., `jump-height-tuning-2026-03-10`,
 `parry-window-addition-2026-03-10`).
 
-If yes, create the `design/quick-specs/` directory if it does not exist, then
+If yes, create the `planning/design/quick-specs/` directory if it does not exist, then
 write the file.
 
 If a GDD update is required (flagged in the spec), ask separately after
 writing the quick spec:
 
 "This spec modifies rules in [System Name]. May I update
-`design/gdd/[filename].md` — specifically the [section name] section?"
+`planning/design/gdd/[filename].md` — specifically the [section name] section?"
 
 Show the exact text that would be changed (old vs. new) before asking. Do not
 make GDD edits without explicit approval.
@@ -237,7 +237,7 @@ make GDD edits without explicit approval.
 After writing the file, output:
 
 ```
-Quick Design Spec written to: design/quick-specs/[filename].md
+Quick Design Spec written to: planning/design/quick-specs/[filename].md
 Type: [Tuning / Tweak / Addition / New Small System]
 System: [system name]
 GDD update: [Required — pending approval / Applied / Not required]

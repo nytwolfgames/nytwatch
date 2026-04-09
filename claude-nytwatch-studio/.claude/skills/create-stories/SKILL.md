@@ -17,7 +17,7 @@ define.
 **Run this skill per epic**, not per layer. Run it for Foundation epics first,
 then Core, and so on — matching the dependency order.
 
-**Output:** `production/epics/[epic-slug]/story-NNN-[slug].md` files
+**Output:** `planning/production/epics/[epic-slug]/story-NNN-[slug].md` files
 
 **Previous step:** `/create-epics [system]`
 **Next step after stories exist:** `/story-readiness [story-path]` then `/dev-story [story-path]`
@@ -27,15 +27,15 @@ then Core, and so on — matching the dependency order.
 ## 1. Parse Argument
 
 Extract `--review [full|lean|solo]` if present and store as the review mode
-override for this run. If not provided, read `production/review-mode.txt`
+override for this run. If not provided, read `planning/production/review-mode.txt`
 (default `full` if missing). This resolved mode applies to all gate spawns
 in this skill — apply the check pattern from `.claude/docs/director-gates.md`
 before every gate invocation.
 
 - `/create-stories [epic-slug]` — e.g. `/create-stories combat`
-- `/create-stories production/epics/combat/EPIC.md` — full path also accepted
+- `/create-stories planning/production/epics/combat/EPIC.md` — full path also accepted
 - No argument — ask: "Which epic would you like to break into stories?"
-  Glob `production/epics/*/EPIC.md` and list available epics with their status.
+  Glob `planning/production/epics/*/EPIC.md` and list available epics with their status.
 
 ---
 
@@ -43,15 +43,15 @@ before every gate invocation.
 
 Read in full:
 
-- `production/epics/[epic-slug]/EPIC.md` — epic overview, governing ADRs, GDD requirements table
-- The epic's GDD (`design/gdd/[filename].md`) — read all 8 sections, especially Acceptance Criteria, Formulas, and Edge Cases
+- `planning/production/epics/[epic-slug]/EPIC.md` — epic overview, governing ADRs, GDD requirements table
+- The epic's GDD (`planning/design/gdd/[filename].md`) — read all 8 sections, especially Acceptance Criteria, Formulas, and Edge Cases
 - All governing ADRs listed in the epic — read the Decision, Implementation Guidelines, Engine Compatibility, and Engine Notes sections
-- `docs/architecture/control-manifest.md` — extract rules for this epic's layer; note the Manifest Version date from the header
-- `docs/architecture/tr-registry.yaml` — load all TR-IDs for this system
+- `planning/docs/architecture/control-manifest.md` — extract rules for this epic's layer; note the Manifest Version date from the header
+- `planning/docs/architecture/tr-registry.yaml` — load all TR-IDs for this system
 
 **ADR existence validation**: After reading the governing ADRs list from the epic, confirm each ADR file exists on disk. If any ADR file cannot be found, **stop immediately** before decomposing any story:
 
-> "Epic references [ADR-NNNN: title] but `docs/architecture/[adr-file].md` was not found.
+> "Epic references [ADR-NNNN: title] but `planning/docs/architecture/[adr-file].md` was not found.
 > Check the filename in the epic's Governing ADRs list, or run `/architecture-decision`
 > to create it. Cannot create stories until all referenced ADR files are present."
 
@@ -152,20 +152,20 @@ Story 002: [title] — Integration — ADR-MMMM
 
 Story 003: [title] — Visual/Feel — ADR-NNNN
   Covers: TR-[system]-004
-  Evidence required: production/qa/evidence/[slug]-evidence.md
+  Evidence required: planning/production/qa/evidence/[slug]-evidence.md
 
 [N stories total: N Logic, N Integration, N Visual/Feel, N UI, N Config/Data]
 ```
 
 Use `AskUserQuestion`:
-- Prompt: "May I write these [N] stories to `production/epics/[epic-slug]/`?"
+- Prompt: "May I write these [N] stories to `planning/production/epics/[epic-slug]/`?"
 - Options: `[A] Yes — write all [N] stories` / `[B] Not yet — I want to review or adjust first`
 
 ---
 
 ## 6. Write Story Files
 
-For each story, write `production/epics/[epic-slug]/story-[NNN]-[slug].md`:
+For each story, write `planning/production/epics/[epic-slug]/story-[NNN]-[slug].md`:
 
 ```markdown
 # Story [NNN]: [title]
@@ -178,9 +178,9 @@ For each story, write `production/epics/[epic-slug]/story-[NNN]-[slug].md`:
 
 ## Context
 
-**GDD**: `design/gdd/[filename].md`
+**GDD**: `planning/design/gdd/[filename].md`
 **Requirement**: `TR-[system]-NNN`
-*(Requirement text lives in `docs/architecture/tr-registry.yaml` — read fresh at review time)*
+*(Requirement text lives in `planning/docs/architecture/tr-registry.yaml` — read fresh at review time)*
 
 **ADR Governing Implementation**: [ADR-NNNN: title]
 **ADR Decision Summary**: [1-2 sentence summary of what the ADR decided]
@@ -197,7 +197,7 @@ For each story, write `production/epics/[epic-slug]/story-[NNN]-[slug].md`:
 
 ## Acceptance Criteria
 
-*From GDD `design/gdd/[filename].md`, scoped to this story:*
+*From GDD `planning/design/gdd/[filename].md`, scoped to this story:*
 
 - [ ] [criterion 1 — directly from GDD]
 - [ ] [criterion 2]
@@ -249,9 +249,9 @@ change meaning. This is what the programmer reads instead of the ADR.]
 **Required evidence**:
 - Logic: `tests/unit/[system]/[story-slug]_test.[ext]` — must exist and pass
 - Integration: `tests/integration/[system]/[story-slug]_test.[ext]` OR playtest doc
-- Visual/Feel: `production/qa/evidence/[story-slug]-evidence.md` + sign-off
-- UI: `production/qa/evidence/[story-slug]-evidence.md` or interaction test
-- Config/Data: smoke check pass (`production/qa/smoke-*.md`)
+- Visual/Feel: `planning/production/qa/evidence/[story-slug]-evidence.md` + sign-off
+- UI: `planning/production/qa/evidence/[story-slug]-evidence.md` or interaction test
+- Config/Data: smoke check pass (`planning/production/qa/smoke-*.md`)
 
 **Status**: [ ] Not yet created
 
@@ -263,7 +263,7 @@ change meaning. This is what the programmer reads instead of the ADR.]
 - Unlocks: [Story NNN+1, or "None"]
 ```
 
-### Also update `production/epics/[epic-slug]/EPIC.md`
+### Also update `planning/production/epics/[epic-slug]/EPIC.md`
 
 Replace the "Stories: Not yet created" line with a populated table:
 
@@ -283,11 +283,11 @@ Replace the "Stories: Not yet created" line with a populated table:
 Use `AskUserQuestion` to close with context-aware next steps:
 
 Check:
-- Are there other epics in `production/epics/` without stories yet? List them.
+- Are there other epics in `planning/production/epics/` without stories yet? List them.
 - Is this the last epic? If so, include `/sprint-plan` as an option.
 
 Widget:
-- Prompt: "[N] stories written to `production/epics/[epic-slug]/`. What next?"
+- Prompt: "[N] stories written to `planning/production/epics/[epic-slug]/`. What next?"
 - Options (include all that apply):
   - `[A] Start implementing — run /story-readiness [first-story-path]` (Recommended)
   - `[B] Create stories for [next-epic-slug] — run /create-stories [slug]` (only if other epics have no stories yet)
@@ -309,5 +309,5 @@ Note in output: "Work through stories in order — each story's `Depends on:` fi
 
 After writing (or declining):
 
-- **Verdict: COMPLETE** — [N] stories written to `production/epics/[epic-slug]/`. Run `/story-readiness` → `/dev-story` to begin implementation.
+- **Verdict: COMPLETE** — [N] stories written to `planning/production/epics/[epic-slug]/`. Run `/story-readiness` → `/dev-story` to begin implementation.
 - **Verdict: BLOCKED** — user declined. No story files written.

@@ -22,18 +22,18 @@ forgotten, and the story file reflects actual completion status.
 
 Resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
 
-**If a file path is provided** (e.g., `/story-done production/epics/core/story-damage-calculator.md`):
+**If a file path is provided** (e.g., `/story-done planning/production/epics/core/story-damage-calculator.md`):
 read that file directly.
 
 **If no argument is provided:**
 
-1. Check `production/session-state/active.md` for the currently active story.
-2. If not found there, read the most recent file in `production/sprints/` and
+1. Check `planning/production/session-state/active.md` for the currently active story.
+2. If not found there, read the most recent file in `planning/production/sprints/` and
    look for stories marked IN PROGRESS.
 3. If multiple in-progress stories are found, use `AskUserQuestion`:
    - "Which story are we completing?"
@@ -58,14 +58,14 @@ Read the full story file. Extract and hold in context:
 - **Estimated vs actual scope** — if an estimate was noted
 
 Also read:
-- `docs/architecture/tr-registry.yaml` — look up each TR-ID in the story.
+- `planning/docs/architecture/tr-registry.yaml` — look up each TR-ID in the story.
   Read the *current* `requirement` text from the registry entry. This is the
   source of truth for what the GDD required — do not use any requirement text
   that may be quoted inline in the story (it may be stale).
 - The referenced GDD section — just the acceptance criteria and key rules, not
   the full document. Use this to cross-check the registry text is still accurate.
 - The referenced ADR(s) — just the Decision and Consequences sections
-- `docs/architecture/control-manifest.md` header — extract the current
+- `planning/docs/architecture/control-manifest.md` header — extract the current
   `Manifest Version:` date (used in Phase 4 staleness check)
 
 ---
@@ -149,9 +149,9 @@ Based on the Story Type extracted in Phase 2, check for required evidence:
 |---|---|---|
 | **Logic** | Automated unit test in `tests/unit/[system]/` — must exist and pass | BLOCKING |
 | **Integration** | Integration test in `tests/integration/[system]/` OR playtest doc | BLOCKING |
-| **Visual/Feel** | Screenshot + sign-off in `production/qa/evidence/` | ADVISORY |
-| **UI** | Manual walkthrough doc OR interaction test in `production/qa/evidence/` | ADVISORY |
-| **Config/Data** | Smoke check pass report in `production/qa/smoke-*.md` | ADVISORY |
+| **Visual/Feel** | Screenshot + sign-off in `planning/production/qa/evidence/` | ADVISORY |
+| **UI** | Manual walkthrough doc OR interaction test in `planning/production/qa/evidence/` | ADVISORY |
+| **Config/Data** | Smoke check pass report in `planning/production/qa/smoke-*.md` | ADVISORY |
 
 **For Logic stories**: first read the story's **Test Evidence** section to extract the
 exact required file path. Use `Glob` to check that exact path. If the exact path is not
@@ -163,16 +163,16 @@ slightly different location). If no test file is found at either location:
 
 **For Integration stories**: read the story's **Test Evidence** section for the exact
 required path. Use `Glob` to check that exact path first, then search
-`tests/integration/[system]/` broadly, then check `production/session-logs/` for a
+`tests/integration/[system]/` broadly, then check `planning/production/session-logs/` for a
 playtest record referencing this story.
 If none found: flag as **BLOCKING** (same rule as Logic).
 
-**For Visual/Feel and UI stories**: glob `production/qa/evidence/` for a file
+**For Visual/Feel and UI stories**: glob `planning/production/qa/evidence/` for a file
 referencing this story. If none: flag as **ADVISORY** —
-"No manual test evidence found. Create `production/qa/evidence/[story-slug]-evidence.md`
+"No manual test evidence found. Create `planning/production/qa/evidence/[story-slug]-evidence.md`
 using the test-evidence template and obtain sign-off before final closure."
 
-**For Config/Data stories**: check for any `production/qa/smoke-*.md` file.
+**For Config/Data stories**: check for any `planning/production/qa/smoke-*.md` file.
 If none: flag as **ADVISORY** — "No smoke check report found. Run `/smoke-check`."
 
 **If no Story Type is set**: flag as **ADVISORY** —
@@ -197,7 +197,7 @@ Run these checks automatically:
 
 2. **Manifest version staleness check**: Compare the `Manifest Version:` date
    embedded in the story header against the `Manifest Version:` date in the
-   current `docs/architecture/control-manifest.md` header.
+   current `planning/docs/architecture/control-manifest.md` header.
    - If they match → pass silently.
    - If the story's version is older → flag as ADVISORY:
      `ADVISORY: Story was written against manifest v[story-date]; current manifest
@@ -205,7 +205,7 @@ Run these checks automatically:
    - If control-manifest.md does not exist → skip this check.
 
 3. **ADR constraints check**: Read the referenced ADR's Decision section. Check
-   for forbidden patterns from `docs/architecture/control-manifest.md` (if it
+   for forbidden patterns from `planning/docs/architecture/control-manifest.md` (if it
    exists). `Grep` for patterns explicitly forbidden in the ADR.
 
 4. **Hardcoded values check**: `Grep` the implemented files for numeric literals
@@ -339,10 +339,10 @@ If yes, edit the story file:
 ```
 
 3. If advisory deviations exist, ask: "Should I log these as tech debt in
-   `docs/tech-debt-register.md`?"
+   `planning/docs/tech-debt-register.md`?"
 
 4. **Update the sprint markdown file** to mark this task as done:
-   - Find the current sprint file in `production/sprints/`
+   - Find the current sprint file in `planning/production/sprints/`
    - Locate the checklist line for this story (match `**[ID]**:` or the task name)
    - Change its marker from `[in_progress]` (or any other state) to `[done]`
    - Example: `- [in_progress] **TASK-05**: Implement damage system` → `- [done] **TASK-05**: Implement damage system`
@@ -351,7 +351,7 @@ If yes, edit the story file:
 ### Session State Update
 
 After updating the story file, silently append to
-`production/session-state/active.md`:
+`planning/production/session-state/active.md`:
 
     ## Session Extract — /story-done [date]
     - Verdict: [COMPLETE / COMPLETE WITH NOTES / BLOCKED]
@@ -368,7 +368,7 @@ Confirm in conversation: "Session state updated."
 
 After completion, help the developer keep momentum:
 
-1. Read the current sprint plan from `production/sprints/`.
+1. Read the current sprint plan from `planning/production/sprints/`.
 2. Find stories that are:
    - Status: READY or NOT STARTED
    - Not blocked by other incomplete stories

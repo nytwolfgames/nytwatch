@@ -17,9 +17,9 @@ Read the argument for the launch date or `dry-run` mode. Dry-run mode generates 
 ## Phase 2: Gather Project Context
 
 - Read `CLAUDE.md` for tech stack, target platforms, and team structure
-- Read the latest milestone in `production/milestones/`
-- Read any existing release checklist in `production/releases/`
-- Read the content calendar in `design/live-ops/content-calendar.md` if it exists
+- Read the latest milestone in `planning/production/milestones/`
+- Read any existing release checklist in `planning/production/releases/`
+- Read the content calendar in `planning/design/live-ops/content-calendar.md` if it exists
 
 ---
 
@@ -227,7 +227,7 @@ Generated: [Date]
 
 Present the completed checklist and summary to the user (total items, blocking items count, conditional items count, departments with incomplete sections).
 
-If not in dry-run mode, ask: "May I write this to `production/releases/launch-checklist-[date].md`?"
+If not in dry-run mode, ask: "May I write this to `planning/production/releases/launch-checklist-[date].md`?"
 
 If yes, write the file, creating directories as needed.
 

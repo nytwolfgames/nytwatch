@@ -7,13 +7,13 @@ approved game concept and pillars, enumerates both explicit and implicit systems
 maps dependencies between systems, assigns priority tiers (MVP / Vertical Slice /
 Alpha / Full Vision), and organizes systems into a layered design order
 (Foundation → Core → Feature → Presentation). The output is written to
-`design/systems-index.md` after user approval.
+`planning/design/systems-index.md` after user approval.
 
 This skill is required between game concept approval and per-system GDD creation
 — it is a mandatory gate in the pipeline. In `full` review mode, CD-SYSTEMS
 (creative-director) and TD-SYSTEM-BOUNDARY (technical-director) spawn in parallel
 after the decomposition is drafted. In `lean` or `solo` mode, both gates are
-skipped. The skill writes to `design/systems-index.md`.
+skipped. The skill writes to `planning/design/systems-index.md`.
 
 ---
 
@@ -34,7 +34,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 In `full` mode: CD-SYSTEMS (creative-director) and TD-SYSTEM-BOUNDARY
 (technical-director) spawn in parallel after the systems decomposition is drafted
-and before `design/systems-index.md` is written.
+and before `planning/design/systems-index.md` is written.
 
 In `lean` mode: both gates are skipped. Output notes:
 "CD-SYSTEMS skipped — lean mode" and "TD-SYSTEM-BOUNDARY skipped — lean mode".
@@ -48,10 +48,10 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 1: Happy Path — Game concept exists, 5-8 systems identified
 
 **Fixture:**
-- `design/gdd/game-concept.md` exists with Core Mechanics and MVP Definition sections
-- `design/gdd/game-pillars.md` exists with ≥1 pillar defined
-- No `design/systems-index.md` exists yet
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/design/gdd/game-concept.md` exists with Core Mechanics and MVP Definition sections
+- `planning/design/gdd/game-pillars.md` exists with ≥1 pillar defined
+- No `planning/design/systems-index.md` exists yet
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Input:** `/map-systems`
 
@@ -60,15 +60,15 @@ In `solo` mode: both gates are skipped with equivalent notes.
 2. Identifies 5-8 systems (explicit + implicit)
 3. Maps dependencies between systems and assigns layers
 4. CD-SYSTEMS and TD-SYSTEM-BOUNDARY spawn in parallel and return APPROVED
-5. Asks "May I write `design/systems-index.md`?"
+5. Asks "May I write `planning/design/systems-index.md`?"
 6. Writes systems-index.md after approval
-7. Updates `production/session-state/active.md`
+7. Updates `planning/production/session-state/active.md`
 
 **Assertions:**
 - [ ] Between 5 and 8 systems are identified (not fewer, not more without explanation)
 - [ ] CD-SYSTEMS and TD-SYSTEM-BOUNDARY spawn in parallel (not sequentially)
 - [ ] Both gates complete before the "May I write" ask
-- [ ] "May I write `design/systems-index.md`?" is asked before writing
+- [ ] "May I write `planning/design/systems-index.md`?" is asked before writing
 - [ ] systems-index.md is NOT written without approval
 - [ ] Session state is updated after writing
 - [ ] Verdict is COMPLETE
@@ -78,13 +78,13 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 2: Failure Path — No game concept found
 
 **Fixture:**
-- `design/gdd/game-concept.md` does NOT exist
-- `design/gdd/` directory may be empty or absent
+- `planning/design/gdd/game-concept.md` does NOT exist
+- `planning/design/gdd/` directory may be empty or absent
 
 **Input:** `/map-systems`
 
 **Expected behavior:**
-1. Skill attempts to read `design/gdd/game-concept.md`
+1. Skill attempts to read `planning/design/gdd/game-concept.md`
 2. File not found
 3. Skill outputs: "No game concept found. Run `/brainstorm` to create one, then return to `/map-systems`."
 4. Skill exits without creating systems-index.md
@@ -101,7 +101,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 
 **Fixture:**
 - Game concept exists
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - CD-SYSTEMS gate returns CONCERNS: "The [core-system] is implied by the concept but not identified"
 
 **Input:** `/map-systems`
@@ -125,8 +125,8 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ### Case 4: Edge Case — systems-index.md already exists
 
 **Fixture:**
-- `design/gdd/game-concept.md` exists
-- `design/systems-index.md` already exists with N systems
+- `planning/design/gdd/game-concept.md` exists
+- `planning/design/systems-index.md` already exists with N systems
 
 **Input:** `/map-systems`
 
@@ -148,7 +148,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 
 **Fixture (lean mode):**
 - Game concept exists
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Lean mode expected behavior:**
 1. Systems are decomposed and drafted
@@ -162,7 +162,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 - [ ] systems-index.md is written after user approval
 
 **Fixture (solo mode):**
-- Same game concept, `production/session-state/review-mode.txt` contains `solo`
+- Same game concept, `planning/production/session-state/review-mode.txt` contains `solo`
 
 **Solo mode expected behavior:**
 1. Same decomposition workflow
@@ -178,7 +178,7 @@ In `solo` mode: both gates are skipped with equivalent notes.
 ## Protocol Compliance
 
 - [ ] Reads game-concept.md and game-pillars.md before any decomposition
-- [ ] "May I write `design/systems-index.md`?" asked before writing
+- [ ] "May I write `planning/design/systems-index.md`?" asked before writing
 - [ ] systems-index.md is NOT written without user approval
 - [ ] CD-SYSTEMS and TD-SYSTEM-BOUNDARY spawn in parallel in full mode
 - [ ] Skipped gates noted by name and mode in lean/solo output

@@ -12,7 +12,7 @@ Read the task description from the argument. If the description is too vague to 
 
 Read CLAUDE.md for project context: tech stack, coding standards, architectural patterns, and any estimation guidelines.
 
-Read relevant design documents from `design/gdd/` if the task relates to a documented feature or system.
+Read relevant design documents from `planning/design/gdd/` if the task relates to a documented feature or system.
 
 ---
 
@@ -23,7 +23,7 @@ Identify files and modules that would need to change:
 - Assess complexity (size, dependency count, cyclomatic complexity)
 - Identify integration points with other systems
 - Check for existing test coverage in the affected areas
-- Read past sprint data from `production/sprints/` for similar completed tasks and historical velocity
+- Read past sprint data from `planning/production/sprints/` for similar completed tasks and historical velocity
 
 ---
 

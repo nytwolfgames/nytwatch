@@ -20,10 +20,10 @@
 
 ### Design Documentation
 - **Status**: [X%] complete
-- **Files Found**: [N] documents in `design/`
-  - GDD sections: [N] files in `design/gdd/`
-  - Narrative docs: [N] files in `design/narrative/`
-  - Level designs: [N] files in `design/levels/`
+- **Files Found**: [N] documents in `planning/design/`
+  - GDD sections: [N] files in `planning/design/gdd/`
+  - Narrative docs: [N] files in `planning/design/narrative/`
+  - Level designs: [N] files in `planning/design/levels/`
 - **Key Gaps**:
   - [ ] [Missing doc 1 + why it matters]
   - [ ] [Missing doc 2 + why it matters]
@@ -41,7 +41,7 @@
 
 ### Architecture Documentation
 - **Status**: [X%] complete
-- **ADRs Found**: [N] decisions documented in `docs/architecture/`
+- **ADRs Found**: [N] decisions documented in `planning/docs/architecture/`
 - **Coverage**:
   - ✅ [Decision area 1] — documented
   - ⚠️  [Decision area 2] — undocumented but implemented
@@ -53,8 +53,8 @@
 ### Production Management
 - **Status**: [X%] complete
 - **Found**:
-  - Sprint plans: [N] in `production/sprints/`
-  - Milestones: [N] in `production/milestones/`
+  - Sprint plans: [N] in `planning/production/sprints/`
+  - Milestones: [N] in `planning/production/milestones/`
   - Roadmap: [Exists | Missing]
 - **Key Gaps**:
   - [ ] [Missing production artifact + impact]
@@ -69,7 +69,7 @@
   - [ ] [Missing test area + risk]
 
 ### Prototypes
-- **Active Prototypes**: [N] in `prototypes/`
+- **Active Prototypes**: [N] in `planning/prototypes/`
   - ✅ [Prototype 1] — documented with README
   - ⚠️  [Prototype 2] — no README, unclear status
 - **Archived**: [N] (experiments completed)
@@ -169,7 +169,7 @@ Based on gaps identified, consider running:
 ## Appendix: File Counts by Directory
 
 ```
-design/
+planning/design/
   gdd/           [N] files
   narrative/     [N] files
   levels/        [N] files
@@ -181,15 +181,15 @@ src/
   networking/    [N] files
   ui/            [N] files
 
-docs/
+planning/docs/
   architecture/  [N] ADRs
 
-production/
+planning/production/
   sprints/       [N] plans
   milestones/    [N] definitions
 
 tests/           [N] test files
-prototypes/      [N] directories
+planning/prototypes/      [N] directories
 ```
 
 ---

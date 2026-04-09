@@ -6,7 +6,7 @@
 generates a new numbered sprint with stories prioritized by implementation layer
 and priority score. In full mode the PR-SPRINT director gate runs after the
 sprint draft is compiled (producer reviews the plan). In lean and solo modes
-the gate is skipped. The skill asks "May I write to `production/sprints/sprint-NNN.md`?"
+the gate is skipped. The skill asks "May I write to `planning/production/sprints/sprint-NNN.md`?"
 before persisting. Verdicts: COMPLETE (sprint generated and written) or
 BLOCKED (cannot proceed due to missing data or gate failure).
 
@@ -37,9 +37,9 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 1: Happy Path — Backlog with stories generates sprint
 
 **Fixture:**
-- `production/milestones/milestone-02.md` exists with capacity `10 story points`
+- `planning/production/milestones/milestone-02.md` exists with capacity `10 story points`
 - Backlog contains 5 unstarted stories across 2 epics, mixed priorities
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - Next sprint number is `003` (sprints 001 and 002 already exist)
 
 **Input:** `/sprint-plan`
@@ -50,7 +50,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 3. Skill drafts sprint-003 with stories fitting within capacity
 4. Skill presents draft to user before invoking gate
 5. Skill invokes PR-SPRINT gate (full mode); producer approves
-6. Skill asks "May I write to `production/sprints/sprint-003.md`?"
+6. Skill asks "May I write to `planning/production/sprints/sprint-003.md`?"
 7. User approves; file is written
 
 **Assertions:**
@@ -58,7 +58,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - [ ] Sprint draft is shown before any write or gate invocation
 - [ ] PR-SPRINT gate is invoked in full mode after draft is ready
 - [ ] Skill asks "May I write" before writing the sprint file
-- [ ] Written file path matches `production/sprints/sprint-003.md`
+- [ ] Written file path matches `planning/production/sprints/sprint-003.md`
 - [ ] Verdict is COMPLETE after successful write
 
 ---
@@ -66,7 +66,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 2: Blocked Path — Backlog is empty
 
 **Fixture:**
-- `production/milestones/milestone-02.md` exists
+- `planning/production/milestones/milestone-02.md` exists
 - No unstarted stories exist in any epic backlog
 
 **Input:** `/sprint-plan`
@@ -135,7 +135,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 5: Edge Case — Previous sprint still has open stories
 
 **Fixture:**
-- `production/sprints/sprint-002.md` exists with 2 stories still `Status: In Progress`
+- `planning/production/sprints/sprint-002.md` exists with 2 stories still `Status: In Progress`
 - Backlog has 5 new unstarted stories
 - `review-mode.txt` contains `full`
 

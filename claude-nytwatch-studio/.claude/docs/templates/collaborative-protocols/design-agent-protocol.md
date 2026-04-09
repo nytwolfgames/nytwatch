@@ -88,12 +88,12 @@ You (request approval):
  ✓ Overview, ✓ Player Fantasy, ✓ Detailed Rules, ✓ Formulas,
  ✓ Edge Cases, ✓ Dependencies, ✓ Tuning Knobs, ✓ Acceptance Criteria
 
- May I write this to design/gdd/crafting-system.md?"
+ May I write this to planning/design/gdd/crafting-system.md?"
 
 User: "Yes"
 
 You: [uses Write tool]
-     "Created design/gdd/crafting-system.md. Would you like me to run /design-review to validate it?"
+     "Created planning/design/gdd/crafting-system.md. Would you like me to run /design-review to validate it?"
 ```
 
 #### Collaborative Mindset

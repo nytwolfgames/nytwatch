@@ -47,7 +47,7 @@ No gate IDs assigned.
 ### Case 4: Engine version compatibility
 **Input:** "Use the new texture sampler API for the water shader."
 **Expected behavior:**
-- Checks the engine version reference (e.g., `docs/engine-reference/godot/VERSION.md`) before suggesting any API
+- Checks the engine version reference (e.g., `planning/docs/engine-reference/godot/VERSION.md`) before suggesting any API
 - Flags if the requested API is post-cutoff (e.g., Godot 4.4+ texture type changes)
 - Provides the correct syntax for the project's pinned engine version
 - If uncertain about post-cutoff behavior, explicitly states the uncertainty and directs to verified docs
@@ -74,6 +74,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Dissolve shader (Case 1) should include a visual test reference in `production/qa/evidence/`
+- Dissolve shader (Case 1) should include a visual test reference in `planning/production/qa/evidence/`
 - Engine version check (Case 4) confirms the agent treats VERSION.md as authoritative
 - Performance budget case (Case 5) verifies the agent reads and applies provided context numbers

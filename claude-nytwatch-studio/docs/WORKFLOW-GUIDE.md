@@ -88,7 +88,7 @@ At any point, run:
 /help
 ```
 
-This reads your current phase from `production/stage.txt`, checks which
+This reads your current phase from `planning/production/stage.txt`, checks which
 artifacts exist, and tells you exactly what to do next. It distinguishes
 between REQUIRED next steps and OPTIONAL opportunities.
 
@@ -110,19 +110,19 @@ assets/               # Game assets
   vfx/                # Particle effects
   shaders/            # Shader files
   data/               # JSON config/balance data
-design/               # Design documents
+planning/design/               # Design documents
   gdd/                # Game design documents
   narrative/          # Story, lore, dialogue
   levels/             # Level design documents
   balance/            # Balance spreadsheets and data
   ux/                 # UX specifications
-docs/                 # Technical documentation
+planning/docs/                 # Technical documentation
   architecture/       # Architecture Decision Records
   api/                # API documentation
   postmortems/        # Post-mortems
 tests/                # Test suites
-prototypes/           # Throwaway prototypes
-production/           # Sprint plans, milestones, releases
+planning/prototypes/           # Throwaway prototypes
+planning/production/           # Sprint plans, milestones, releases
   sprints/
   milestones/
   releases/
@@ -189,7 +189,7 @@ ideation process using professional studio techniques:
 3. You pick 2-3 favorites for deep analysis
 4. Performs player motivation mapping and audience targeting
 5. You choose the winning concept
-6. Formalizes it into `design/gdd/game-concept.md`
+6. Formalizes it into `planning/design/gdd/game-concept.md`
 
 The concept document includes:
 
@@ -206,7 +206,7 @@ The concept document includes:
 ### Step 1.2: Review the Concept (Optional but Recommended)
 
 ```
-/design-review design/gdd/game-concept.md
+/design-review planning/design/gdd/game-concept.md
 ```
 
 Validates structure and completeness before you proceed.
@@ -228,8 +228,8 @@ Or with a specific engine:
 - Populates `.claude/docs/technical-preferences.md` with naming conventions,
   performance budgets, and engine-specific defaults
 - Detects knowledge gaps (engine version newer than LLM training data) and
-  advises cross-referencing `docs/engine-reference/`
-- Creates version-pinned reference docs in `docs/engine-reference/`
+  advises cross-referencing `planning/docs/engine-reference/`
+- Creates version-pinned reference docs in `planning/docs/engine-reference/`
 
 **Why this matters:** Once you set the engine, the system knows which
 engine-specialist agents to use. If you pick Godot, agents like
@@ -244,7 +244,7 @@ Before writing individual GDDs, enumerate all the systems your game needs:
 /map-systems
 ```
 
-This creates `design/gdd/systems-index.md` -- a master tracking document that:
+This creates `planning/design/gdd/systems-index.md` -- a master tracking document that:
 
 - Lists every system your game needs (combat, movement, UI, etc.)
 - Maps dependencies between systems
@@ -264,8 +264,8 @@ production.
 **Requirements to pass:**
 
 - Engine configured in `technical-preferences.md`
-- `design/gdd/game-concept.md` exists with pillars
-- `design/gdd/systems-index.md` exists with dependency ordering
+- `planning/design/gdd/game-concept.md` exists with pillars
+- `planning/design/gdd/systems-index.md` exists with dependency ordering
 
 **Verdict:** PASS / CONCERNS / FAIL. CONCERNS is passable with acknowledged
 risks. FAIL blocks advancement.
@@ -349,7 +349,7 @@ animation feel targets (startup/active/recovery), impact moments, weight profile
 Before the next system starts, validate the current one:
 
 ```
-/design-review design/gdd/combat-system.md
+/design-review planning/design/gdd/combat-system.md
 ```
 
 Checks all 8 sections for completeness, formula clarity, edge case resolution,
@@ -366,7 +366,7 @@ For tuning changes, small additions, or tweaks that do not warrant a full GDD:
 /quick-design "add 10% damage bonus for flanking attacks"
 ```
 
-This creates a lightweight spec in `design/quick-specs/` instead of a full
+This creates a lightweight spec in `planning/design/quick-specs/` instead of a full
 8-section GDD. Use it for tuning, number changes, and small additions.
 
 ### Step 2.4: Cross-GDD Consistency Review
@@ -396,7 +396,7 @@ This reads ALL GDDs simultaneously and runs two analysis phases:
 - Pillar alignment and anti-pillar violations
 - Player fantasy coherence
 
-**Output:** `design/gdd/gdd-cross-review-[date].md` with a verdict.
+**Output:** `planning/design/gdd/gdd-cross-review-[date].md` with a verdict.
 
 ### Step 2.5: Narrative Design (If Applicable)
 
@@ -418,7 +418,7 @@ If your game has story, lore, or dialogue, this is when you build it:
 
 - All MVP systems in `systems-index.md` have `Status: Approved`
 - Each MVP system has a reviewed GDD
-- Cross-GDD review report exists (`design/gdd/gdd-cross-review-*.md`)
+- Cross-GDD review report exists (`planning/design/gdd/gdd-cross-review-*.md`)
   with verdict of PASS or CONCERNS (not FAIL)
 
 ---
@@ -438,7 +438,7 @@ gives programmers flat, actionable rules. You also establish UX foundations.
         |                          |                                   |
         v                          v                                   v
   Master architecture       Per-decision ADRs              Validates completeness,
-  document covering         in docs/architecture/          dependency ordering,
+  document covering         in planning/docs/architecture/          dependency ordering,
   all systems               adr-*.md                       engine compatibility
                                                                       |
                                                                       v
@@ -446,7 +446,7 @@ gives programmers flat, actionable rules. You also establish UX foundations.
                                                                       |
                                                                       v
                                                          Flat programmer rules
-                                                         docs/architecture/
+                                                         planning/docs/architecture/
                                                          control-manifest.md
         Also in this phase:
         -------------------
@@ -461,7 +461,7 @@ gives programmers flat, actionable rules. You also establish UX foundations.
 /create-architecture
 ```
 
-Creates the overarching architecture document in `docs/architecture/architecture.md`
+Creates the overarching architecture document in `planning/docs/architecture/architecture.md`
 covering system boundaries, data flow, and integration points.
 
 ### Step 3.2: Architecture Decision Records (ADRs)
@@ -488,7 +488,7 @@ ADRs go through a lifecycle: Proposed > Accepted > Superseded/Deprecated.
 project:
 
 ```
-/architecture-decision retrofit docs/architecture/adr-005.md
+/architecture-decision retrofit planning/docs/architecture/adr-005.md
 ```
 
 This detects which template sections are missing and adds only those, never
@@ -504,7 +504,7 @@ Validates all ADRs together:
 - Topological sort of ADR dependencies (detects cycles)
 - Engine compatibility verification
 - GDD Revision Flags (flags GDD sections that need updates based on ADR choices)
-- TR-ID registry maintenance (`docs/architecture/tr-registry.yaml`)
+- TR-ID registry maintenance (`planning/docs/architecture/tr-registry.yaml`)
 
 ### Step 3.4: Control Manifest
 
@@ -515,7 +515,7 @@ Validates all ADRs together:
 Takes all Accepted ADRs and produces a flat programmer rules sheet:
 
 ```
-docs/architecture/control-manifest.md
+planning/docs/architecture/control-manifest.md
 ```
 
 This contains Required patterns, Forbidden patterns, and Guardrails organized
@@ -524,7 +524,7 @@ staleness can be detected.
 
 ### Step 3.5: Accessibility Requirements
 
-Create `design/accessibility-requirements.md` using the template. Commit to a
+Create `planning/design/accessibility-requirements.md` using the template. Commit to a
 tier (Basic / Standard / Comprehensive / Exemplary) and fill the 4-axis feature
 matrix (visual, motor, cognitive, auditory).
 
@@ -539,11 +539,11 @@ reference this tier — it is a design prerequisite, not a UX deliverable.
 
 **Requirements to pass:**
 
-- `docs/architecture/architecture.md` exists
+- `planning/docs/architecture/architecture.md` exists
 - At least 3 ADRs exist and are Accepted
 - Architecture review report exists
-- `docs/architecture/control-manifest.md` exists
-- `design/accessibility-requirements.md` exists
+- `planning/docs/architecture/control-manifest.md` exists
+- `planning/design/accessibility-requirements.md` exists
 
 ---
 
@@ -562,8 +562,8 @@ Vertical Slice that proves the core loop is fun.
     |                |                  |                   |                       |
     v                v                  v                   v                       v
   UX specs       Throwaway       Epic files in       Story files in          First sprint with
-  design/ux/     prototypes      production/         production/             prioritized stories
-                 in prototypes/  epics/*/EPIC.md     epics/*/story-*.md      production/sprints/
+  planning/design/ux/     prototypes      planning/production/         planning/production/             prioritized stories
+                 in planning/prototypes/  epics/*/EPIC.md     epics/*/story-*.md      planning/production/sprints/
                                  (one per module)    (one per behaviour)     sprint-*.md
     |                                                      |
     v                                                      v
@@ -595,7 +595,7 @@ exist and what player interactions they must support.
 ```
 
 Three modes: screen/flow, HUD, and interaction patterns. Output goes to
-`design/ux/`. Each spec includes: player need, layout zones, states,
+`planning/design/ux/`. Each spec includes: player need, layout zones, states,
 interaction map, data requirements, events fired, accessibility, localization.
 
 Reads your `accessibility-requirements.md` (written in Phase 3) and your
@@ -611,7 +611,7 @@ and input coverage checks — no need to re-specify them per screen.
 /ux-design interaction-patterns
 ```
 
-Create `design/ux/interaction-patterns.md` — 16 standard controls plus
+Create `planning/design/ux/interaction-patterns.md` — 16 standard controls plus
 game-specific patterns (inventory slot, ability icon, HUD bar, dialogue box,
 etc.) with animation and sound standards.
 
@@ -655,7 +655,7 @@ findings is mandatory.
 
 `/create-epics` reads your GDDs, ADRs, and architecture to define epic scope —
 one epic per architectural module. Then `/create-stories` breaks each epic into
-implementable story files in `production/epics/[slug]/`. Each story embeds:
+implementable story files in `planning/production/epics/[slug]/`. Each story embeds:
 - GDD requirement references (TR-IDs, not quoted text -- stays fresh)
 - ADR references (only from Accepted ADRs; Proposed ADRs cause `Status: Blocked`)
 - Control manifest version date (for staleness detection)
@@ -668,7 +668,7 @@ automatically to the correct programmer agent.
 ### Step 4.4: Validate Stories Before Pickup
 
 ```
-/story-readiness production/stories/combat-damage-calc.md
+/story-readiness planning/production/stories/combat-damage-calc.md
 ```
 
 Checks: Design completeness, Architecture coverage, Scope clarity, Definition
@@ -677,7 +677,7 @@ of Done. Verdict: READY / NEEDS WORK / BLOCKED.
 ### Step 4.5: Effort Estimation
 
 ```
-/estimate production/stories/combat-damage-calc.md
+/estimate planning/production/stories/combat-damage-calc.md
 ```
 
 Provides effort estimates with risk assessment.
@@ -692,8 +692,8 @@ Provides effort estimates with risk assessment.
 - Asks for sprint goal and available time
 - Breaks the goal into Must Have / Should Have / Nice to Have tasks
 - Identifies risks and blockers
-- Creates `production/sprints/sprint-01.md`
-- Populates `production/sprint-status.yaml` (machine-readable story tracking)
+- Creates `planning/production/sprints/sprint-01.md`
+- Populates `planning/production/sprint-status.yaml` (machine-readable story tracking)
 
 ### Step 4.7: Vertical Slice (Hard Gate)
 
@@ -715,10 +715,10 @@ played the build unguided.
 
 **Requirements to pass:**
 
-- At least 1 UX spec reviewed in `design/ux/`
+- At least 1 UX spec reviewed in `planning/design/ux/`
 - UX review completed (APPROVED or NEEDS REVISION with documented risks)
 - At least 1 prototype with README
-- Story files exist in `production/stories/`
+- Story files exist in `planning/production/stories/`
 - At least 1 sprint plan exists
 - At least 1 playtest report exists (Vertical Slice played in 3+ sessions)
 
@@ -762,7 +762,7 @@ The production phase centers on the **story lifecycle**:
 **1. Story Readiness:** Before picking up a story, validate it:
 
 ```
-/story-readiness production/stories/combat-damage-calc.md
+/story-readiness planning/production/stories/combat-damage-calc.md
 ```
 
 This checks design completeness, architecture coverage, ADR status (blocks
@@ -785,7 +785,7 @@ implement.
 **3. Story Completion:** When a story is done:
 
 ```
-/story-done production/stories/combat-damage-calc.md
+/story-done planning/production/stories/combat-damage-calc.md
 ```
 
 This runs an 8-phase completion review:
@@ -798,7 +798,7 @@ This runs an 8-phase completion review:
 7. Update story `Status: Complete` with completion notes
 8. Surface the next ready story
 
-Tech debt discovered during review is logged to `docs/tech-debt-register.md`.
+Tech debt discovered during review is logged to `planning/docs/tech-debt-register.md`.
 
 ### Step 5.2: Sprint Tracking
 
@@ -808,12 +808,12 @@ Check progress anytime:
 /sprint-status
 ```
 
-Quick 30-line snapshot reading from `production/sprint-status.yaml`.
+Quick 30-line snapshot reading from `planning/production/sprint-status.yaml`.
 
 If scope is growing:
 
 ```
-/scope-check production/sprints/sprint-03.md
+/scope-check planning/production/sprints/sprint-03.md
 ```
 
 This compares current scope against the original plan and flags scope increase,
@@ -833,7 +833,7 @@ content gaps early.
 When a GDD changes after stories have been created:
 
 ```
-/propagate-design-change design/gdd/combat-system.md
+/propagate-design-change planning/design/gdd/combat-system.md
 ```
 
 Git-diffs the GDD, finds affected ADRs, generates an impact report, and
@@ -1147,7 +1147,7 @@ These topics apply across all phases.
 Director gates are specialist agents that review your work at key workflow steps.
 By default they run at every checkpoint. You can control how much review you get.
 
-**Set your review intensity once during `/start`.** Saved to `production/review-mode.txt`.
+**Set your review intensity once during `/start`.** Saved to `planning/production/review-mode.txt`.
 
 | Mode | What runs | Best for |
 |------|-----------|----------|
@@ -1163,7 +1163,7 @@ By default they run at every checkpoint. You can control how much review you get
 ```
 
 The `--review` flag works on all gate-using skills. Change the global mode at any
-time by editing `production/review-mode.txt` directly or re-running `/start`.
+time by editing `planning/production/review-mode.txt` directly or re-running `/start`.
 
 Full gate definitions and check pattern: `.claude/docs/director-gates.md`
 
@@ -1183,7 +1183,7 @@ Every agent interaction follows this pattern:
 5. You review and refine
 6. Agent asks "May I write this to [filepath]?" before writing
 
-See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for the full protocol with
+See `planning/docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for the full protocol with
 examples.
 
 ### The AskUserQuestion Tool
@@ -1248,7 +1248,7 @@ The system has 12 hooks that run automatically:
 
 ### Context Resilience
 
-**Session state file:** `production/session-state/active.md` is a living
+**Session state file:** `planning/production/session-state/active.md` is a living
 checkpoint. Update it after each significant milestone. After any disruption
 (compaction, crash, `/clear`), read this file first.
 
@@ -1261,7 +1261,7 @@ sections can be safely compacted.
 `active.md` automatically. The `pre-compact.sh` hook dumps state into the
 conversation before compaction.
 
-**Sprint status tracking:** `production/sprint-status.yaml` is the
+**Sprint status tracking:** `planning/production/sprint-status.yaml` is the
 machine-readable story tracker. Written by `/sprint-plan` (init) and
 `/story-done` (status updates). Read by `/sprint-status`, `/help`, and
 `/story-done` (next story). Eliminates fragile markdown scanning.
@@ -1285,14 +1285,14 @@ Or targeted:
 
 This audits existing artifacts for **format** (not existence), classifies gaps
 as BLOCKING/HIGH/MEDIUM/LOW, builds an ordered migration plan, and writes
-`docs/adoption-plan-[date].md`. Core principle: MIGRATION not REPLACEMENT --
+`planning/docs/adoption-plan-[date].md`. Core principle: MIGRATION not REPLACEMENT --
 it never regenerates existing work, only fills gaps.
 
 Individual skills also support retrofit mode:
 
 ```
-/design-system retrofit design/gdd/combat-system.md
-/architecture-decision retrofit docs/architecture/adr-005.md
+/design-system retrofit planning/design/gdd/combat-system.md
+/architecture-decision retrofit planning/docs/architecture/adr-005.md
 ```
 
 These detect which sections are present vs. missing and fill only the gaps.
@@ -1315,7 +1315,7 @@ Phase gates are formal checkpoints. Run `/gate-check` with the transition name:
 - **CONCERNS** -- requirements met with acknowledged risks, passable
 - **FAIL** -- requirements not met, blocks advancement with specific remediation
 
-When a gate passes, `production/stage.txt` is updated (only then), which
+When a gate passes, `planning/production/stage.txt` is updated (only then), which
 controls the status line and `/help` behavior.
 
 ### Reverse Documentation

@@ -28,9 +28,9 @@ git log --oneline [last-tag]..HEAD
 
 If no tags exist, read the full log or a reasonable recent range (last 100 commits).
 
-Read sprint reports from `production/sprints/` for the relevant period to understand planned work and context behind changes.
+Read sprint reports from `planning/production/sprints/` for the relevant period to understand planned work and context behind changes.
 
-Read completed design documents from `design/gdd/` for any new features implemented during this period.
+Read completed design documents from `planning/design/gdd/` for any new features implemented during this period.
 
 ---
 
@@ -145,19 +145,19 @@ Output both changelogs to the user. The internal changelog is the primary workin
 
 After presenting the changelogs, ask the user:
 
-> "May I write this changelog to `docs/CHANGELOG.md`?
+> "May I write this changelog to `planning/docs/CHANGELOG.md`?
 > [A] Yes, append this entry (recommended if the file already exists)
 > [B] Yes, overwrite the file entirely
 > [C] No — I'll copy it manually"
 
-- Check whether `docs/CHANGELOG.md` exists before asking. If it does, default the
+- Check whether `planning/docs/CHANGELOG.md` exists before asking. If it does, default the
   recommendation to **[A] append**.
 - If the user selects [A]: append the new internal changelog entry to the top of
   the existing file (newest entries first).
 - If the user selects [B]: overwrite the file with the new changelog.
 - If the user selects [C]: stop here without writing.
 
-After a successful write: Verdict: **CHANGELOG WRITTEN** — changelog saved to `docs/CHANGELOG.md`.
+After a successful write: Verdict: **CHANGELOG WRITTEN** — changelog saved to `planning/docs/CHANGELOG.md`.
 If the user declines: Verdict: **COMPLETE** — changelog generated.
 
 ---

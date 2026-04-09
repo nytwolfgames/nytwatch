@@ -40,7 +40,7 @@ point this skill runs.
 ### Case 1: Happy Path — Fresh repo, no engine, full onboarding flow
 
 **Fixture:**
-- Empty repository: no CLAUDE.md overrides, no `production/stage.txt`, no
+- Empty repository: no CLAUDE.md overrides, no `planning/production/stage.txt`, no
   `technical-preferences.md` content beyond placeholders
 - No existing design docs or source code
 
@@ -70,7 +70,7 @@ point this skill runs.
 
 **Fixture:**
 - `technical-preferences.md` has engine already set (not placeholder)
-- `production/stage.txt` exists with `Concept`
+- `planning/production/stage.txt` exists with `Concept`
 
 **Input:** `/start`
 
@@ -114,7 +114,7 @@ point this skill runs.
 **Fixture:**
 - Directory structure exists (was created) but `technical-preferences.md` is
   still all placeholders (engine was never chosen — setup was interrupted)
-- No `production/stage.txt`
+- No `planning/production/stage.txt`
 
 **Input:** `/start`
 

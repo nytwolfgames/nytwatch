@@ -7,7 +7,7 @@ echo "=== SESSION STATE BEFORE COMPACTION ==="
 echo "Timestamp: $(date)"
 
 # --- Active session state file ---
-STATE_FILE="production/session-state/active.md"
+STATE_FILE="planning/production/session-state/active.md"
 if [ -f "$STATE_FILE" ]; then
     echo ""
     echo "## Active Session State (from $STATE_FILE)"
@@ -21,7 +21,7 @@ if [ -f "$STATE_FILE" ]; then
 else
     echo ""
     echo "## No active session state file found"
-    echo "Consider maintaining production/session-state/active.md for better recovery."
+    echo "Consider maintaining planning/production/session-state/active.md for better recovery."
 fi
 
 # --- Files modified this session (unstaged + staged + untracked) ---
@@ -53,7 +53,7 @@ echo ""
 echo "## Design Docs — Work In Progress"
 
 WIP_FOUND=false
-for f in design/gdd/*.md; do
+for f in planning/design/gdd/*.md; do
     [ -f "$f" ] || continue
     INCOMPLETE=$(grep -n -E "TODO|WIP|PLACEHOLDER|\[TO BE|\[TBD\]" "$f" 2>/dev/null)
     if [ -n "$INCOMPLETE" ]; then
@@ -68,7 +68,7 @@ if [ "$WIP_FOUND" = false ]; then
 fi
 
 # --- Log compaction event ---
-SESSION_LOG_DIR="production/session-logs"
+SESSION_LOG_DIR="planning/production/session-logs"
 mkdir -p "$SESSION_LOG_DIR" 2>/dev/null
 echo "Context compaction occurred at $(date)." \
     >> "$SESSION_LOG_DIR/compaction-log.txt" 2>/dev/null

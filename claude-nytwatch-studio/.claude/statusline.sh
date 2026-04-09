@@ -31,7 +31,7 @@ fi
 
 # --- Production stage ---
 # Priority 1: Explicit stage from stage.txt
-stage_file="$cwd/production/stage.txt"
+stage_file="$cwd/planning/production/stage.txt"
 stage=""
 if [ -f "$stage_file" ]; then
   stage=$(head -1 "$stage_file" | tr -d '\r\n')
@@ -89,7 +89,7 @@ fi
 # --- Epic/Feature/Task breadcrumb (Production+ only) ---
 breadcrumb=""
 if [ "$stage" = "Production" ] || [ "$stage" = "Polish" ] || [ "$stage" = "Release" ]; then
-  state_file="$cwd/production/session-state/active.md"
+  state_file="$cwd/planning/production/session-state/active.md"
   if [ -f "$state_file" ]; then
     # Parse structured STATUS block
     in_block=false

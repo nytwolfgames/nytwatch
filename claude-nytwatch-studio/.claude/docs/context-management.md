@@ -9,7 +9,7 @@ will be compacted or lost. Files on disk persist across compactions and session 
 
 ### Session State File
 
-Maintain `production/session-state/active.md` as a living checkpoint. Update it
+Maintain `planning/production/session-state/active.md` as a living checkpoint. Update it
 after each significant milestone:
 
 - Design section approved and written to file
@@ -83,7 +83,7 @@ Subagents run in their own context window and return only summaries:
 
 When context is compacted, preserve the following in the summary:
 
-- Reference to `production/session-state/active.md` (read it to recover state)
+- Reference to `planning/production/session-state/active.md` (read it to recover state)
 - List of files modified in this session and their purpose
 - Any architectural decisions made and their rationale
 - Active sprint tasks and their current status
@@ -93,7 +93,7 @@ When context is compacted, preserve the following in the summary:
 - The current task and what step we are on
 - Which sections of the current document are written to file vs. still in progress
 
-**After compaction:** Read `production/session-state/active.md` and any files being
+**After compaction:** Read `planning/production/session-state/active.md` and any files being
 actively worked on to recover full context. The files contain the decisions; the
 conversation history is secondary.
 

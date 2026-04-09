@@ -16,13 +16,13 @@
 - Output format templates go in fenced code blocks
 
 ### Known Canonical Paths (verify before referencing in new skills)
-- Tech debt register: `docs/tech-debt-register.md` (NOT `production/tech-debt.md`)
-- Sprint files: `production/sprints/`
-- Epic story files: `production/epics/[epic-slug]/story-[NNN]-[slug].md`
-- Control manifest: `docs/architecture/control-manifest.md`
-- Session state: `production/session-state/active.md`
-- Systems index: `design/gdd/systems-index.md`
-- Engine reference: `docs/engine-reference/[engine]/VERSION.md`
+- Tech debt register: `planning/docs/tech-debt-register.md` (NOT `planning/production/tech-debt.md`)
+- Sprint files: `planning/production/sprints/`
+- Epic story files: `planning/production/epics/[epic-slug]/story-[NNN]-[slug].md`
+- Control manifest: `planning/docs/architecture/control-manifest.md`
+- Session state: `planning/production/session-state/active.md`
+- Systems index: `planning/design/gdd/systems-index.md`
+- Engine reference: `planning/docs/engine-reference/[engine]/VERSION.md`
 
 ### Skills Completed
 - `story-done` — end-of-story completion handshake (Phase 1-8, writes story file)

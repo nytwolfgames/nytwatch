@@ -10,35 +10,35 @@ These show what runs before and after each skill, and what artifacts flow betwee
 ```
 PHASE 1: CONCEPT
   /start ──────────────────────────────────────────────────────► routes to A/B/C/D
-  /brainstorm ──────────────────────────────────────────────────► design/gdd/game-concept.md
+  /brainstorm ──────────────────────────────────────────────────► planning/design/gdd/game-concept.md
   /setup-engine ────────────────────────────────────────────────► CLAUDE.md + technical-preferences.md
   /design-review [game-concept.md] ────────────────────────────► concept validated
   /gate-check ─────────────────────────────────────────────────► PASS → advance to systems-design
         │
         ▼
 PHASE 2: SYSTEMS DESIGN
-  /map-systems ────────────────────────────────────────────────► design/gdd/systems-index.md
+  /map-systems ────────────────────────────────────────────────► planning/design/gdd/systems-index.md
         │
         ▼ (for each system, in dependency order)
-  /design-system [name] ──────────────────────────────────────► design/gdd/[system].md
+  /design-system [name] ──────────────────────────────────────► planning/design/gdd/[system].md
   /design-review [system].md ─────────────────────────────────► per-GDD review comments
         │
         ▼ (after all MVP GDDs done)
-  /review-all-gdds ────────────────────────────────────────────► design/gdd/gdd-cross-review-[date].md
+  /review-all-gdds ────────────────────────────────────────────► planning/design/gdd/gdd-cross-review-[date].md
   /gate-check ─────────────────────────────────────────────────► PASS → advance to technical-setup
         │
         ▼
 PHASE 3: TECHNICAL SETUP
-  /create-architecture ────────────────────────────────────────► docs/architecture/master.md
-  /architecture-decision (×N) ─────────────────────────────────► docs/architecture/[adr-nnn].md
-  /architecture-review ────────────────────────────────────────► review report + docs/architecture/tr-registry.yaml
-  /create-control-manifest ────────────────────────────────────► docs/architecture/control-manifest.md
+  /create-architecture ────────────────────────────────────────► planning/docs/architecture/master.md
+  /architecture-decision (×N) ─────────────────────────────────► planning/docs/architecture/[adr-nnn].md
+  /architecture-review ────────────────────────────────────────► review report + planning/docs/architecture/tr-registry.yaml
+  /create-control-manifest ────────────────────────────────────► planning/docs/architecture/control-manifest.md
   /gate-check ─────────────────────────────────────────────────► PASS → advance to pre-production
         │
         ▼
 PHASE 4: PRE-PRODUCTION
   [UX — before epics, so specs exist when stories are written]
-  /ux-design [screen/hud/patterns] ────────────────────────────► design/ux/*.md
+  /ux-design [screen/hud/patterns] ────────────────────────────► planning/design/ux/*.md
   /ux-review ──────────────────────────────────────────────────► UX specs approved (HARD gate for /team-ui)
 
   [Test infrastructure — scaffold before stories reference tests]
@@ -46,11 +46,11 @@ PHASE 4: PRE-PRODUCTION
   /test-helpers ───────────────────────────────────────────────► tests/helpers/[engine-specific].gd
 
   [Stories + prototype]
-  /create-epics [layer] ───────────────────────────────────────► production/epics/*/EPIC.md
-  /create-stories [epic-slug] ─────────────────────────────────► production/epics/*/story-*.md
-  /prototype [core-mechanic] ──────────────────────────────────► prototypes/[name]/
+  /create-epics [layer] ───────────────────────────────────────► planning/production/epics/*/EPIC.md
+  /create-stories [epic-slug] ─────────────────────────────────► planning/production/epics/*/story-*.md
+  /prototype [core-mechanic] ──────────────────────────────────► planning/prototypes/[name]/
   /playtest-report ────────────────────────────────────────────► tests/playtest/vertical-slice.md
-  /sprint-plan new ────────────────────────────────────────────► production/sprints/sprint-01.md
+  /sprint-plan new ────────────────────────────────────────────► planning/production/sprints/sprint-01.md
   /gate-check ─────────────────────────────────────────────────► PASS → advance to production
         │
         ▼
@@ -65,14 +65,14 @@ PHASE 5: PRODUCTION (repeating sprint loop)
   /code-review ────────────────────────────────────────────────► code review report
   /scope-check ────────────────────────────────────────────────► scope creep detected / clear
   /content-audit ──────────────────────────────────────────────► GDD content gaps identified
-  /bug-report ─────────────────────────────────────────────────► production/qa/bugs/bug-NNN.md
+  /bug-report ─────────────────────────────────────────────────► planning/production/qa/bugs/bug-NNN.md
   /bug-triage ─────────────────────────────────────────────────► bugs re-prioritized + assigned
 
   [Team skills for feature areas — spawn when working a full feature]
   /team-combat / /team-narrative / /team-ui / /team-level / /team-audio
 
   [QA cycle per sprint]
-  /qa-plan ────────────────────────────────────────────────────► production/qa/qa-plan-sprint-NN.md
+  /qa-plan ────────────────────────────────────────────────────► planning/production/qa/qa-plan-sprint-NN.md
   /smoke-check ────────────────────────────────────────────────► smoke test gate (PASS/FAIL)
   /regression-suite ───────────────────────────────────────────► coverage gaps + missing regression tests
   /test-evidence-review ───────────────────────────────────────► evidence quality report
@@ -91,7 +91,7 @@ PHASE 6: POLISH
   /perf-profile ───────────────────────────────────────────────► perf report + fixes
   /balance-check ──────────────────────────────────────────────► balance report + fixes
   /asset-audit ────────────────────────────────────────────────► asset compliance report
-  /tech-debt ──────────────────────────────────────────────────► docs/tech-debt-register.md
+  /tech-debt ──────────────────────────────────────────────────► planning/docs/tech-debt-register.md
   /soak-test ──────────────────────────────────────────────────► soak test protocol + results
   /localize ───────────────────────────────────────────────────► localization readiness report
   /team-polish ────────────────────────────────────────────────► polish sprint orchestrated
@@ -131,10 +131,10 @@ upstream GDDs (input, if any)
         │     question → options → decision → draft → approval → WRITE
         │     [each section written to file immediately after approval]
         │
-        └── Output: design/gdd/[system].md (complete, all 8 sections)
+        └── Output: planning/design/gdd/[system].md (complete, all 8 sections)
                 │
                 ▼
-        /design-review design/gdd/[system].md
+        /design-review planning/design/gdd/[system].md
                 │
                 ├── APPROVED → mark DONE in systems-index, proceed to next system
                 ├── NEEDS REVISION → agent shows specific issues, re-enter section cycle
@@ -154,16 +154,16 @@ UX specs are authored in Phase 4 (Pre-Production), before epics are written, so
 that story acceptance criteria can reference specific UX artifacts.
 
 ```
-design/gdd/*.md (UI/UX requirements extracted)
-design/player-journey.md (emotional arc, if authored)
+planning/design/gdd/*.md (UI/UX requirements extracted)
+planning/design/player-journey.md (emotional arc, if authored)
         │
         ▼
-/ux-design hud              → design/ux/hud.md
-/ux-design screen [name]    → design/ux/screens/[name].md
-/ux-design patterns         → design/ux/interaction-patterns.md
+/ux-design hud              → planning/design/ux/hud.md
+/ux-design screen [name]    → planning/design/ux/screens/[name].md
+/ux-design patterns         → planning/design/ux/interaction-patterns.md
         │
         ▼
-/ux-review design/ux/
+/ux-review planning/design/ux/
         │
         ├── APPROVED → UX specs ready, proceed to /create-epics
         ├── NEEDS REVISION → blocking issues listed → fix → re-run review
@@ -225,12 +225,12 @@ How a story gets from backlog to closed (summary view):
 ```
 /create-epics [layer]
         │
-        └── Output: production/epics/[slug]/EPIC.md
+        └── Output: planning/production/epics/[slug]/EPIC.md
                 │
                 ▼
         /create-stories [epic-slug]
                 │
-                └── Output: production/epics/[slug]/story-NNN-[slug].md
+                └── Output: planning/production/epics/[slug]/story-NNN-[slug].md
                             (Status: Ready or Blocked if ADR is Proposed)
                 │
                 ▼
@@ -260,7 +260,7 @@ How a story gets from backlog to closed (summary view):
         │     Visual/Feel → screenshot + lead sign-off (ADVISORY)
         │     UI → manual walkthrough or interaction test (ADVISORY)
         │     Config/Data → smoke check (ADVISORY)
-        └── Output: production/qa/qa-plan-sprint-NN.md
+        └── Output: planning/production/qa/qa-plan-sprint-NN.md
                 │
                 ▼
         /smoke-check
@@ -288,7 +288,7 @@ How a story gets from backlog to closed (summary view):
 /team-qa ───────────────────────────────────────────────────────► full QA cycle sign-off for release gate
 
 [Ongoing — bug management]
-/bug-report ────────────────────────────────────────────────────► production/qa/bugs/bug-NNN.md
+/bug-report ────────────────────────────────────────────────────► planning/production/qa/bugs/bug-NNN.md
 /bug-triage ────────────────────────────────────────────────────► open bugs re-prioritized + assigned
 
 [Meta — harness validation]
@@ -300,16 +300,16 @@ How a story gets from backlog to closed (summary view):
 ## Skill Chain: UX Pipeline in Detail (Legacy Reference)
 
 ```
-design/gdd/*.md (UX requirements extracted)
-design/player-journey.md (emotional arc)
+planning/design/gdd/*.md (UX requirements extracted)
+planning/design/player-journey.md (emotional arc)
         │
         ▼
-/ux-design hud              → design/ux/hud.md
-/ux-design screen [name]    → design/ux/screens/[name].md
-/ux-design patterns         → design/ux/interaction-patterns.md
+/ux-design hud              → planning/design/ux/hud.md
+/ux-design screen [name]    → planning/design/ux/screens/[name].md
+/ux-design patterns         → planning/design/ux/interaction-patterns.md
         │
         ▼
-/ux-review design/ux/
+/ux-review planning/design/ux/
         │
         ├── APPROVED → all specs ready for /team-ui
         ├── NEEDS REVISION → blocking issues listed → fix → re-run review
@@ -341,7 +341,7 @@ For projects with existing work (use `/start` option D or run directly):
         ├── Phase 2: FORMAT audit (not just existence)
         ├── Phase 3: classify gaps (BLOCKING / HIGH / MEDIUM / LOW)
         ├── Phase 4: ordered migration plan
-        ├── Phase 5: write docs/adoption-plan-[date].md
+        ├── Phase 5: write planning/docs/adoption-plan-[date].md
         └── Phase 6: fix most urgent gap inline (optional)
                 │
                 ▼

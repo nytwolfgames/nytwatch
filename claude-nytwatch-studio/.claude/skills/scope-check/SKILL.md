@@ -22,9 +22,9 @@ scope creep.
 
 Locate the baseline scope document for the given argument:
 
-- **Feature name** → read `design/gdd/[feature].md` or matching file in `design/`
-- **Sprint number** (e.g., `sprint-3`) → read `production/sprints/sprint-03.md` or similar
-- **Milestone** → read `production/milestones/[name].md`
+- **Feature name** → read `planning/design/gdd/[feature].md` or matching file in `planning/design/`
+- **Sprint number** (e.g., `sprint-3`) → read `planning/production/sprints/sprint-03.md` or similar
+- **Milestone** → read `planning/production/milestones/[name].md`
 
 If the document is not found, report the missing file and stop. Do not proceed without
 a baseline to compare against.

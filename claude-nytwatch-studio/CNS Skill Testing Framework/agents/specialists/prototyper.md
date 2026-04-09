@@ -1,7 +1,7 @@
 # Agent Test Spec: prototyper
 
 ## Agent Summary
-- **Domain**: Rapid throwaway prototypes in the `prototypes/` directory, concept validation experiments, mechanical feasibility tests. Standards intentionally relaxed for speed — prototypes are not production code.
+- **Domain**: Rapid throwaway prototypes in the `planning/prototypes/` directory, concept validation experiments, mechanical feasibility tests. Standards intentionally relaxed for speed — prototypes are not production code.
 - **Does NOT own**: Production source code in `src/` (gameplay-programmer), design documents (game-designer), production-grade architecture decisions (lead-programmer / technical-director)
 - **Model tier**: Sonnet
 - **Gate IDs**: None; produces recommendation docs after prototype conclusion; does not participate in phase gates
@@ -10,8 +10,8 @@
 
 ## Static Assertions (Structural)
 
-- [ ] `description:` field is present and domain-specific (references rapid prototyping, prototypes/ directory, throwaway code)
-- [ ] `allowed-tools:` list matches the agent's role (Read/Write scoped to prototypes/ directory; no production src/ write access)
+- [ ] `description:` field is present and domain-specific (references rapid prototyping, planning/prototypes/ directory, throwaway code)
+- [ ] `allowed-tools:` list matches the agent's role (Read/Write scoped to planning/prototypes/ directory; no production src/ write access)
 - [ ] Model tier is Sonnet (default for specialists)
 - [ ] Agent definition explicitly states that prototype code is not production code and must not be copied to src/
 
@@ -22,7 +22,7 @@
 ### Case 1: In-domain request — prototype a card-drawing mechanic
 **Input**: "Prototype a card-drawing mechanic in 2 hours. The core question: does drawing 3 cards per turn with hand-size limit of 7 feel good? I need something to test in a playtest today."
 **Expected behavior**:
-- Produces a minimal working prototype written in the project's engine scripting language, scoped to `prototypes/card-draw-mechanic/`
+- Produces a minimal working prototype written in the project's engine scripting language, scoped to `planning/prototypes/card-draw-mechanic/`
 - Code prioritizes speed over correctness: no unit tests, no doc comments required, global state is acceptable for a prototype
 - Implements the minimal viable mechanic: a deck, a draw function (draw N cards), a hand container with a size limit, and a simple UI or debug print to verify state
 - Does NOT implement production patterns (dependency injection, signals, data-driven config) unless they take less time than not using them
@@ -32,14 +32,14 @@
 **Input**: "The card mechanic prototype worked great. Now write the production implementation of the card system for src/gameplay/cards/."
 **Expected behavior**:
 - Does not write production code to `src/`
-- States clearly: "Prototyper produces throwaway code in prototypes/ to validate concepts; production implementation of validated mechanics is handled by gameplay-programmer"
+- States clearly: "Prototyper produces throwaway code in planning/prototypes/ to validate concepts; production implementation of validated mechanics is handled by gameplay-programmer"
 - Offers to produce a transition document: what the prototype proved, what the production implementation should preserve (the mechanic), and what it should discard (the throwaway implementation patterns)
 - Does NOT copy the prototype code into src/ or suggest it as a starting point without warning about its non-production quality
 
 ### Case 3: Prototype validates the mechanic — recommendation output
 **Input**: "The card-draw prototype playtested well. Three sessions all enjoyed drawing 3 cards/turn with hand limit 7. No confusion observed. What's next?"
 **Expected behavior**:
-- Produces a prototype conclusion document in `prototypes/card-draw-mechanic/conclusion.md` (or equivalent)
+- Produces a prototype conclusion document in `planning/prototypes/card-draw-mechanic/conclusion.md` (or equivalent)
 - Document includes: hypothesis that was tested, playtest method (sessions, duration, observer notes), result verdict (VALIDATED), key findings (what worked, any minor issues observed), recommendation for production (specific mechanic parameters to preserve: 3 cards/turn, hand limit 7), and a flag to route the production implementation request to gameplay-programmer
 - Does NOT begin writing production code
 - Output is structured as a decision-ready recommendation, not a narrative summary
@@ -47,7 +47,7 @@
 ### Case 4: Prototype reveals the mechanic is unworkable — abandonment note
 **Input**: "The prototype for the physics-based lock-picking mechanic is done. After 4 playtest sessions, all testers found it frustrating — too much precision required, not fun. One tester rage-quit."
 **Expected behavior**:
-- Produces a prototype abandonment note in `prototypes/lock-picking-physics/conclusion.md`
+- Produces a prototype abandonment note in `planning/prototypes/lock-picking-physics/conclusion.md`
 - Document includes: hypothesis that was tested, result verdict (ABANDONED), specific reasons (precision barrier too high, negative emotional response, rage-quit incident as evidence), and a recommendation for alternative approaches to explore (simplified key-tumbler mechanic, rhythm-based alternative, removal of the mechanic entirely)
 - Does NOT recommend persisting with the prototype mechanic because of sunk cost
 - Does NOT mark the result as inconclusive — after 4 sessions with consistent negative responses, abandonment is the correct verdict
@@ -59,14 +59,14 @@
 - Produces the prototype in GDScript — not Python, C#, or pseudocode
 - Uses Godot 4.6 node types appropriate for a grid: TileMap or a custom grid manager node, CharacterBody2D or Node2D for the player
 - Does NOT apply production coding standards (no required test coverage, no doc comments, global state acceptable)
-- Writes the output to `prototypes/grid-movement/` not to `src/`
+- Writes the output to `planning/prototypes/grid-movement/` not to `src/`
 - If a Godot 4.6 API is uncertain (given the LLM knowledge cutoff noted in VERSION.md), flags the specific API with a note to verify against the Godot 4.6 docs
 
 ---
 
 ## Protocol Compliance
 
-- [ ] Stays within declared domain (prototypes/ directory only; throwaway code for concept validation)
+- [ ] Stays within declared domain (planning/prototypes/ directory only; throwaway code for concept validation)
 - [ ] Redirects production implementation requests to gameplay-programmer with a transition document offer
 - [ ] Produces structured conclusion documents (VALIDATED or ABANDONED verdict) after prototype evaluation
 - [ ] Does not recommend preserving prototype code in production form without explicit warnings

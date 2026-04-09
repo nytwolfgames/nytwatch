@@ -34,14 +34,14 @@ are invoked.
 ### Case 1: Happy Path — Clean test history, no flakiness
 
 **Fixture:**
-- `production/qa/test-history/` contains logs for 10 test runs
+- `planning/production/qa/test-history/` contains logs for 10 test runs
 - All tests pass consistently across all 10 runs (100% pass rate per test)
 - No test has a failure pattern
 
 **Input:** `/test-flakiness`
 
 **Expected behavior:**
-1. Skill reads test history logs from `production/qa/test-history/`
+1. Skill reads test history logs from `planning/production/qa/test-history/`
 2. Skill computes per-test pass rate across 10 runs
 3. All tests pass all 10 runs — no inconsistency detected
 4. Verdict is NO FLAKINESS
@@ -57,7 +57,7 @@ are invoked.
 ### Case 2: Suspect Tests Found — Test fails intermittently in history
 
 **Fixture:**
-- `production/qa/test-history/` contains logs for 10 test runs
+- `planning/production/qa/test-history/` contains logs for 10 test runs
 - `test_combat_damage_applies_crit_multiplier` passes 7 times, fails 3 times
 - Failure messages differ (sometimes timeout, sometimes wrong value)
 
@@ -110,7 +110,7 @@ are invoked.
 ### Case 4: No Test History — Source-only analysis with common patterns
 
 **Fixture:**
-- `production/qa/test-history/` does not exist
+- `planning/production/qa/test-history/` does not exist
 - `tests/` contains 15 test files
 - Scan finds 2 tests using `OS.get_ticks_msec()` for timing assertions
 - No other flakiness patterns found
@@ -145,7 +145,7 @@ are invoked.
 2. No director gate is invoked regardless of review mode
 3. Verdict is CONFIRMED FLAKY
 4. Skill presents findings and offers optional written report
-5. If user opts in: "May I write to `production/qa/flakiness-report-[date].md`?"
+5. If user opts in: "May I write to `planning/production/qa/flakiness-report-[date].md`?"
 
 **Assertions:**
 - [ ] No director gate is invoked in any review mode

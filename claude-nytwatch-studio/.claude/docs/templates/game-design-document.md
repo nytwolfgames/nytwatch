@@ -192,9 +192,9 @@ system's behaviour anywhere in this document, it must appear here.]
 
 | This Document References | Target GDD | Specific Element Referenced | Nature |
 |--------------------------|-----------|----------------------------|--------|
-| [e.g., "combo multiplier feeds score"] | `design/gdd/score.md` | `combo_multiplier` output value | Data dependency |
-| [e.g., "death triggers respawn"] | `design/gdd/respawn.md` | Death state transition | State trigger |
-| [e.g., "stamina gates dodge"] | `design/gdd/stamina.md` | Stamina depletion rule | Rule dependency |
+| [e.g., "combo multiplier feeds score"] | `planning/design/gdd/score.md` | `combo_multiplier` output value | Data dependency |
+| [e.g., "death triggers respawn"] | `planning/design/gdd/respawn.md` | Death state transition | State trigger |
+| [e.g., "stamina gates dodge"] | `planning/design/gdd/stamina.md` | Stamina depletion rule | Rule dependency |
 
 > **Note on "Nature"**: use one of — `Data dependency` (we consume their output),
 > `State trigger` (their state change triggers our behaviour), `Rule dependency`

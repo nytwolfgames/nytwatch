@@ -9,7 +9,7 @@ allowed-tools: Read, Glob, Grep, Write, Edit, Bash
 # Consistency Check
 
 Detects cross-document inconsistencies by comparing all GDDs against the
-entity registry (`design/registry/entities.yaml`). Uses a grep-first approach:
+entity registry (`planning/design/registry/entities.yaml`). Uses a grep-first approach:
 reads the registry once, then targets only the GDD sections that mention
 registered names — no full document reads unless a conflict needs investigation.
 
@@ -38,7 +38,7 @@ catches too late.
 **Load the registry:**
 
 ```
-Read path="design/registry/entities.yaml"
+Read path="planning/design/registry/entities.yaml"
 ```
 
 If the file does not exist or has no entries:
@@ -64,7 +64,7 @@ Scope: [full | since-last-review | entity:name]
 ## Phase 2: Locate In-Scope GDDs
 
 ```
-Glob pattern="design/gdd/*.md"
+Glob pattern="planning/design/gdd/*.md"
 ```
 
 Exclude: `game-concept.md`, `systems-index.md`, `game-pillars.md` — these are
@@ -72,9 +72,9 @@ not system GDDs.
 
 For `since-last-review` mode:
 ```bash
-git log --name-only --pretty=format: -- design/gdd/ | grep "\.md$" | sort -u
+git log --name-only --pretty=format: -- planning/design/gdd/ | grep "\.md$" | sort -u
 ```
-Limit to GDDs modified since the most recent `design/gdd/gdd-cross-review-*.md`
+Limit to GDDs modified since the most recent `planning/design/gdd/gdd-cross-review-*.md`
 file's creation date.
 
 Report the in-scope GDD list before scanning.
@@ -96,7 +96,7 @@ each returning ~10 lines on a hit).
 For each entity in entity_map:
 
 ```
-Grep pattern="[entity_name]" glob="design/gdd/*.md" output_mode="content" -C 3
+Grep pattern="[entity_name]" glob="planning/design/gdd/*.md" output_mode="content" -C 3
 ```
 
 For each GDD hit, extract the values mentioned near the entity name:
@@ -148,7 +148,7 @@ For each conflict found in Phase 3, do a targeted full-section read of the
 conflicting GDD to get precise context:
 
 ```
-Read path="design/gdd/[conflicting_gdd].md"
+Read path="planning/design/gdd/[conflicting_gdd].md"
 ```
 (Or use Grep with wider context if the file is large)
 
@@ -225,7 +225,7 @@ Verdict: PASS | CONFLICTS FOUND
 ## Phase 6: Registry Corrections
 
 If stale registry entries were found, ask:
-> "May I update `design/registry/entities.yaml` to fix the [N] stale entries?"
+> "May I update `planning/design/registry/entities.yaml` to fix the [N] stale entries?"
 
 For each stale entry:
 - Update the `value` / attribute field
@@ -234,7 +234,7 @@ For each stale entry:
 
 If new entries were found in GDDs that are not in the registry, ask:
 > "Found [N] entities/items mentioned in GDDs that aren't in the registry yet.
-> May I add them to `design/registry/entities.yaml`?"
+> May I add them to `planning/design/registry/entities.yaml`?"
 
 Only add entries that appear in more than one GDD (true cross-system facts).
 
@@ -247,7 +247,7 @@ If conflicts remain unresolved: Verdict: **BLOCKED** — [N] conflicts need manu
 ### 6b: Append to Reflexion Log
 
 If any 🔴 CONFLICT entries were found (regardless of whether they were resolved),
-append an entry to `docs/consistency-failures.md` for each conflict:
+append an entry to `planning/docs/consistency-failures.md` for each conflict:
 
 ```markdown
 ### [YYYY-MM-DD] — /consistency-check — 🔴 CONFLICT
@@ -259,7 +259,7 @@ append an entry to `docs/consistency-failures.md` for each conflict:
 referenced in economy GDD before authoring — always check entities.yaml first"]
 ```
 
-Only append if `docs/consistency-failures.md` exists. If the file is missing,
+Only append if `planning/docs/consistency-failures.md` exists. If the file is missing,
 skip this step silently — do not create the file from this skill.
 
 ---

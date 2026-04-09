@@ -34,7 +34,7 @@ None. `/sprint-status` is a read-only reporting skill; no gates are invoked.
 ### Case 1: Happy Path — Mixed sprint, AT RISK with named blocker
 
 **Fixture:**
-- `production/sprints/sprint-004.md` exists (active sprint, linked in `active.md`)
+- `planning/production/sprints/sprint-004.md` exists (active sprint, linked in `active.md`)
 - Sprint contains 6 stories:
   - 3 with `Status: Complete`
   - 2 with `Status: In Progress`
@@ -44,8 +44,8 @@ None. `/sprint-status` is a read-only reporting skill; no gates are invoked.
 **Input:** `/sprint-status`
 
 **Expected behavior:**
-1. Skill reads `production/session-state/active.md` to find active sprint reference
-2. Skill reads `production/sprints/sprint-004.md`
+1. Skill reads `planning/production/session-state/active.md` to find active sprint reference
+2. Skill reads `planning/production/sprints/sprint-004.md`
 3. Skill counts stories by status: 3 Complete, 2 In Progress, 1 Blocked
 4. Skill detects a Blocked story and the approaching deadline
 5. Skill outputs AT RISK verdict with the blocker named explicitly
@@ -61,7 +61,7 @@ None. `/sprint-status` is a read-only reporting skill; no gates are invoked.
 ### Case 2: All Stories Complete — Sprint COMPLETE verdict
 
 **Fixture:**
-- `production/sprints/sprint-004.md` exists
+- `planning/production/sprints/sprint-004.md` exists
 - All 5 stories have `Status: Complete`
 
 **Input:** `/sprint-status`
@@ -82,14 +82,14 @@ None. `/sprint-status` is a read-only reporting skill; no gates are invoked.
 ### Case 3: No Active Sprint File — Guidance to run /sprint-plan
 
 **Fixture:**
-- `production/session-state/active.md` does not reference an active sprint
-- `production/sprints/` directory is empty or absent
+- `planning/production/session-state/active.md` does not reference an active sprint
+- `planning/production/sprints/` directory is empty or absent
 
 **Input:** `/sprint-status`
 
 **Expected behavior:**
 1. Skill reads `active.md` — finds no active sprint reference
-2. Skill checks `production/sprints/` — finds no files
+2. Skill checks `planning/production/sprints/` — finds no files
 3. Skill outputs an informational message: no active sprint detected
 4. Skill suggests running `/sprint-plan` to create one
 
@@ -104,7 +104,7 @@ None. `/sprint-status` is a read-only reporting skill; no gates are invoked.
 ### Case 4: Edge Case — Stale In Progress Story (flagged)
 
 **Fixture:**
-- `production/sprints/sprint-004.md` exists
+- `planning/production/sprints/sprint-004.md` exists
 - One story has `Status: In Progress` with a note in `active.md`:
   `Last updated: 2026-03-30` (more than 2 days before today's session date)
 - No stories are Blocked
@@ -128,8 +128,8 @@ None. `/sprint-status` is a read-only reporting skill; no gates are invoked.
 ### Case 5: Gate Compliance — Read-only; no gate invocation
 
 **Fixture:**
-- `production/sprints/sprint-004.md` exists with 4 stories (2 Complete, 2 In Progress)
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/sprints/sprint-004.md` exists with 4 stories (2 Complete, 2 In Progress)
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Input:** `/sprint-status`
 

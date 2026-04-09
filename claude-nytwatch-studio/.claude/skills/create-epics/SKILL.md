@@ -17,7 +17,7 @@ does not prescribe implementation steps — that is the job of stories.
 Do not create Feature layer epics until Core is nearly complete — the design
 will have changed.
 
-**Output:** `production/epics/[epic-slug]/EPIC.md` + `production/epics/index.md`
+**Output:** `planning/production/epics/[epic-slug]/EPIC.md` + `planning/production/epics/index.md`
 
 **Next step after each epic:** `/create-stories [epic-slug]`
 
@@ -29,7 +29,7 @@ will have changed.
 
 Resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
@@ -52,7 +52,7 @@ See `.claude/docs/director-gates.md` for the full check pattern.
 Grep all GDDs for their `## Summary` sections before reading anything fully:
 
 ```
-Grep pattern="## Summary" glob="design/gdd/*.md" output_mode="content" -A 5
+Grep pattern="## Summary" glob="planning/design/gdd/*.md" output_mode="content" -A 5
 ```
 
 For `layer:` or `[system-name]` modes: filter to only in-scope GDDs based on
@@ -64,13 +64,13 @@ Using the Step 2a grep results, identify which systems are in scope. Read full d
 
 Read for in-scope systems:
 
-- `design/gdd/systems-index.md` — authoritative system list, layers, priority
+- `planning/design/gdd/systems-index.md` — authoritative system list, layers, priority
 - In-scope GDDs only (Approved or Designed status, filtered by Step 2a results)
-- `docs/architecture/architecture.md` — module ownership and API boundaries
+- `planning/docs/architecture/architecture.md` — module ownership and API boundaries
 - Accepted ADRs **whose domains cover in-scope systems only** — read the "GDD Requirements Addressed", "Decision", and "Engine Compatibility" sections; skip ADRs for unrelated domains
-- `docs/architecture/control-manifest.md` — manifest version date from header
-- `docs/architecture/tr-registry.yaml` — for tracing requirements to ADR coverage
-- `docs/engine-reference/[engine]/VERSION.md` — engine name, version, risk levels
+- `planning/docs/architecture/control-manifest.md` — manifest version date from header
+- `planning/docs/architecture/tr-registry.yaml` — for tracing requirements to ADR coverage
+- `planning/docs/engine-reference/[engine]/VERSION.md` — engine name, version, risk levels
 
 Report: "Loaded [N] GDDs, [M] ADRs, engine: [name + version]."
 
@@ -102,7 +102,7 @@ Present to user before writing anything:
 ## Epic: [System Name]
 
 **Layer**: [Foundation / Core / Feature / Presentation]
-**GDD**: design/gdd/[filename].md
+**GDD**: planning/design/gdd/[filename].md
 **Architecture Module**: [module name from architecture.md]
 **Governing ADRs**: [ADR-NNNN, ADR-MMMM]
 **Engine Risk**: [LOW / MEDIUM / HIGH — highest risk among governing ADRs]
@@ -137,17 +137,17 @@ Present the producer's assessment. If UNREALISTIC, offer to revise epic boundari
 
 ## 5. Write Epic Files
 
-After approval, ask: "May I write the epic file to `production/epics/[epic-slug]/EPIC.md`?"
+After approval, ask: "May I write the epic file to `planning/production/epics/[epic-slug]/EPIC.md`?"
 
 After user confirms, write:
 
-### `production/epics/[epic-slug]/EPIC.md`
+### `planning/production/epics/[epic-slug]/EPIC.md`
 
 ```markdown
 # Epic: [System Name]
 
 > **Layer**: [Foundation / Core / Feature / Presentation]
-> **GDD**: design/gdd/[filename].md
+> **GDD**: planning/design/gdd/[filename].md
 > **Architecture Module**: [module name]
 > **Status**: Ready
 > **Stories**: Not yet created — run `/create-stories [epic-slug]`
@@ -174,16 +174,16 @@ and the architecture module's stated responsibilities]
 
 This epic is complete when:
 - All stories are implemented, reviewed, and closed via `/story-done`
-- All acceptance criteria from `design/gdd/[filename].md` are verified
+- All acceptance criteria from `planning/design/gdd/[filename].md` are verified
 - All Logic and Integration stories have passing test files in `tests/`
-- All Visual/Feel and UI stories have evidence docs with sign-off in `production/qa/evidence/`
+- All Visual/Feel and UI stories have evidence docs with sign-off in `planning/production/qa/evidence/`
 
 ## Next Step
 
 Run `/create-stories [epic-slug]` to break this epic into implementable stories.
 ```
 
-### Update `production/epics/index.md`
+### Update `planning/production/epics/index.md`
 
 Create or update the master index:
 

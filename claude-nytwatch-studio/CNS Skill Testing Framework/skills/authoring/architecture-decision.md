@@ -5,14 +5,14 @@
 `/architecture-decision` guides the user through section-by-section authoring of
 a new Architecture Decision Record (ADR). Required sections are: Status, Context,
 Decision, Consequences, Alternatives, and Related ADRs. The skill also stamps the
-engine version reference from `docs/engine-reference/` into the ADR for traceability.
+engine version reference from `planning/docs/engine-reference/` into the ADR for traceability.
 
 In `full` review mode, TD-ADR (technical-director) and LP-FEASIBILITY
 (lead-programmer) gate agents spawn after the draft is complete. If both gates
 return APPROVED, the ADR status is set to Accepted. In `lean` or `solo` mode,
 both gates are skipped and the ADR is written with Status: Proposed. The skill
 asks "May I write" per section during authoring. ADRs are written to
-`docs/architecture/adr-NNN-[name].md`.
+`planning/docs/architecture/adr-NNN-[name].md`.
 
 ---
 
@@ -27,7 +27,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - [ ] Has a next-step handoff at the end
 - [ ] Documents gate behavior: TD-ADR + LP-FEASIBILITY in full mode; skipped in lean/solo
 - [ ] Documents that ADR status is Accepted (full, gates approve) or Proposed (otherwise)
-- [ ] Mentions engine version stamp from `docs/engine-reference/`
+- [ ] Mentions engine version stamp from `planning/docs/engine-reference/`
 
 ---
 
@@ -49,21 +49,21 @@ In `solo` mode: both gates are skipped. ADR is written with Status: Proposed.
 ### Case 1: Happy Path — New ADR for rendering approach, full mode, gates approve
 
 **Fixture:**
-- `docs/architecture/` exists with no existing ADR for rendering
-- `docs/engine-reference/[engine]/VERSION.md` exists
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/docs/architecture/` exists with no existing ADR for rendering
+- `planning/docs/engine-reference/[engine]/VERSION.md` exists
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Input:** `/architecture-decision rendering-approach`
 
 **Expected behavior:**
 1. Skill guides user through each required section (Status, Context, Decision, Consequences, Alternatives, Related ADRs)
-2. Engine version is stamped into the ADR from `docs/engine-reference/`
+2. Engine version is stamped into the ADR from `planning/docs/engine-reference/`
 3. For each section: draft shown, "May I write this section?" asked, approved
 4. After all sections: TD-ADR and LP-FEASIBILITY gates spawn in parallel
 5. Both gates return APPROVED
 6. ADR Status is set to Accepted
-7. Skill writes `docs/architecture/adr-NNN-rendering-approach.md`
-8. `docs/architecture/tr-registry.yaml` updated if new TR-IDs are defined
+7. Skill writes `planning/docs/architecture/adr-NNN-rendering-approach.md`
+8. `planning/docs/architecture/tr-registry.yaml` updated if new TR-IDs are defined
 
 **Assertions:**
 - [ ] All 6 required sections are authored and written
@@ -71,7 +71,7 @@ In `solo` mode: both gates are skipped. ADR is written with Status: Proposed.
 - [ ] TD-ADR and LP-FEASIBILITY spawn in parallel (not sequentially)
 - [ ] ADR Status is Accepted when both gates return APPROVED in full mode
 - [ ] "May I write" is asked per section during authoring
-- [ ] File is written to `docs/architecture/adr-NNN-[name].md`
+- [ ] File is written to `planning/docs/architecture/adr-NNN-[name].md`
 
 ---
 
@@ -79,7 +79,7 @@ In `solo` mode: both gates are skipped. ADR is written with Status: Proposed.
 
 **Fixture:**
 - ADR draft is complete (all sections filled)
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - TD-ADR gate returns CONCERNS: "The decision does not address [specific concern]"
 
 **Input:** `/architecture-decision [topic]`
@@ -102,7 +102,7 @@ In `solo` mode: both gates are skipped. ADR is written with Status: Proposed.
 ### Case 3: Lean Mode — Both gates skipped; ADR written as Proposed
 
 **Fixture:**
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 - ADR draft is authored for a new technical decision
 
 **Input:** `/architecture-decision [topic]`
@@ -125,7 +125,7 @@ In `solo` mode: both gates are skipped. ADR is written with Status: Proposed.
 ### Case 4: Edge Case — ADR already exists for this topic
 
 **Fixture:**
-- `docs/architecture/` contains an existing ADR covering the same topic
+- `planning/docs/architecture/` contains an existing ADR covering the same topic
 - The existing ADR has Status: Accepted
 
 **Input:** `/architecture-decision [same-topic]`
@@ -178,7 +178,7 @@ In `solo` mode: both gates are skipped. ADR is written with Status: Proposed.
 ## Protocol Compliance
 
 - [ ] All 6 required sections authored before gate review
-- [ ] Engine version stamped in ADR from `docs/engine-reference/`
+- [ ] Engine version stamped in ADR from `planning/docs/engine-reference/`
 - [ ] "May I write" asked per section during authoring
 - [ ] TD-ADR and LP-FEASIBILITY spawn in parallel in full mode
 - [ ] Skipped gates noted by name and mode in lean/solo output

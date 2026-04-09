@@ -14,7 +14,7 @@ to ignore red CI runs, masking genuine failures. This skill identifies them,
 explains likely causes, and recommends whether to quarantine or fix each one.
 
 **Output:** Updated `tests/regression-suite.md` quarantine section + optional
-`production/qa/flakiness-report-[date].md`
+`planning/production/qa/flakiness-report-[date].md`
 
 **When to run:**
 - Polish phase (tests have had many runs; statistical signal is reliable)
@@ -181,7 +181,7 @@ If yes: use `Edit` to append entries to the Quarantined Tests table.
 Never remove existing quarantine entries — only add new ones.
 
 Ask (separately): "May I write a full flakiness report to
-`production/qa/flakiness-report-[date].md`?"
+`planning/production/qa/flakiness-report-[date].md`?"
 
 The full report includes per-test analysis with cause details and
 engine-specific fix snippets.

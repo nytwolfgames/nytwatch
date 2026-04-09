@@ -71,7 +71,7 @@ Verified by reading the agent's `.claude/agents/producer.md` frontmatter:
 
 - [ ] Returns verdicts using REALISTIC / CONCERNS / UNREALISTIC vocabulary only
 - [ ] Stays within declared production domain
-- [ ] Escalates design/technical conflicts by quantifying scope impact and presenting to user
+- [ ] Escalates planning/design/technical conflicts by quantifying scope impact and presenting to user
 - [ ] Uses gate IDs in output (e.g., `PR-SPRINT: REALISTIC`) not inline prose verdicts
 - [ ] Does not make binding game design or technical architecture decisions
 

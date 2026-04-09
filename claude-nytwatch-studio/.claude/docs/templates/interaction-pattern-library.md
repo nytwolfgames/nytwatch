@@ -7,9 +7,9 @@
 > **Engine**: [Godot 4.6 / Unity 6 / Unreal Engine 5]
 > **UI Framework**: [Godot Control nodes / Unity UI Toolkit / Unreal UMG]
 > **Related Documents**:
-> - `docs/art-bible.md` — visual standards (colors, typography, iconography)
-> - `docs/accessibility-requirements.md` — accessibility commitments per feature
-> - `docs/ux/ux-spec-[screen].md` — individual screen specs that reference patterns
+> - `planning/docs/art-bible.md` — visual standards (colors, typography, iconography)
+> - `planning/docs/accessibility-requirements.md` — accessibility commitments per feature
+> - `planning/docs/ux/ux-spec-[screen].md` — individual screen specs that reference patterns
 
 > **Why this document exists**: Every UI screen spec should be able to say
 > "uses Button (Primary) pattern" rather than re-specifying hover states,
@@ -1029,7 +1029,7 @@ Store the "return focus" element reference before pushing so it can be restored 
 
 > Every interactive event should have audio feedback. Sound is a primary feedback
 > channel, not a decoration. The sounds defined here are event categories — the
-> specific audio assets are defined in `docs/sound-bible.md`. This table maps
+> specific audio assets are defined in `planning/docs/sound-bible.md`. This table maps
 > interaction events to sound categories so the sound designer and UI programmer
 > use the same vocabulary.
 

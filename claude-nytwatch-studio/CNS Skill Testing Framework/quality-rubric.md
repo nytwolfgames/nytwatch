@@ -20,11 +20,11 @@ auto-advancing stage and must respect the three review modes.
 
 | Metric | PASS criteria |
 |---|---|
-| **G1 — Review mode read** | Skill reads `production/session-state/review-mode.txt` (or equivalent) before deciding which directors to spawn |
+| **G1 — Review mode read** | Skill reads `planning/production/session-state/review-mode.txt` (or equivalent) before deciding which directors to spawn |
 | **G2 — Full mode: all 4 directors spawn** | In `full` mode, all 4 Tier-1 directors (CD, TD, PR, AD) PHASE-GATE prompts are invoked in parallel |
 | **G3 — Lean mode: PHASE-GATE only** | In `lean` mode, only `*-PHASE-GATE` gates run; inline gates (CD-PILLARS, TD-ARCHITECTURE, etc.) are skipped |
 | **G4 — Solo mode: no directors** | In `solo` mode, no director gates spawn; each is noted as "skipped — Solo mode" |
-| **G5 — No auto-advance** | Skill never writes `production/stage.txt` without explicit user confirmation via "May I write" |
+| **G5 — No auto-advance** | Skill never writes `planning/production/stage.txt` without explicit user confirmation via "May I write" |
 
 ---
 
@@ -149,7 +149,7 @@ They have a PR-SPRINT or PR-MILESTONE gate at specific mode thresholds.
 
 | Metric | PASS criteria |
 |---|---|
-| **SP1 — Reads sprint/milestone state** | Skill reads `production/sprints/` or `production/milestones/` before producing output |
+| **SP1 — Reads sprint/milestone state** | Skill reads `planning/production/sprints/` or `planning/production/milestones/` before producing output |
 | **SP2 — Correct sprint gate** | PR-SPRINT (for planning) or PR-MILESTONE (for milestone review) gate runs in `full` mode, skips in `lean`/`solo` |
 | **SP3 — Structured output** | Output uses a consistent structure (velocity table, risk list, action items) rather than free prose |
 | **SP4 — No auto-commit** | Skill never writes sprint files or milestone records without "May I write" |
@@ -223,7 +223,7 @@ ue-replication-specialist
 
 | Metric | PASS criteria |
 |---|---|
-| **E1 — Version-aware** | References engine version from `docs/engine-reference/` before suggesting API calls; flags post-cutoff risk |
+| **E1 — Version-aware** | References engine version from `planning/docs/engine-reference/` before suggesting API calls; flags post-cutoff risk |
 | **E2 — File routing** | Routes file types to the correct sub-specialist (e.g., `.gdshader` → godot-shader-specialist, not godot-gdscript-specialist) |
 | **E3 — Engine-specific patterns** | Enforces engine-specific idioms (e.g., GDScript static typing, C# attribute exports, Blueprint function libraries) |
 

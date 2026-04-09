@@ -18,22 +18,22 @@ It works in three acts:
 
 **Output:**
 - Sprint markdown file updated with `**Status**: Closed` and `**Closed**: [date]`
-- `production/retrospectives/retro-sprint-[N]-[date].md`
+- `planning/production/retrospectives/retro-sprint-[N]-[date].md`
 
 ---
 
 ## Phase 0: Parse Arguments
 
 **Sprint number:** `$ARGUMENTS[0]`
-- If provided (e.g., `/sprint-close 3`), find `production/sprints/sprint-03.md` or `sprint-3.md`
-- If blank, use the most recently modified file in `production/sprints/`
+- If provided (e.g., `/sprint-close 3`), find `planning/production/sprints/sprint-03.md` or `sprint-3.md`
+- If blank, use the most recently modified file in `planning/production/sprints/`
 
 **Review mode** (resolve once, use for all gate spawns):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
-If no sprint files exist in `production/sprints/`, output:
+If no sprint files exist in `planning/production/sprints/`, output:
 > "No sprint files found. Start a sprint with `/sprint-plan new`."
 Then stop.
 
@@ -125,7 +125,7 @@ options:
 
 For `full` mode, check whether a passing smoke check report already exists for this sprint:
 
-Use `Glob` to look for `production/qa/smoke-*.md`. Read the most recent one and check if:
+Use `Glob` to look for `planning/production/qa/smoke-*.md`. Read the most recent one and check if:
 - Its sprint number matches the current sprint
 - Its verdict is `PASS` or `PASS WITH WARNINGS`
 
@@ -159,7 +159,7 @@ options:
 
 For `full` mode, check whether a QA sign-off report exists for this sprint:
 
-Use `Glob` to look for `production/qa/` and find a file referencing this sprint (e.g., `qa-report-sprint-[N]-*.md` or any QA report with the sprint number). Read its verdict line.
+Use `Glob` to look for `planning/production/qa/` and find a file referencing this sprint (e.g., `qa-report-sprint-[N]-*.md` or any QA report with the sprint number). Read its verdict line.
 
 If a report with verdict `APPROVED` or `APPROVED WITH CONDITIONS` is found:
 > "QA sign-off on file for Sprint [N]: `[path]` — verdict [APPROVED / APPROVED WITH CONDITIONS]."
@@ -197,7 +197,7 @@ Count tasks by completion status and priority:
 
 Calculate **estimated days** vs **actual days elapsed** (from sprint dates).
 
-Check previous sprint retrospectives (if any) in `production/retrospectives/` to detect
+Check previous sprint retrospectives (if any) in `planning/production/retrospectives/` to detect
 velocity trends: improving, stable, or declining.
 
 ### Carryover Decision
@@ -285,7 +285,7 @@ If no `**Status**:` line exists, insert after the first line of the sprint goal 
 
 ### 7b. Write the Retrospective File
 
-Write to `production/retrospectives/retro-sprint-[N]-[YYYY-MM-DD].md`:
+Write to `planning/production/retrospectives/retro-sprint-[N]-[YYYY-MM-DD].md`:
 
 ```markdown
 # Sprint [N] Retrospective — [Date]

@@ -5,7 +5,7 @@
 `/changelog` is a Haiku-tier skill that auto-generates a developer-facing
 changelog by reading git commit history and closed sprint stories since the
 last release tag. It organizes entries into features, fixes, and known issues.
-No director gates are used. The skill asks "May I write to `docs/CHANGELOG.md`?"
+No director gates are used. The skill asks "May I write to `planning/docs/CHANGELOG.md`?"
 before persisting. Verdict is always COMPLETE.
 
 ---
@@ -36,7 +36,7 @@ None. Changelog generation is a fast compilation task; no gates are invoked.
 - Git history has a tag `v0.3.0` three sprints ago
 - Since that tag: 12 commits across sprints 006, 007, 008
 - Sprint story files reference task IDs matching commit messages
-- `docs/CHANGELOG.md` does not yet exist
+- `planning/docs/CHANGELOG.md` does not yet exist
 
 **Input:** `/changelog`
 
@@ -45,7 +45,7 @@ None. Changelog generation is a fast compilation task; no gates are invoked.
 2. Skill reads sprint stories to cross-reference task IDs
 3. Skill compiles entries into Features, Fixes, and Known Issues sections
 4. Skill presents draft to user
-5. Skill asks "May I write to `docs/CHANGELOG.md`?"
+5. Skill asks "May I write to `planning/docs/CHANGELOG.md`?"
 6. User approves; file written; verdict COMPLETE
 
 **Assertions:**
@@ -107,16 +107,16 @@ None. Changelog generation is a fast compilation task; no gates are invoked.
 ### Case 4: Existing CHANGELOG.md — New section prepended, old entries preserved
 
 **Fixture:**
-- `docs/CHANGELOG.md` already exists with sections for `v0.2.0` and `v0.3.0`
+- `planning/docs/CHANGELOG.md` already exists with sections for `v0.2.0` and `v0.3.0`
 - New commits exist since `v0.3.0` tag
 
 **Input:** `/changelog`
 
 **Expected behavior:**
-1. Skill detects that `docs/CHANGELOG.md` already exists
+1. Skill detects that `planning/docs/CHANGELOG.md` already exists
 2. Skill compiles new entries for the period since `v0.3.0`
 3. Skill presents draft with new section prepended above existing content
-4. Skill asks "May I write to `docs/CHANGELOG.md`?" (confirming prepend strategy)
+4. Skill asks "May I write to `planning/docs/CHANGELOG.md`?" (confirming prepend strategy)
 5. User approves; new content is prepended, old entries intact; verdict COMPLETE
 
 **Assertions:**

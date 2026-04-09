@@ -6,7 +6,7 @@
 development phase. It checks for required artifacts, runs quality checks, asks
 the user about unverifiable items, and produces a PASS/CONCERNS/FAIL verdict.
 On PASS with user confirmation, it writes the new stage name to
-`production/stage.txt`. It governs all 6 phase transitions and is the most
+`planning/production/stage.txt`. It governs all 6 phase transitions and is the most
 critical gate-keeping skill in the pipeline.
 
 ---
@@ -28,42 +28,42 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 1: Happy Path — All Concept artifacts present, advancing to Systems Design
 
 **Fixture:**
-- `design/gdd/game-concept.md` exists, has content including all required sections
-- `design/gdd/game-pillars.md` exists (or pillars defined within concept doc)
+- `planning/design/gdd/game-concept.md` exists, has content including all required sections
+- `planning/design/gdd/game-pillars.md` exists (or pillars defined within concept doc)
 - No systems index yet (which is correct for this stage)
 
 **Input:** `/gate-check systems-design`
 
 **Expected behavior:**
-1. Skill reads `design/gdd/game-concept.md` and verifies it has content
+1. Skill reads `planning/design/gdd/game-concept.md` and verifies it has content
 2. Skill checks for game pillars (in concept or separate file)
 3. Skill checks quality items (core loop described, target audience identified)
 4. Skill outputs structured checklist with all items marked
 5. Skill presents PASS/CONCERNS/FAIL verdict
-6. If PASS: skill asks "May I update `production/stage.txt` to 'Systems Design'?"
+6. If PASS: skill asks "May I update `planning/production/stage.txt` to 'Systems Design'?"
 
 **Assertions:**
-- [ ] Skill uses Glob or Read to verify `design/gdd/game-concept.md` exists before marking it checked
+- [ ] Skill uses Glob or Read to verify `planning/design/gdd/game-concept.md` exists before marking it checked
 - [ ] Output includes a "Required Artifacts" section with check status per item
 - [ ] Output includes a "Quality Checks" section with check status per item
 - [ ] Output includes a "Verdict" line with one of PASS / CONCERNS / FAIL
 - [ ] Skill asks about unverifiable quality items (e.g., "Has this been reviewed?") rather than assuming PASS
-- [ ] Skill asks "May I write" before updating `production/stage.txt`
-- [ ] Skill does NOT write `production/stage.txt` without explicit user confirmation
+- [ ] Skill asks "May I write" before updating `planning/production/stage.txt`
+- [ ] Skill does NOT write `planning/production/stage.txt` without explicit user confirmation
 
 ---
 
 ### Case 2: Failure Path — Missing required artifacts for Concept → Systems Design
 
 **Fixture:**
-- `design/gdd/game-concept.md` does NOT exist
+- `planning/design/gdd/game-concept.md` does NOT exist
 - No game pillars document exists
-- `design/gdd/` directory is empty or absent
+- `planning/design/gdd/` directory is empty or absent
 
 **Input:** `/gate-check systems-design`
 
 **Expected behavior:**
-1. Skill attempts to read `design/gdd/game-concept.md` — file not found
+1. Skill attempts to read `planning/design/gdd/game-concept.md` — file not found
 2. Skill marks required artifact as missing (not present)
 3. Skill outputs FAIL verdict
 4. Skill lists blocker: "No game concept document found"
@@ -71,30 +71,30 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Assertions:**
 - [ ] Verdict is FAIL (not PASS or CONCERNS) when required artifacts are missing
-- [ ] Output explicitly names `design/gdd/game-concept.md` as missing
+- [ ] Output explicitly names `planning/design/gdd/game-concept.md` as missing
 - [ ] Output includes a "Blockers" section with at least 1 item
 - [ ] Output recommends `/brainstorm` as the remediation action
-- [ ] Skill does NOT write `production/stage.txt` when verdict is FAIL
+- [ ] Skill does NOT write `planning/production/stage.txt` when verdict is FAIL
 
 ---
 
 ### Case 3: No Argument — Auto-detect current stage
 
 **Fixture:**
-- `production/stage.txt` contains `Concept`
-- `design/gdd/game-concept.md` exists with content
+- `planning/production/stage.txt` contains `Concept`
+- `planning/design/gdd/game-concept.md` exists with content
 - No systems index yet
 
 **Input:** `/gate-check` (no argument)
 
 **Expected behavior:**
-1. Skill reads `production/stage.txt` to determine current stage
+1. Skill reads `planning/production/stage.txt` to determine current stage
 2. Skill determines the next gate is Concept → Systems Design
 3. Skill proceeds with the Systems Design gate checks
 4. Output clearly states which transition is being validated
 
 **Assertions:**
-- [ ] Skill reads `production/stage.txt` (or uses project-stage-detect heuristics) to determine current stage
+- [ ] Skill reads `planning/production/stage.txt` (or uses project-stage-detect heuristics) to determine current stage
 - [ ] Output header names both current and target phases (e.g., "Gate Check: Concept → Systems Design")
 - [ ] Skill does not ask the user which gate to check if current stage is determinable
 
@@ -127,9 +127,9 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 5: Director Gate — lean vs full vs solo mode
 
 **Fixture:**
-- `production/session-state/review-mode.txt` exists (or equivalent state file)
+- `planning/production/session-state/review-mode.txt` exists (or equivalent state file)
 - All required artifacts for the target gate are present
-- `design/gdd/game-concept.md` exists
+- `planning/design/gdd/game-concept.md` exists
 
 **Case 5a — full mode:**
 - `review-mode.txt` contains `full`
@@ -180,11 +180,11 @@ treat this confirmation as a failure.
 
 ## Protocol Compliance
 
-- [ ] Uses "May I write" before updating `production/stage.txt`
+- [ ] Uses "May I write" before updating `planning/production/stage.txt`
 - [ ] Presents the full checklist report before asking for write approval
 - [ ] Ends with a "Follow-Up Actions" section listing next steps per verdict
 - [ ] Never advances the stage without explicit user confirmation
-- [ ] Never auto-creates `production/stage.txt` if it doesn't exist without asking
+- [ ] Never auto-creates `planning/production/stage.txt` if it doesn't exist without asking
 
 ---
 

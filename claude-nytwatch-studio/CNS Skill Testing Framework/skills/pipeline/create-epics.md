@@ -10,7 +10,7 @@ Definition of Done. The skill asks "May I write" before creating each EPIC file.
 
 In `full` review mode, a PR-EPIC gate (producer) runs after drafting epics and
 before writing any files. In `lean` or `solo` mode, PR-EPIC is skipped and noted.
-Epics are written to `production/epics/[layer]/EPIC-[name].md`.
+Epics are written to `planning/production/epics/[layer]/EPIC-[name].md`.
 
 ---
 
@@ -44,11 +44,11 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 ### Case 1: Happy Path — Two approved GDDs create two EPIC files
 
 **Fixture:**
-- `design/gdd/systems-index.md` exists with 2 systems listed
-- Both systems have approved GDDs in `design/gdd/`
-- `docs/architecture/architecture.md` exists with matching modules
+- `planning/design/gdd/systems-index.md` exists with 2 systems listed
+- Both systems have approved GDDs in `planning/design/gdd/`
+- `planning/docs/architecture/architecture.md` exists with matching modules
 - At least one Accepted ADR exists for each system
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Input:** `/create-epics`
 
@@ -56,16 +56,16 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 1. Skill reads systems index and both GDDs
 2. Drafts 2 EPIC definitions (layer, GDD path, ADRs, requirements, engine risk)
 3. PR-EPIC gate is skipped (lean mode) — noted in output
-4. For each epic: asks "May I write `production/epics/[layer]/EPIC-[name].md`?"
+4. For each epic: asks "May I write `planning/production/epics/[layer]/EPIC-[name].md`?"
 5. After approval: writes both EPIC files
-6. Creates or updates `production/epics/index.md`
+6. Creates or updates `planning/production/epics/index.md`
 
 **Assertions:**
 - [ ] Epic summary is shown before any write ask
 - [ ] "May I write" is asked per-epic (not once for all epics together)
 - [ ] Each EPIC.md contains: layer, GDD path, governing ADRs, requirements table, Definition of Done
 - [ ] PR-EPIC skip is noted in output
-- [ ] `production/epics/index.md` is updated after writing
+- [ ] `planning/production/epics/index.md` is updated after writing
 - [ ] Skill does NOT write EPIC files without per-epic approval
 
 ---
@@ -73,8 +73,8 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 ### Case 2: Failure Path — No approved GDDs found
 
 **Fixture:**
-- `design/gdd/systems-index.md` exists
-- No GDDs in `design/gdd/` have approved status (all are Draft or In Progress)
+- `planning/design/gdd/systems-index.md` exists
+- No GDDs in `planning/design/gdd/` have approved status (all are Draft or In Progress)
 
 **Input:** `/create-epics`
 
@@ -97,7 +97,7 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 
 **Fixture:**
 - 2 approved GDDs exist
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Full mode expected behavior:**
 1. Skill drafts both epics
@@ -112,7 +112,7 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 
 **Fixture (lean mode):**
 - Same GDDs
-- `production/session-state/review-mode.txt` contains `lean`
+- `planning/production/session-state/review-mode.txt` contains `lean`
 
 **Lean mode expected behavior:**
 1. Epics are drafted
@@ -128,7 +128,7 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 ### Case 4: Edge Case — Epic already exists for a GDD
 
 **Fixture:**
-- `production/epics/[layer]/EPIC-[name].md` already exists for one of the approved GDDs
+- `planning/production/epics/[layer]/EPIC-[name].md` already exists for one of the approved GDDs
 - The other GDD has no existing EPIC file
 
 **Input:** `/create-epics`
@@ -149,7 +149,7 @@ In `solo` mode: PR-EPIC is skipped. Output notes: "PR-EPIC skipped — solo mode
 
 **Fixture:**
 - 2 approved GDDs exist
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/session-state/review-mode.txt` contains `full`
 - PR-EPIC gate returns CONCERNS (e.g., scope of one epic is too large)
 
 **Input:** `/create-epics`

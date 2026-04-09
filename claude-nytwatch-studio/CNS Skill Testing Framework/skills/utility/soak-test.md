@@ -9,7 +9,7 @@ specifying the test duration, system under test, monitoring checkpoints (e.g.,
 memory sample every 30 minutes), pass/fail thresholds, and conditions for early
 termination.
 
-The skill asks "May I write to `production/qa/soak-[slug]-[date].md`?" before
+The skill asks "May I write to `planning/production/qa/soak-[slug]-[date].md`?" before
 persisting. If a previous soak test for the same system exists, the skill offers
 to extend the duration or add new conditions. No director gates apply. The verdict
 is COMPLETE when the soak test protocol is written.
@@ -50,7 +50,7 @@ None. `/soak-test` is a QA planning utility. No director gates apply.
    (memory usage, connection count, packet loss), pass thresholds, early termination
    conditions (crash or >20% memory growth)
 3. Networking-specific checks are included (session drop rate, reconnect handling)
-4. Skill asks "May I write to `production/qa/soak-online-lobby-2026-04-06.md`?"
+4. Skill asks "May I write to `planning/production/qa/soak-online-lobby-2026-04-06.md`?"
 5. File is written on approval; verdict is COMPLETE
 
 **Assertions:**
@@ -89,7 +89,7 @@ None. `/soak-test` is a QA planning utility. No director gates apply.
 ### Case 3: Previous Soak Test Exists — Offers to extend or add conditions
 
 **Fixture:**
-- `production/qa/soak-online-lobby-2026-03-15.md` exists with a 1-hour protocol
+- `planning/production/qa/soak-online-lobby-2026-03-15.md` exists with a 1-hour protocol
 - User wants to extend to 4 hours with new memory threshold conditions
 
 **Input:** `/soak-test online-lobby 4h`
@@ -100,7 +100,7 @@ None. `/soak-test` is a QA planning utility. No director gates apply.
 3. Skill presents options: create new protocol (4h standalone), or extend the
    existing protocol to 4h and add new conditions
 4. User selects extend; existing checkpoints are preserved, new ones added
-5. Skill asks "May I write to `production/qa/soak-online-lobby-2026-04-06.md`?"
+5. Skill asks "May I write to `planning/production/qa/soak-online-lobby-2026-04-06.md`?"
    (new file, not overwriting old one)
 
 **Assertions:**

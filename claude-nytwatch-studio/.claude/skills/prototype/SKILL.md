@@ -12,7 +12,7 @@ isolation: worktree
 
 Resolve the review mode (once, store for all gate spawns this run):
 1. If `--review [full|lean|solo]` was passed → use that
-2. Else read `production/review-mode.txt` → use that value
+2. Else read `planning/production/review-mode.txt` → use that value
 3. Else → default to `lean`
 
 See `.claude/docs/director-gates.md` for the full check pattern.
@@ -41,7 +41,7 @@ Present this plan to the user before building. Ask for confirmation if scope see
 
 ## Phase 4: Implement
 
-Ask: "May I create the prototype directory at `prototypes/[concept-name]/` and begin implementation?"
+Ask: "May I create the prototype directory at `planning/prototypes/[concept-name]/` and begin implementation?"
 
 If yes, create the directory. Every file must begin with:
 
@@ -108,7 +108,7 @@ Draft the report:
 [Discoveries that affect other systems or future work]
 ```
 
-Ask: "May I write this report to `prototypes/[concept-name]/REPORT.md`?"
+Ask: "May I write this report to `planning/prototypes/[concept-name]/REPORT.md`?"
 
 If yes, write the file.
 
@@ -123,7 +123,7 @@ If yes, write the file.
 
 Spawn `creative-director` via Task using gate **CD-PLAYTEST** (`.claude/docs/director-gates.md`).
 
-Pass: the full REPORT.md content, the original design question, game pillars and core fantasy from `design/gdd/game-concept.md` (if it exists).
+Pass: the full REPORT.md content, the original design question, game pillars and core fantasy from `planning/design/gdd/game-concept.md` (if it exists).
 
 The creative director evaluates the prototype result against the game's creative vision and pillars, then confirms, modifies, or overrides the prototyper's PROCEED / PIVOT / KILL recommendation. Their verdict is final. Update the REPORT.md `Recommendation` section if the creative director's verdict differs from the prototyper's.
 
@@ -131,7 +131,7 @@ The creative director evaluates the prototype result against the game's creative
 
 ## Phase 7: Summary and Next Steps
 
-Output a summary to the user: the core question, the result, the prototyper's initial recommendation, and the creative-director's final decision. Link to the full report at `prototypes/[concept-name]/REPORT.md`.
+Output a summary to the user: the core question, the result, the prototyper's initial recommendation, and the creative-director's final decision. Link to the full report at `planning/prototypes/[concept-name]/REPORT.md`.
 
 If **PROCEED**: run `/design-system` to begin the production GDD for this mechanic, or `/architecture-decision` to record key technical decisions before implementation.
 

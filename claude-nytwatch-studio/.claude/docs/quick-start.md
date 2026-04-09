@@ -110,7 +110,7 @@ Ask yourself: "What department would handle this in a real studio?"
 | `/tech-debt` | Scan, track, and prioritize tech debt |
 | `/gate-check` | Validate phase readiness (PASS/CONCERNS/FAIL) |
 | `/consistency-check` | Scan all GDDs for cross-document inconsistencies (conflicting stats, names, rules) |
-| `/reverse-document` | Generate design/architecture docs from existing code |
+| `/reverse-document` | Generate planning/design/architecture docs from existing code |
 | `/milestone-review` | Reviews milestone progress |
 | `/retrospective` | Runs sprint/milestone retrospective |
 | `/bug-report` | Structured bug report creation |
@@ -215,7 +215,7 @@ If you already know what you need, jump directly to the relevant path:
      performance budgets, and engine-specific defaults
    - If the engine version is newer than the LLM's training data, it fetches
      current docs from the web so agents suggest correct APIs
-3. **Validate the concept** — Run `/design-review design/gdd/game-concept.md`
+3. **Validate the concept** — Run `/design-review planning/design/gdd/game-concept.md`
 4. **Decompose into systems** — Run `/map-systems` to map all systems and dependencies
 5. **Design each system** — Run `/design-system [system-name]` (or `/map-systems next`)
    to write GDDs in dependency order
@@ -234,7 +234,7 @@ If you already have a game concept and engine choice:
 3. **Decompose into systems** — Run `/map-systems` to enumerate systems and dependencies
 4. **Design each system** — Run `/design-system [system-name]` for GDDs in dependency order
 5. **Create the initial ADR** — Run `/architecture-decision`
-6. **Create the first milestone** in `production/milestones/`
+6. **Create the first milestone** in `planning/production/milestones/`
 7. **Plan the first sprint** — Run `/sprint-plan new`
 8. Start building
 
@@ -270,7 +270,7 @@ CLAUDE.md                          -- Master config (read this first, ~60 lines)
   skills/                          -- 68 slash command definitions (YAML frontmatter)
   hooks/                           -- 12 hook scripts (.sh) wired by settings.json
   rules/                           -- 11 path-specific rule files
-  docs/
+  planning/docs/
     quick-start.md                 -- This file
     technical-preferences.md       -- Project-specific standards (populated by /setup-engine)
     coding-standards.md            -- Coding and design doc standards

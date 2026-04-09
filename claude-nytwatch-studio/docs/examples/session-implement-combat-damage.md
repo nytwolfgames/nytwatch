@@ -3,7 +3,7 @@
 **Context:** Solo indie dev, week 4 of project, implementing gameplay systems.
 
 **Starting State:**
-- `design/gdd/combat-system.md` exists and reviewed
+- `planning/design/gdd/combat-system.md` exists and reviewed
 - Godot 4.6 project set up with basic scene structure
 - No gameplay code written yet
 - Sprint goal: "Implement core combat damage calculation"
@@ -17,12 +17,12 @@
 ## Turn 1: User Requests Implementation
 
 **User:**
-> Implement the damage calculation system from design/gdd/combat-system.md. The formula is in section 4.
+> Implement the damage calculation system from planning/design/gdd/combat-system.md. The formula is in section 4.
 
 ## Turn 2: Agent Reads Design and Asks Clarifying Questions
 
 **Agent (gameplay-programmer):**
-> I've read `design/gdd/combat-system.md`. The damage formula is:
+> I've read `planning/design/gdd/combat-system.md`. The damage formula is:
 >
 > ```
 > final_damage = base_damage * (1 + attack_stat * 0.1) * crit_multiplier * type_effectiveness * (1 - target_defense)
@@ -67,7 +67,7 @@
 > src/gameplay/combat/health_component.gd      # HP tracking node component
 > src/gameplay/combat/weapon.gd                # Weapon resource
 > assets/data/combat_damage.json               # Type effectiveness values
-> design/gdd/health-system.md                  # Minimal health doc
+> planning/design/gdd/health-system.md                  # Minimal health doc
 > tests/combat/test_damage_calculator.gd       # Unit tests
 > ```
 >
@@ -178,7 +178,7 @@
 > - ✅ `src/gameplay/combat/weapon.gd` (12 lines)
 > - ✅ `src/gameplay/combat/character_stats.gd` (16 lines)
 > - ✅ `assets/data/combat_damage.json` (validated JSON)
-> - ✅ `design/gdd/health-system.md` (minimal 8-section doc)
+> - ✅ `planning/design/gdd/health-system.md` (minimal 8-section doc)
 >
 > **Rules Enforcement Results:**
 >
@@ -254,9 +254,9 @@
 > ```bash
 > git add src/gameplay/combat/*.gd
 > git add assets/data/combat_damage.json
-> git add design/gdd/health-system.md
+> git add planning/design/gdd/health-system.md
 > git add tests/combat/test_damage_calculator.gd
-> git commit -m "Implement damage calculation system per design/gdd/combat-system.md"
+> git commit -m "Implement damage calculation system per planning/design/gdd/combat-system.md"
 > ```
 >
 > The `validate-commit` hook will check:

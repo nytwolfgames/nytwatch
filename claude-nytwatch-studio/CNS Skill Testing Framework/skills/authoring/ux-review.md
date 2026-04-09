@@ -41,7 +41,7 @@ gates are invoked within this skill.
 ### Case 1: Happy Path — Complete UX spec with all required sections, APPROVED
 
 **Fixture:**
-- `design/ux/hud.md` exists with all required sections populated:
+- `planning/design/ux/hud.md` exists with all required sections populated:
   - User Flows: complete player flow diagrams
   - Interaction States: normal, hover, focus, disabled, error all defined
   - Wireframe Description: layout described
@@ -50,7 +50,7 @@ gates are invoked within this skill.
 **Input:** `/ux-review hud`
 
 **Expected behavior:**
-1. Skill reads `design/ux/hud.md`
+1. Skill reads `planning/design/ux/hud.md`
 2. Skill checks all 4 required sections — all present and non-empty
 3. Skill checks interaction states — all 5 states defined
 4. Skill checks accessibility notes — keyboard, contrast, and screen reader covered
@@ -68,7 +68,7 @@ gates are invoked within this skill.
 ### Case 2: Missing Accessibility Section — NEEDS REVISION
 
 **Fixture:**
-- `design/ux/hud.md` exists but the Accessibility Notes section is empty
+- `planning/design/ux/hud.md` exists but the Accessibility Notes section is empty
 - All other sections are fully populated
 
 **Input:** `/ux-review hud`
@@ -93,7 +93,7 @@ gates are invoked within this skill.
 ### Case 3: Interaction States Incomplete — NEEDS REVISION
 
 **Fixture:**
-- `design/ux/settings-menu.md` exists
+- `planning/design/ux/settings-menu.md` exists
 - Interaction States section only defines: normal and hover
 - Missing: focus, disabled, error states
 
@@ -116,13 +116,13 @@ gates are invoked within this skill.
 ### Case 4: File Not Found — Error with remediation
 
 **Fixture:**
-- `design/ux/inventory-screen.md` does not exist
+- `planning/design/ux/inventory-screen.md` does not exist
 
 **Input:** `/ux-review inventory-screen`
 
 **Expected behavior:**
-1. Skill attempts to read `design/ux/inventory-screen.md` — file not found
-2. Skill outputs: "UX spec not found: design/ux/inventory-screen.md"
+1. Skill attempts to read `planning/design/ux/inventory-screen.md` — file not found
+2. Skill outputs: "UX spec not found: planning/design/ux/inventory-screen.md"
 3. Skill suggests running `/ux-design inventory-screen` to create the spec first
 4. No review is performed; no verdict is issued
 

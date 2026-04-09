@@ -7,7 +7,7 @@ from existing changelog content, stripping internal task IDs and technical
 jargon in favor of plain language. It filters entries to only those relevant
 to players (visible features and bug fixes; internal refactors are excluded).
 No director gates are used. The skill asks "May I write to
-`docs/patch-notes-vX.X.md`?" before persisting. Verdict is always COMPLETE.
+`planning/docs/patch-notes-vX.X.md`?" before persisting. Verdict is always COMPLETE.
 
 ---
 
@@ -34,7 +34,7 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 ### Case 1: Happy Path — Changelog filtered to player-facing entries
 
 **Fixture:**
-- `docs/CHANGELOG.md` exists with 5 entries:
+- `planning/docs/CHANGELOG.md` exists with 5 entries:
   - "Add dual-wield melee system" (Features — player-facing)
   - "Fix crash on level transition" (Fixes — player-facing)
   - "Add enemy patrol AI" (Features — player-facing)
@@ -45,17 +45,17 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 **Input:** `/patch-notes v0.4.0`
 
 **Expected behavior:**
-1. Skill reads `docs/CHANGELOG.md`
+1. Skill reads `planning/docs/CHANGELOG.md`
 2. Skill filters to 3 player-facing entries; excludes 2 internal entries
 3. Skill rewrites entries in plain language (no task IDs, no tech jargon)
 4. Skill presents draft to user
-5. Skill asks "May I write to `docs/patch-notes-v0.4.0.md`?"
+5. Skill asks "May I write to `planning/docs/patch-notes-v0.4.0.md`?"
 6. User approves; file written; verdict COMPLETE
 
 **Assertions:**
 - [ ] Only 3 entries appear in the patch notes (2 internal entries excluded)
 - [ ] Entries are written in plain language without internal task IDs
-- [ ] File path matches `docs/patch-notes-v0.4.0.md`
+- [ ] File path matches `planning/docs/patch-notes-v0.4.0.md`
 - [ ] "May I write" prompt appears before file write
 - [ ] Verdict is COMPLETE after write
 
@@ -64,12 +64,12 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 ### Case 2: No Changelog Found — Directed to run /changelog first
 
 **Fixture:**
-- `docs/CHANGELOG.md` does NOT exist
+- `planning/docs/CHANGELOG.md` does NOT exist
 
 **Input:** `/patch-notes v0.4.0`
 
 **Expected behavior:**
-1. Skill attempts to read `docs/CHANGELOG.md` — not found
+1. Skill attempts to read `planning/docs/CHANGELOG.md` — not found
 2. Skill outputs: "No changelog found — run /changelog first to generate one"
 3. No patch notes are generated; no file is written
 
@@ -84,20 +84,20 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 ### Case 3: Tone Guidance from Design Folder — Incorporated into output
 
 **Fixture:**
-- `docs/CHANGELOG.md` exists with player-facing entries
-- `design/community/tone-guide.md` exists with guidance: "upbeat, encouraging tone; avoid passive voice"
+- `planning/docs/CHANGELOG.md` exists with player-facing entries
+- `planning/design/community/tone-guide.md` exists with guidance: "upbeat, encouraging tone; avoid passive voice"
 
 **Input:** `/patch-notes v0.4.0`
 
 **Expected behavior:**
 1. Skill reads changelog
-2. Skill detects tone guide at `design/community/tone-guide.md`
+2. Skill detects tone guide at `planning/design/community/tone-guide.md`
 3. Skill applies tone guidance when rewriting entries in plain language
 4. Patch notes use upbeat, active-voice phrasing
 5. Skill presents draft, asks to write, writes on approval
 
 **Assertions:**
-- [ ] Skill checks `design/` for a community or tone guidance file
+- [ ] Skill checks `planning/design/` for a community or tone guidance file
 - [ ] Tone guide content influences phrasing of patch note entries
 - [ ] Output reflects active voice and upbeat tone where applicable
 - [ ] Skill notes that tone guidance was applied
@@ -108,7 +108,7 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 
 **Fixture:**
 - `.claude/docs/templates/patch-notes-template.md` exists with a structured header format
-- `docs/CHANGELOG.md` exists with player-facing entries
+- `planning/docs/CHANGELOG.md` exists with player-facing entries
 
 **Input:** `/patch-notes v0.4.0`
 
@@ -129,7 +129,7 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 ### Case 5: Gate Compliance — No gate; community-manager is separate
 
 **Fixture:**
-- `docs/CHANGELOG.md` exists with player-facing entries
+- `planning/docs/CHANGELOG.md` exists with player-facing entries
 - `review-mode.txt` contains `full`
 
 **Input:** `/patch-notes v0.4.0`
@@ -151,7 +151,7 @@ None. Patch notes generation is a fast compilation task; no gates are invoked.
 
 ## Protocol Compliance
 
-- [ ] Reads `docs/CHANGELOG.md` before generating patch notes
+- [ ] Reads `planning/docs/CHANGELOG.md` before generating patch notes
 - [ ] Filters entries to player-facing items only
 - [ ] Rewrites entries in plain language without internal IDs
 - [ ] Always asks "May I write" before writing patch notes file

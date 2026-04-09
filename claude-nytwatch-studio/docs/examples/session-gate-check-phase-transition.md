@@ -3,10 +3,10 @@
 **Context:** Solo indie dev, end of week 5. The Systems Design phase feels complete — 6 MVP GDDs written, cross-review done, engine set up. User wants to formally advance to Technical Setup.
 
 **Starting State:**
-- `production/stage.txt` — currently `systems-design`
-- `design/gdd/systems-index.md` — 6 MVP systems listed, all marked `Status: GDD Complete`
-- `design/gdd/` — 6 GDD files present
-- `design/gdd/gdd-cross-review-2026-03-10.md` — cross-review report, verdict: CONCERNS (1 low-priority note)
+- `planning/production/stage.txt` — currently `systems-design`
+- `planning/design/gdd/systems-index.md` — 6 MVP systems listed, all marked `Status: GDD Complete`
+- `planning/design/gdd/` — 6 GDD files present
+- `planning/design/gdd/gdd-cross-review-2026-03-10.md` — cross-review report, verdict: CONCERNS (1 low-priority note)
 - Engine configured (Godot 4.6, `/setup-engine` complete)
 
 **Session Duration:** ~20 minutes
@@ -23,7 +23,7 @@
 ## Turn 2: Agent Detects Current Phase and Runs the Check
 
 **Agent (via /gate-check):**
-> Reading `production/stage.txt` — current phase: **systems-design**
+> Reading `planning/production/stage.txt` — current phase: **systems-design**
 >
 > Running gate: **Systems Design → Technical Setup**
 >
@@ -32,12 +32,12 @@
 >
 > | Artifact | Requirement | Status |
 > |----------|-------------|--------|
-> | `design/gdd/systems-index.md` | Exists, all MVP systems listed | ✅ |
+> | `planning/design/gdd/systems-index.md` | Exists, all MVP systems listed | ✅ |
 > | Per-system GDDs | All MVP systems have a GDD | ✅ (6/6) |
 > | `/design-review` per GDD | Each GDD reviewed | ✅ (6/6 review comments found) |
-> | Cross-GDD review report | `design/gdd/gdd-cross-review-*.md` exists | ✅ |
+> | Cross-GDD review report | `planning/design/gdd/gdd-cross-review-*.md` exists | ✅ |
 > | Cross-review verdict | PASS or CONCERNS (not FAIL) | ✅ CONCERNS |
-> | Engine configured | `production/stage.txt` or CLAUDE.md engine entry | ✅ Godot 4.6 |
+> | Engine configured | `planning/production/stage.txt` or CLAUDE.md engine entry | ✅ Godot 4.6 |
 >
 > ---
 > **Content Scan:**
@@ -63,7 +63,7 @@
 >
 > All required artifacts present. Cross-review concern is LOW severity and can be resolved during Technical Setup via an ADR. This is a normal finding at this stage.
 >
-> **May I advance `production/stage.txt` to `technical-setup`?**
+> **May I advance `planning/production/stage.txt` to `technical-setup`?**
 
 ## Turn 3: User Confirms
 
@@ -73,7 +73,7 @@
 ## Turn 4: Agent Updates Stage and Presents Next Steps
 
 **Agent:**
-> Updated `production/stage.txt` → `technical-setup`
+> Updated `planning/production/stage.txt` → `technical-setup`
 >
 > ---
 > **You are now in: Technical Setup**
@@ -146,7 +146,7 @@
 
 - **Gate check is automated, not manual**: agent reads artifacts and checks them — user doesn't fill out a form
 - **CONCERNS ≠ FAIL**: the cross-review concern is LOW severity and passes the gate. A FAIL would require resolution before advancing.
-- **Stage.txt is the authority**: the status line, `/help`, and all skills read from `production/stage.txt` — updating it here changes what every subsequent skill sees
+- **Stage.txt is the authority**: the status line, `/help`, and all skills read from `planning/production/stage.txt` — updating it here changes what every subsequent skill sees
 - **Next steps are phase-specific**: the agent doesn't give a generic "good luck" — it gives the ordered checklist for Technical Setup specifically
 - **Gate check surfaces carry-forward work**: the stack size conflict was a cross-review note; the gate check ensures it becomes a concrete ADR rather than getting lost
 - **One advance per gate**: the user confirmed advancement explicitly. The gate doesn't auto-advance; human confirmation is required.

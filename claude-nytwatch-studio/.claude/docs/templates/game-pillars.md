@@ -308,6 +308,6 @@ Before finalizing the pillars, verify:
 
 ---
 
-*This document is the creative north star. It lives in `design/gdd/game-pillars.md`
+*This document is the creative north star. It lives in `planning/design/gdd/game-pillars.md`
 and is referenced by every design, art, audio, and narrative document in the project.
 Review quarterly or after major milestone pivots.*

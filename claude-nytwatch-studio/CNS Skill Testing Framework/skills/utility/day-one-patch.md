@@ -4,11 +4,11 @@
 
 `/day-one-patch` prepares a day-one patch plan for issues that are known at
 launch but deferred from the v1.0 release. It reads open bug reports in
-`production/bugs/`, deferred acceptance criteria from story files (stories
+`planning/production/bugs/`, deferred acceptance criteria from story files (stories
 marked `Status: Done` but with noted deferred ACs), and produces a prioritized
 patch plan with estimated fix timelines per issue.
 
-The patch plan is written to `production/releases/day-one-patch.md` after a
+The patch plan is written to `planning/production/releases/day-one-patch.md` after a
 "May I write" ask. If a P0 (critical post-ship) issue is discovered, the skill
 triggers guidance to run `/hotfix` before the patch. No director gates apply.
 The verdict is always COMPLETE.
@@ -38,7 +38,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 ### Case 1: Happy Path — 3 Known Issues, Patch Plan With Fix Estimates
 
 **Fixture:**
-- `production/bugs/` contains 3 open bugs with severities: 1 MEDIUM, 2 LOW
+- `planning/production/bugs/` contains 3 open bugs with severities: 1 MEDIUM, 2 LOW
 - No deferred ACs in sprint stories
 - All bugs have repro steps and system identifications
 
@@ -49,7 +49,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 2. Skill assigns fix effort estimates: MEDIUM bug = 1-2 days, LOW bugs = 4 hours each
 3. Skill produces a patch plan prioritizing MEDIUM bug first
 4. Plan includes: priority order, estimated timeline, responsible system, fix description
-5. Skill asks "May I write to `production/releases/day-one-patch.md`?"
+5. Skill asks "May I write to `planning/production/releases/day-one-patch.md`?"
 6. File written; verdict is COMPLETE
 
 **Assertions:**
@@ -64,7 +64,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 ### Case 2: Critical Issue Discovered Post-Ship — P0, Triggers /hotfix Guidance
 
 **Fixture:**
-- A CRITICAL severity bug is found in `production/bugs/` after the v1.0 release
+- A CRITICAL severity bug is found in `planning/production/bugs/` after the v1.0 release
 - The bug causes data loss for all save files
 
 **Input:** `/day-one-patch`
@@ -89,7 +89,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 ### Case 3: Deferred AC From Story-Done — Pulled Into Patch Plan Automatically
 
 **Fixture:**
-- `production/sprints/sprint-008.md` has a story with `Status: Done` and a note:
+- `planning/production/sprints/sprint-008.md` has a story with `Status: Done` and a note:
   "DEFERRED AC: Gamepad vibration on damage — deferred to post-launch patch"
 - No open bugs for the same system
 
@@ -113,7 +113,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 ### Case 4: No Known Issues — Empty Plan With Template Note
 
 **Fixture:**
-- `production/bugs/` is empty
+- `planning/production/bugs/` is empty
 - No stories have deferred ACs
 
 **Input:** `/day-one-patch`
@@ -123,7 +123,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 2. Skill reads story deferred ACs — none found
 3. Skill produces an empty patch plan with a note: "No known issues at launch"
 4. Template structure is preserved (headers intact) for future use
-5. Skill asks "May I write to `production/releases/day-one-patch.md`?"
+5. Skill asks "May I write to `planning/production/releases/day-one-patch.md`?"
 6. File written; verdict is COMPLETE
 
 **Assertions:**
@@ -137,7 +137,7 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 ### Case 5: Director Gate Check — No gate; day-one-patch is a planning utility
 
 **Fixture:**
-- Known issues present in production/bugs/
+- Known issues present in planning/production/bugs/
 
 **Input:** `/day-one-patch`
 
@@ -155,11 +155,11 @@ None. `/day-one-patch` is a release planning utility. No director gates apply.
 
 ## Protocol Compliance
 
-- [ ] Reads open bugs from `production/bugs/` before generating the plan
+- [ ] Reads open bugs from `planning/production/bugs/` before generating the plan
 - [ ] Scans story files for deferred AC notes
 - [ ] Escalates CRITICAL (P0) bugs with explicit `/hotfix` guidance
 - [ ] Produces an empty plan with note when no issues exist (not an error)
-- [ ] Asks "May I write to `production/releases/day-one-patch.md`?" before writing
+- [ ] Asks "May I write to `planning/production/releases/day-one-patch.md`?" before writing
 - [ ] Verdict is COMPLETE in all paths
 
 ---

@@ -6,7 +6,7 @@
 bottlenecks and recommends optimizations. If profiler data or performance logs
 are provided, it analyzes them directly. If not, it guides the user through a
 manual profiling checklist. No director gates are invoked. The skill asks
-"May I write to `production/qa/perf-[date].md`?" before persisting a report.
+"May I write to `planning/production/qa/perf-[date].md`?" before persisting a report.
 Verdicts: WITHIN BUDGET, CONCERNS, or OVER BUDGET.
 
 ---
@@ -34,11 +34,11 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 ### Case 1: Happy Path — Frame data provided, draw call spike found
 
 **Fixture:**
-- User provides `production/qa/profiler-export-2026-03-15.json` with frame time data
+- User provides `planning/production/qa/profiler-export-2026-03-15.json` with frame time data
 - Data shows: average frame time 14ms (within 16.6ms budget), but frames 42–48 spike to 28ms
 - Spike correlates with a scene with 450 draw calls (budget: 200)
 
-**Input:** `/perf-profile production/qa/profiler-export-2026-03-15.json`
+**Input:** `/perf-profile planning/production/qa/profiler-export-2026-03-15.json`
 
 **Expected behavior:**
 1. Skill reads profiler data
@@ -46,7 +46,7 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 3. Skill identifies draw call spike on frames 42–48 (450 calls vs 200 budget)
 4. Verdict is CONCERNS (average OK, but spikes indicate an issue)
 5. Skill recommends batching or culling for the identified scene
-6. Skill asks "May I write to `production/qa/perf-2026-04-06.md`?"
+6. Skill asks "May I write to `planning/production/qa/perf-2026-04-06.md`?"
 
 **Assertions:**
 - [ ] Spike frames are identified by frame number
@@ -61,7 +61,7 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 
 **Fixture:**
 - User runs `/perf-profile` with no arguments
-- No profiler data files exist in `production/qa/`
+- No profiler data files exist in `planning/production/qa/`
 
 **Input:** `/perf-profile`
 
@@ -89,7 +89,7 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 - All frames exceed budget; no single spike — systemic issue
 - `technical-preferences.md` specifies target platform: PC, 60fps
 
-**Input:** `/perf-profile production/qa/profiler-export-2026-03-20.json`
+**Input:** `/perf-profile planning/production/qa/profiler-export-2026-03-20.json`
 
 **Expected behavior:**
 1. Skill reads profiler data and technical preferences for performance budget
@@ -109,11 +109,11 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 ### Case 4: Previous Perf Report Exists — Delta comparison
 
 **Fixture:**
-- `production/qa/perf-2026-03-28.md` exists with prior results (avg 15ms, max 19ms)
+- `planning/production/qa/perf-2026-03-28.md` exists with prior results (avg 15ms, max 19ms)
 - New profiler export shows: avg 13ms, max 17ms
 - Both reports are for the same scene
 
-**Input:** `/perf-profile production/qa/profiler-export-2026-04-05.json`
+**Input:** `/perf-profile planning/production/qa/profiler-export-2026-04-05.json`
 
 **Expected behavior:**
 1. Skill reads new profiler data
@@ -123,7 +123,7 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 5. Verdict is WITHIN BUDGET; report notes improvement since last profile
 
 **Assertions:**
-- [ ] Skill checks `production/qa/` for prior perf reports before writing
+- [ ] Skill checks `planning/production/qa/` for prior perf reports before writing
 - [ ] Delta comparison is shown (prior vs. current for key metrics)
 - [ ] Verdict is WITHIN BUDGET when current metrics are within budget
 - [ ] Improvement trend is noted positively in the report
@@ -136,7 +136,7 @@ None. Performance profiling is an advisory analysis skill; no gates are invoked.
 - Profiler data shows CONCERNS-level findings (some spikes)
 - `review-mode.txt` contains `full`
 
-**Input:** `/perf-profile production/qa/profiler-export-2026-04-01.json`
+**Input:** `/perf-profile planning/production/qa/profiler-export-2026-04-01.json`
 
 **Expected behavior:**
 1. Skill analyzes profiler data; verdict is CONCERNS

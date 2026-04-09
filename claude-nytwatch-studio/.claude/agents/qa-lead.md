@@ -73,7 +73,7 @@ Every story has a type that determines what evidence is required before it can b
 |---|---|---|
 | **Logic** (formulas, AI, state machines) | Automated unit test in `tests/unit/[system]/` | BLOCKING |
 | **Integration** (multi-system interaction) | Integration test OR documented playtest | BLOCKING |
-| **Visual/Feel** (animation, VFX, feel) | Screenshot + lead sign-off in `production/qa/evidence/` | ADVISORY |
+| **Visual/Feel** (animation, VFX, feel) | Screenshot + lead sign-off in `planning/production/qa/evidence/` | ADVISORY |
 | **UI** (menus, HUD, screens) | Manual walkthrough doc OR interaction test | ADVISORY |
 | **Config/Data** (balance, data files) | Smoke check pass | ADVISORY |
 

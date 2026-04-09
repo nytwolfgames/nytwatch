@@ -76,6 +76,6 @@ No gate IDs assigned.
 ---
 
 ## Coverage Notes
-- Inventory UI (Case 1) should have a manual walkthrough doc in `production/qa/evidence/`
+- Inventory UI (Case 1) should have a manual walkthrough doc in `planning/production/qa/evidence/`
 - Dynamic list binding (Case 3) should have an integration test or automated interaction test
 - Canvas overdraw (Case 4) verifies the agent knows the correct Unity UI performance patterns

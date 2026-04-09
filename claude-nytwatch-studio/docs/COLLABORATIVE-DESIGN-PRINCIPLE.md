@@ -127,13 +127,13 @@ Every agent interaction should follow this pattern:
            ✓ Overview, ✓ Player Fantasy, ✓ Detailed Rules, ✓ Formulas,
            ✓ Edge Cases, ✓ Dependencies, ✓ Tuning Knobs, ✓ Acceptance Criteria
 
-           May I write this to design/gdd/crafting-system.md?"
+           May I write this to planning/design/gdd/crafting-system.md?"
 
     User: "Yes, write it."  ← ONLY NOW does file get created
 
 11. AGENT WRITES FILE
     Agent: [Uses Write tool]
-           "Created design/gdd/crafting-system.md. Would you like me to run
+           "Created planning/design/gdd/crafting-system.md. Would you like me to run
             /design-review to validate it against the standard?"
 ```
 
@@ -148,7 +148,7 @@ Every agent interaction should follow this pattern:
 ```
 ❌ WRONG (Autonomous):
 User: "Design the combat system"
-Agent: [Writes design/gdd/combat-system.md with full design]
+Agent: [Writes planning/design/gdd/combat-system.md with full design]
 Agent: "Done! Here's your combat system."
 
 ✅ RIGHT (Collaborative):
@@ -165,7 +165,7 @@ User: [Picks one, refines it]
 Agent: [Drafts mechanics section]
 User: [Reviews, requests changes]
 Agent: [Iterates until user approves]
-Agent: "Ready to write to design/gdd/combat-system.md?"
+Agent: "Ready to write to planning/design/gdd/combat-system.md?"
 User: "Yes"
 Agent: [Writes file]
 ```
@@ -181,7 +181,7 @@ Agent: [Writes src/gameplay/combat/damage_calculator.gd]
 Agent: "Implemented!"
 
 ✅ RIGHT:
-User: "Implement damage calculation per design/gdd/combat-system.md"
+User: "Implement damage calculation per planning/design/gdd/combat-system.md"
 Agent: [Reads design doc]
        "I see the design calls for:
         - Base damage * weapon multiplier * crit multiplier * resistance
@@ -220,7 +220,7 @@ Agent: [Writes code, runs through gameplay-code rule checks, fixes issues]
 ```
 ❌ WRONG:
 User: "/brainstorm roguelike"
-Skill: [Generates 1 concept and writes it to design/concept.md]
+Skill: [Generates 1 concept and writes it to planning/design/concept.md]
 
 ✅ RIGHT:
 User: "/brainstorm roguelike"
@@ -262,13 +262,13 @@ Skill: [Analyzes those 3 in depth]
 User: "Let's go with Concept 7"
 
 Skill: "Excellent. Should I:
-       A) Create the full concept document now (design/concept.md)
+       A) Create the full concept document now (planning/design/concept.md)
        B) First explore Concept 7 more (core verbs, unique hooks)
        C) Prototype a tiny vertical slice to validate the feel?"
 
 User: "A, create the doc"
 
-Skill: "Writing design/concept.md..."
+Skill: "Writing planning/design/concept.md..."
 ```
 
 ---
@@ -457,7 +457,7 @@ Orchestrator uses AskUserQuestion:
 Every file write must follow:
 
 ```
-1. Agent: "I've completed the [design/code/doc]. Here's a summary:
+1. Agent: "I've completed the [planning/design/code/doc]. Here's a summary:
            [Key points]
 
            May I write this to [filepath]?"
@@ -481,7 +481,7 @@ in conversation. This prevents context overflow during long iterative sessions.
 
 ```
 1. Agent creates file with skeleton (all section headers, empty bodies)
-   Agent: "May I create design/gdd/crafting-system.md with the section skeleton?"
+   Agent: "May I create planning/design/gdd/crafting-system.md with the section skeleton?"
    User: "Yes"
 
 2. For EACH section:
@@ -491,13 +491,13 @@ in conversation. This prevents context overflow during long iterative sessions.
    Agent: "May I write this section to the file?"
    User: "Yes"
    Agent: [Edits section into file]
-   Agent: [Updates production/session-state/active.md with progress]
+   Agent: [Updates planning/production/session-state/active.md with progress]
    ─── Context for this section can now be safely compacted ───
    ─── The decisions are IN THE FILE ───
 
 3. If session crashes or compacts mid-document:
    Agent: [Reads the file — completed sections are all there]
-   Agent: [Reads production/session-state/active.md — knows what's next]
+   Agent: [Reads planning/production/session-state/active.md — knows what's next]
    Agent: "Sections 1-4 are complete. Ready to work on section 5?"
 ```
 

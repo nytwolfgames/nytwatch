@@ -2,7 +2,7 @@
 
 ## Scenario
 Developer built a working skill tree system but never wrote a design doc.
-Code exists in `src/gameplay/skills/`, but `design/gdd/` has no skill-system.md.
+Code exists in `src/gameplay/skills/`, but `planning/design/gdd/` has no skill-system.md.
 
 ---
 
@@ -68,7 +68,7 @@ Good questions! Here's the intent:
 ```
 Perfect, that clarifies the vision. Let me draft the design doc:
 
-[Shows draft of design/gdd/skill-system.md]
+[Shows draft of planning/design/gdd/skill-system.md]
 
 SECTIONS:
 1. Overview (3-tree system, hybrid-friendly, respec-encouraged)
@@ -85,7 +85,7 @@ SECTIONS:
    - Should respec cost scale with level or stay flat?
    - Tier 5 damage bonus: tune to +30% or keep +50%?
 
-**May I write this to design/gdd/skill-system.md?**
+**May I write this to planning/design/gdd/skill-system.md?**
 ```
 
 **User:**
@@ -95,7 +95,7 @@ Yes, write it. But let's tune tier 5 to +30% and make respec cost scale.
 
 **Game-Designer:**
 ```
-✅ Written to design/gdd/skill-system.md
+✅ Written to planning/design/gdd/skill-system.md
 ✅ Marked as [REVERSE-DOCUMENTED FROM IMPLEMENTATION]
 ✅ Added TODO: Update tier-5 passive to +30% in assets/data/skills/combat-tree.json
 ✅ Added TODO: Implement scaling respec cost formula

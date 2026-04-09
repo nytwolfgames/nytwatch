@@ -6,7 +6,7 @@
 what shipped, velocity metrics, deferred items, risks surfaced, and retrospective
 seeds. In full mode the PR-MILESTONE director gate runs after the review is
 compiled (producer reviews scope delivery). In lean and solo modes the gate is
-skipped. The skill asks "May I write to `production/milestones/review-milestone-N.md`?"
+skipped. The skill asks "May I write to `planning/production/milestones/review-milestone-N.md`?"
 before persisting. Verdicts: MILESTONE COMPLETE or MILESTONE INCOMPLETE.
 
 ---
@@ -36,7 +36,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 1: Happy Path — Nearly complete milestone with one deferred story
 
 **Fixture:**
-- `production/milestones/milestone-03.md` exists with 8 stories
+- `planning/production/milestones/milestone-03.md` exists with 8 stories
 - 7 stories have `Status: Complete`
 - 1 story has `Status: Deferred` (deferred to milestone-04)
 - `review-mode.txt` contains `full`
@@ -48,7 +48,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 2. Skill compiles: 7 shipped, 1 deferred; velocity; no blockers
 3. Skill presents review draft to user
 4. PR-MILESTONE gate invoked; producer approves
-5. Skill asks "May I write to `production/milestones/review-milestone-03.md`?"
+5. Skill asks "May I write to `planning/production/milestones/review-milestone-03.md`?"
 6. User approves; file is written; verdict MILESTONE COMPLETE
 
 **Assertions:**
@@ -56,14 +56,14 @@ Verified automatically by `/skill-test static` — no fixture needed.
 - [ ] Verdict is MILESTONE COMPLETE despite the one deferred story
 - [ ] PR-MILESTONE gate is invoked after draft compilation in full mode
 - [ ] Skill asks "May I write" before writing review file
-- [ ] Review document path matches `production/milestones/review-milestone-03.md`
+- [ ] Review document path matches `planning/production/milestones/review-milestone-03.md`
 
 ---
 
 ### Case 2: Blocked Milestone — Multiple blocked stories
 
 **Fixture:**
-- `production/milestones/milestone-03.md` exists with 5 stories
+- `planning/production/milestones/milestone-03.md` exists with 5 stories
 - 2 stories have `Status: Complete`
 - 3 stories have `Status: Blocked` (named blockers listed in each story)
 - `review-mode.txt` contains `full`
@@ -111,20 +111,20 @@ Verified automatically by `/skill-test static` — no fixture needed.
 
 **Fixture:**
 - User calls `/milestone-review milestone-07`
-- `production/milestones/milestone-07.md` does NOT exist
+- `planning/production/milestones/milestone-07.md` does NOT exist
 
 **Input:** `/milestone-review milestone-07`
 
 **Expected behavior:**
-1. Skill attempts to read `production/milestones/milestone-07.md`
+1. Skill attempts to read `planning/production/milestones/milestone-07.md`
 2. File not found; skill outputs an error message
-3. Skill suggests checking available milestones in `production/milestones/`
+3. Skill suggests checking available milestones in `planning/production/milestones/`
 4. No gate is invoked; no file is written
 
 **Assertions:**
 - [ ] Skill does not crash when milestone file is absent
 - [ ] Output names the expected file path in the error message
-- [ ] Output suggests checking `production/milestones/` for valid milestone names
+- [ ] Output suggests checking `planning/production/milestones/` for valid milestone names
 - [ ] Verdict is BLOCKED (cannot review a non-existent milestone)
 
 ---
@@ -132,7 +132,7 @@ Verified automatically by `/skill-test static` — no fixture needed.
 ### Case 5: Lean/Solo Mode — PR-MILESTONE gate skipped
 
 **Fixture:**
-- `production/milestones/milestone-03.md` exists with 5 complete stories
+- `planning/production/milestones/milestone-03.md` exists with 5 complete stories
 - `review-mode.txt` contains `solo`
 
 **Input:** `/milestone-review milestone-03`

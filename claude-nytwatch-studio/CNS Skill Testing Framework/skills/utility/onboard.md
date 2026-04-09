@@ -4,7 +4,7 @@
 
 `/onboard` generates a contextual project onboarding summary tailored for a new
 team member. It reads CLAUDE.md, `technical-preferences.md`, the active sprint
-file, recent git commits, and `production/stage.txt` to produce a structured
+file, recent git commits, and `planning/production/stage.txt` to produce a structured
 orientation document. The skill runs on the Haiku model (read-only, formatting
 task) and produces no file writes — all output is conversational.
 
@@ -38,9 +38,9 @@ None. `/onboard` is a read-only orientation skill. No director gates apply.
 ### Case 1: Happy Path — Configured project in Production stage with active sprint
 
 **Fixture:**
-- `production/stage.txt` contains `Production`
+- `planning/production/stage.txt` contains `Production`
 - `technical-preferences.md` has engine, language, and specialists populated
-- `production/sprints/sprint-005.md` exists with stories in progress
+- `planning/production/sprints/sprint-005.md` exists with stories in progress
 - Git log contains 5 recent commits
 
 **Input:** `/onboard`
@@ -68,7 +68,7 @@ None. `/onboard` is a read-only orientation skill. No director gates apply.
 
 **Fixture:**
 - `technical-preferences.md` contains only placeholders (`[TO BE CONFIGURED]`)
-- No `production/stage.txt`
+- No `planning/production/stage.txt`
 - No sprint files
 - No CLAUDE.md overrides beyond defaults
 
@@ -115,7 +115,7 @@ None. `/onboard` is a read-only orientation skill. No director gates apply.
 
 **Fixture:**
 - Fully configured project in Production stage
-- `art-bible.md` exists in `design/`
+- `art-bible.md` exists in `planning/design/`
 - Active sprint has visual story types (animation, VFX)
 
 **Input:** `/onboard artist`

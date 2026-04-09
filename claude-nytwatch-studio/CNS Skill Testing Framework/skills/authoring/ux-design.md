@@ -40,17 +40,17 @@ review skill invoked after this skill completes.
 ### Case 1: Happy Path — New HUD spec, all sections authored and written
 
 **Fixture:**
-- No existing HUD UX spec in `design/ux/`
+- No existing HUD UX spec in `planning/design/ux/`
 - Engine and rendering preferences configured
 
 **Input:** `/ux-design hud`
 
 **Expected behavior:**
-1. Skill creates a skeleton file `design/ux/hud.md` with all section headers
+1. Skill creates a skeleton file `planning/design/ux/hud.md` with all section headers
 2. Skill discusses and drafts each section: User Flows, Interaction States
    (normal/hover/focus/disabled), Wireframe Description, Accessibility Notes
 3. After each section is drafted and user confirms, skill asks "May I write
-   section [N] to `design/ux/hud.md`?"
+   section [N] to `planning/design/ux/hud.md`?"
 4. Each section is written in sequence after approval
 5. After all sections are written, verdict is COMPLETE
 6. Skill suggests running `/ux-review` as the next step
@@ -68,18 +68,18 @@ review skill invoked after this skill completes.
 ### Case 2: Existing UX Spec — Retrofit: user picks section to update
 
 **Fixture:**
-- `design/ux/hud.md` already exists with all sections populated
+- `planning/design/ux/hud.md` already exists with all sections populated
 - User wants to update only the Accessibility Notes section
 
 **Input:** `/ux-design hud`
 
 **Expected behavior:**
-1. Skill reads existing `design/ux/hud.md` and detects all sections are populated
+1. Skill reads existing `planning/design/ux/hud.md` and detects all sections are populated
 2. Skill reports: "UX spec already exists for HUD — offering to retrofit"
 3. Skill lists all sections and asks which to update
 4. User selects Accessibility Notes
 5. Skill drafts updated accessibility content and asks "May I write section
-   Accessibility Notes to `design/ux/hud.md`?"
+   Accessibility Notes to `planning/design/ux/hud.md`?"
 6. Only that section is updated; other sections are preserved; verdict is COMPLETE
 
 **Assertions:**
@@ -95,7 +95,7 @@ review skill invoked after this skill completes.
 
 **Fixture:**
 - User is authoring a UX spec for the inventory screen
-- `design/gdd/inventory.md` does not exist
+- `planning/design/gdd/inventory.md` does not exist
 
 **Input:** `/ux-design inventory-screen`
 

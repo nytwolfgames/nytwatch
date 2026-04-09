@@ -7,7 +7,7 @@ covering three categories: what went well, what didn't, and action items.
 It reads sprint files and session logs to compile observations, then produces
 a retrospective document. No director gates are used — retrospectives are
 team self-reflection artifacts. The skill asks "May I write to
-`production/retrospectives/retro-sprint-NNN.md`?" before persisting.
+`planning/production/retrospectives/retro-sprint-NNN.md`?" before persisting.
 Verdict is always COMPLETE (retrospective is structured output, not a pass/fail
 assessment).
 
@@ -36,8 +36,8 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 ### Case 1: Happy Path — Sprint with mixed outcomes
 
 **Fixture:**
-- `production/sprints/sprint-005.md` exists with 6 stories (4 Complete, 1 Blocked, 1 Deferred)
-- `production/session-logs/` contains log entries for the sprint period
+- `planning/production/sprints/sprint-005.md` exists with 6 stories (4 Complete, 1 Blocked, 1 Deferred)
+- `planning/production/session-logs/` contains log entries for the sprint period
 - No prior retrospective exists for sprint-005
 
 **Input:** `/retrospective sprint-005`
@@ -47,7 +47,7 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 2. Skill compiles three retrospective categories: went well (4 stories shipped), 
    didn't (1 blocked, 1 deferred), and action items (address blocker root cause)
 3. Skill presents retrospective draft to user
-4. Skill asks "May I write to `production/retrospectives/retro-sprint-005.md`?"
+4. Skill asks "May I write to `planning/production/retrospectives/retro-sprint-005.md`?"
 5. User approves; file is written; verdict COMPLETE
 
 **Assertions:**
@@ -63,7 +63,7 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 
 **Fixture:**
 - User calls `/retrospective sprint-009`
-- `production/sprints/sprint-009.md` does NOT exist
+- `planning/production/sprints/sprint-009.md` does NOT exist
 - No session logs reference sprint-009
 
 **Input:** `/retrospective sprint-009`
@@ -86,7 +86,7 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 ### Case 3: Prior Retrospective Exists — Offer to append or replace
 
 **Fixture:**
-- `production/retrospectives/retro-sprint-005.md` already exists with content
+- `planning/production/retrospectives/retro-sprint-005.md` already exists with content
 - User re-runs `/retrospective sprint-005` after changes
 
 **Input:** `/retrospective sprint-005`
@@ -95,7 +95,7 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 1. Skill detects that `retro-sprint-005.md` already exists
 2. Skill presents user with choice: append new observations or replace existing file
 3. User selects "replace"; skill compiles fresh retrospective
-4. Skill asks "May I write to `production/retrospectives/retro-sprint-005.md`?" (confirming overwrite)
+4. Skill asks "May I write to `planning/production/retrospectives/retro-sprint-005.md`?" (confirming overwrite)
 5. File is overwritten; verdict COMPLETE
 
 **Assertions:**
@@ -109,7 +109,7 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 ### Case 4: Edge Case — Unresolved action items from previous retrospective
 
 **Fixture:**
-- `production/retrospectives/retro-sprint-004.md` exists with 2 action items marked `[ ]` (not done)
+- `planning/production/retrospectives/retro-sprint-004.md` exists with 2 action items marked `[ ]` (not done)
 - User runs `/retrospective sprint-005`
 
 **Input:** `/retrospective sprint-005`
@@ -131,8 +131,8 @@ None. Retrospectives are team self-reflection documents; no gates are invoked.
 ### Case 5: Gate Compliance — No gate invoked in any mode
 
 **Fixture:**
-- `production/sprints/sprint-005.md` exists with complete stories
-- `production/session-state/review-mode.txt` contains `full`
+- `planning/production/sprints/sprint-005.md` exists with complete stories
+- `planning/production/session-state/review-mode.txt` contains `full`
 
 **Input:** `/retrospective sprint-005`
 

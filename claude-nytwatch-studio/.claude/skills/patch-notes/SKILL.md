@@ -19,15 +19,15 @@ If no version is provided, ask the user before proceeding.
 
 ## Phase 2: Gather Change Data
 
-- Read the internal changelog at `production/releases/[version]/changelog.md` if it exists
-- Also check `docs/CHANGELOG.md` for the relevant version entry
+- Read the internal changelog at `planning/production/releases/[version]/changelog.md` if it exists
+- Also check `planning/docs/CHANGELOG.md` for the relevant version entry
 - Run `git log` between the previous release tag and current tag/HEAD as a fallback
-- Read sprint retrospectives in `production/sprints/` for context
-- Read any balance change documents in `design/balance/`
+- Read sprint retrospectives in `planning/production/sprints/` for context
+- Read any balance change documents in `planning/design/balance/`
 - Read bug fix records from QA if available
 
-**If no changelog data is available** (neither `production/releases/[version]/changelog.md`
-nor a `docs/CHANGELOG.md` entry for this version exists, and git log is empty or unavailable):
+**If no changelog data is available** (neither `planning/production/releases/[version]/changelog.md`
+nor a `planning/docs/CHANGELOG.md` entry for this version exists, and git log is empty or unavailable):
 
 > "No changelog data found for [version]. Run `/changelog [version]` first to generate the
 > internal changelog, then re-run `/patch-notes [version]`."
@@ -42,8 +42,8 @@ Verdict: **BLOCKED** — stop here without generating notes.
 
 1. Check `.claude/docs/technical-preferences.md` for any "tone", "voice", or "style"
    fields or sections.
-2. Check `docs/PATCH-NOTES-STYLE.md` if it exists.
-3. Check `design/community/tone-guide.md` if it exists.
+2. Check `planning/docs/PATCH-NOTES-STYLE.md` if it exists.
+3. Check `planning/design/community/tone-guide.md` if it exists.
 4. If any source contains tone/voice/style instructions, extract them and apply
    them to the language and framing of the generated notes.
 5. If no tone guidance is found anywhere, default to:
@@ -52,7 +52,7 @@ Verdict: **BLOCKED** — stop here without generating notes.
 
 **Template detection** — check whether a patch notes template exists:
 
-1. Glob for `docs/patch-notes-template.md` and `.claude/docs/templates/patch-notes-template.md`.
+1. Glob for `planning/docs/patch-notes-template.md` and `.claude/docs/templates/patch-notes-template.md`.
 2. If found at either location, read it and use it as the output structure for Phase 4
    instead of the built-in style templates (Brief / Detailed / Full). Fill in the
    template's sections with the categorized data.
@@ -170,10 +170,10 @@ Check the generated notes for:
 
 Present the completed patch notes to the user along with: a count of changes by category, and any internal changes that were excluded (for review).
 
-Ask: "May I write these patch notes to `docs/patch-notes/[version].md`?"
+Ask: "May I write these patch notes to `planning/docs/patch-notes/[version].md`?"
 
-If yes, write the file to `docs/patch-notes/[version].md`, creating the directory
-if needed. Also write to `production/releases/[version]/patch-notes.md` as the
+If yes, write the file to `planning/docs/patch-notes/[version].md`, creating the directory
+if needed. Also write to `planning/production/releases/[version]/patch-notes.md` as the
 internal archive copy.
 
 ---
