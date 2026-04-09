@@ -61,41 +61,60 @@ def _extract_links(content: str, file_path: Path, wiki_root: Path) -> list[str]:
     return links
 
 
-def load_wiki_docs(wiki_path: Path) -> list[WikiDoc]:
-    """Load all .md files from wiki_path, skipping hidden/underscore files."""
-    if not wiki_path.exists():
+def _load_docs_from_dir(
+    root: Path,
+    slug_prefix: str = "",
+) -> list[WikiDoc]:
+    """Load all .md files under *root*, optionally prefixing every slug.
+
+    slug_prefix=""     → slugs relative to root  (e.g. "subsystems/combat")
+    slug_prefix="narrative" → "narrative/chapter-1", "narrative/world/lore"
+    """
+    if not root.exists():
         return []
 
     docs: list[WikiDoc] = []
-    for md_file in sorted(wiki_path.rglob("*.md")):
+    for md_file in sorted(root.rglob("*.md")):
         name = md_file.name
-        # Skip private/system files
         if name.startswith('_') or name.startswith('.'):
             continue
-
         try:
             content = md_file.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
 
-        slug = _slug_from_path(wiki_path, md_file)
+        raw_slug = _slug_from_path(root, md_file)
+        slug = f"{slug_prefix}/{raw_slug}" if slug_prefix else raw_slug
         title = _extract_title(content, md_file.stem)
-        links = _extract_links(content, md_file, wiki_path)
+        # Link resolution still uses the filesystem root for relative hrefs
+        links = _extract_links(content, md_file, root)
+        # Prefix any resolved links too, so cross-links stay consistent
+        if slug_prefix:
+            links = [f"{slug_prefix}/{l}" for l in links]
 
-        # Section: name of first path component if nested, else ""
         parts = slug.split("/")
         section = parts[0] if len(parts) > 1 else ""
 
         docs.append(WikiDoc(
             slug=slug,
             title=title,
-            rel_path=str(md_file.relative_to(wiki_path)).replace("\\", "/"),
+            rel_path=str(md_file.relative_to(root)).replace("\\", "/"),
             section=section,
             links=links,
             raw_content=content,
         ))
 
     return docs
+
+
+def load_wiki_docs(wiki_path: Path) -> list[WikiDoc]:
+    """Load all .md files from wiki_path (no slug prefix)."""
+    return _load_docs_from_dir(wiki_path, slug_prefix="")
+
+
+def load_narrative_docs(narrative_path: Path) -> list[WikiDoc]:
+    """Load docs from planning/design/narrative/, prefixed as 'narrative/…'."""
+    return _load_docs_from_dir(narrative_path, slug_prefix="narrative")
 
 
 def doc_to_dict(doc: WikiDoc) -> dict:

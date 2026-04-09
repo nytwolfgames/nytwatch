@@ -367,23 +367,35 @@ class WikiGraph {
     this._buildLegend(colorKeys);
 
     // ── Create node objects ───────────────────────────────────────────────
-    const n = docs.length;
-    this.nodes = docs.map((d, i) => {
-      const angle = (i / n) * Math.PI * 2;
-      const r = Math.min(120, 40 + n * 8);
-      const colorKey = d.slug.split('/').slice(0, -1).join('/');
-      return {
-        slug: d.slug,
-        label: d.title,
-        colorKey,
-        x: Math.cos(angle) * r + (Math.random() - 0.5) * 20,
-        y: Math.sin(angle) * r + (Math.random() - 0.5) * 20,
-        vx: 0,
-        vy: 0,
-        fixed: false,
-        selected: d.slug === selectedSlug,
-      };
-    });
+    const narrativeDocs = docs.filter(d => d.slug.startsWith('narrative/'));
+    const systemDocs    = docs.filter(d => !d.slug.startsWith('narrative/'));
+
+    const makeNodes = (subset, cx, cy) => {
+      const count = subset.length || 1;
+      return subset.map((d, i) => {
+        const angle = (i / count) * Math.PI * 2;
+        const r = Math.min(100, 35 + count * 7);
+        const colorKey = d.slug.split('/').slice(0, -1).join('/');
+        return {
+          slug: d.slug,
+          label: d.title,
+          colorKey,
+          isNarrative: d.slug.startsWith('narrative/'),
+          x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 15,
+          y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 15,
+          vx: 0,
+          vy: 0,
+          fixed: false,
+          selected: d.slug === selectedSlug,
+        };
+      });
+    };
+
+    // Narrative nodes start upper-right, system nodes lower-left
+    this.nodes = [
+      ...makeNodes(systemDocs,    -160,  80),
+      ...makeNodes(narrativeDocs,  220, -160),
+    ];
 
     // ── Build slug → node index ───────────────────────────────────────────
     this.nodeBySlug = {};
@@ -548,20 +560,25 @@ class WikiGraph {
   _simulate() {
     if (this.alpha < 0.002) return;
 
-    const repulsion  = 2800;
-    const springLen  = 90;
-    const springK    = 0.06;
-    const centerF    = 0.018;
-    const damping    = 0.72;
+    const repulsion      = 2800;
+    const springLen      = 90;
+    const springK        = 0.06;
+    const damping        = 0.72;
+    const groupF         = 0.022;  // pull toward group pole
+    const interGroupRep  = 6000;   // extra push between narrative ↔ system nodes
+    // Group poles: system nodes gravitate lower-left, narrative upper-right
+    const SYS_POLE = { x: -160,  y:  80 };
+    const NAR_POLE = { x:  220,  y: -160 };
 
-    // Repulsion between all pairs
+    // Repulsion between all pairs (boosted across groups)
     for (let i = 0; i < this.nodes.length; i++) {
       for (let j = i + 1; j < this.nodes.length; j++) {
         const a = this.nodes[i], b = this.nodes[j];
         let dx = b.x - a.x, dy = b.y - a.y;
         const d2 = dx * dx + dy * dy || 0.001;
         const d  = Math.sqrt(d2);
-        const f  = repulsion / d2;
+        const crossGroup = a.isNarrative !== b.isNarrative;
+        const f  = (crossGroup ? repulsion + interGroupRep : repulsion) / d2;
         const nx = dx / d, ny = dy / d;
         a.vx -= f * nx;  a.vy -= f * ny;
         b.vx += f * nx;  b.vy += f * ny;
@@ -579,11 +596,12 @@ class WikiGraph {
       b.vx -= f * nx;  b.vy -= f * ny;
     }
 
-    // Gravity toward center + integrate
+    // Per-group gravity toward each group's pole + integrate
     for (const n of this.nodes) {
       if (n.fixed) continue;
-      n.vx += -n.x * centerF;
-      n.vy += -n.y * centerF;
+      const pole = n.isNarrative ? NAR_POLE : SYS_POLE;
+      n.vx += (pole.x - n.x) * groupF;
+      n.vy += (pole.y - n.y) * groupF;
       n.vx *= damping;
       n.vy *= damping;
       n.x += n.vx * this.alpha;
@@ -680,7 +698,7 @@ class WikiGraph {
   }
 
   // ── Position persistence ─────────────────────────────────────────────────
-  _posKey() { return 'wiki-graph-pos:' + (window._wikiPath || ''); }
+  _posKey() { return 'wiki-graph-pos-v2:' + (window._wikiPath || ''); }
 
   _savePositions() {
     const pos = {};

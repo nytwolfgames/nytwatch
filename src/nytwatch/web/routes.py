@@ -2891,15 +2891,23 @@ async def wiki_page(request: Request, doc: Optional[str] = None):
             "selected_doc": None,
         })
 
+    from nytwatch.pm.wiki_parser import load_narrative_docs
+    from nytwatch.pm.docs_parser import load_design_docs, _planning_root, doc_to_dict as design_doc_to_dict
+
     docs = load_wiki_docs(wiki_path)
+
+    # Merge narrative docs from planning/design/narrative/
+    repo_path = getattr(get_config(request), "repo_path", "") or ""
+    planning = _planning_root(repo_path) if repo_path else None
+    if planning is not None:
+        narrative_path = planning / "design" / "narrative"
+        docs = docs + load_narrative_docs(narrative_path)
 
     selected = None
     if doc:
         selected = next((d for d in docs if d.slug == doc), None)
 
     # Load design docs so wiki can linkify Source references → /docs
-    from nytwatch.pm.docs_parser import load_design_docs, doc_to_dict as design_doc_to_dict
-    repo_path = getattr(get_config(request), "repo_path", "") or ""
     design_docs = load_design_docs(repo_path) if repo_path else []
 
     return templates.TemplateResponse(request, "wiki.html", {
