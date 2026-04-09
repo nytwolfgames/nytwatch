@@ -319,25 +319,22 @@ body { overflow: hidden; }
   <!-- View panel -->
   <div class="docs-view-panel" id="docs-view-panel">
 
-    {% if selected_doc %}
-    <!-- Doc header -->
-    <div class="docs-view-header">
+    <!-- Doc header (hidden until a doc is opened) -->
+    <div class="docs-view-header" id="docs-view-header" style="display:none;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--on-surface-variant);flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span style="font-size:0.88rem;font-weight:600;color:var(--on-surface);">{{ selected_doc.title }}</span>
-      <span class="mono" style="margin-left:auto;font-size:0.68rem;color:var(--on-surface-variant);">{{ selected_doc.rel_path }}</span>
+      <span id="docs-view-title" style="font-size:0.88rem;font-weight:600;color:var(--on-surface);"></span>
+      <span id="docs-view-relpath" class="mono" style="margin-left:auto;font-size:0.68rem;color:var(--on-surface-variant);"></span>
     </div>
-    <div class="docs-view-body" id="docs-view-body"></div>
+    <div class="docs-view-body" id="docs-view-body" style="display:none;"></div>
 
-    {% else %}
-    <!-- Empty state -->
-    <div class="docs-empty-state">
+    <!-- Empty state (shown until a doc is opened) -->
+    <div class="docs-empty-state" id="docs-empty-state">
       <div class="docs-empty-card">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <p class="body-md" style="margin:0;font-weight:500;">No document selected</p>
         <p class="body-sm" style="margin:0;opacity:.65;">Pick a document from the list on the left.</p>
       </div>
     </div>
-    {% endif %}
 
   </div>
 
@@ -346,12 +343,7 @@ body { overflow: hidden; }
 <!-- Data -->
 <script>
 const DOCS_DATA     = {{ docs | tojson }};
-const SELECTED_SLUG = {{ (selected_doc.slug if selected_doc else None) | tojson }};
-{% if selected_doc %}
-const SELECTED_CONTENT = {{ selected_doc.raw_content | tojson }};
-{% else %}
-const SELECTED_CONTENT = null;
-{% endif %}
+const SELECTED_SLUG = {{ selected_slug | tojson }};
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
@@ -447,24 +439,14 @@ function buildList(query) {
         subBody.id = subId;
 
         for (const doc of subDocs) {
-          const a = document.createElement('a');
-          a.className = 'docs-item' + (doc.slug === SELECTED_SLUG ? ' active' : '');
-          a.href = '/docs?doc=' + encodeURIComponent(doc.slug);
-          a.dataset.slug = doc.slug;
-          a.innerHTML = `<span class="docs-item-dot"></span><span>${doc.title}</span>`;
-          subBody.appendChild(a);
+          subBody.appendChild(_makeDocItem(doc));
         }
 
         body.appendChild(subHdr);
         body.appendChild(subBody);
       } else {
         for (const doc of subDocs) {
-          const a = document.createElement('a');
-          a.className = 'docs-item' + (doc.slug === SELECTED_SLUG ? ' active' : '');
-          a.href = '/docs?doc=' + encodeURIComponent(doc.slug);
-          a.dataset.slug = doc.slug;
-          a.innerHTML = `<span class="docs-item-dot"></span><span>${doc.title}</span>`;
-          body.appendChild(a);
+          body.appendChild(_makeDocItem(doc));
         }
       }
     }
@@ -545,88 +527,136 @@ document.getElementById('docs-list-body').addEventListener('scroll', function ()
 }, { passive: true });
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Document renderer
+//  Lazy document loader
 // ═══════════════════════════════════════════════════════════════════════════
 
-if (SELECTED_CONTENT !== null) {
-  const body = document.getElementById('docs-view-body');
-  if (body) {
-    marked.use({ breaks: false, gfm: true });
-    body.innerHTML = marked.parse(SELECTED_CONTENT);
+marked.use({ breaks: false, gfm: true });
 
-    // ── Shared slug resolver (used by both link rewriters below) ─────────
-    const _slugSet = new Set(DOCS_DATA.map(d => d.slug.toLowerCase()));
-    function _resolveDocSlug(raw) {
-      let s = raw.replace(/\.md$/, '').replace(/^design\//i, '');
-      const lower = s.toLowerCase();
-      if (_slugSet.has(lower)) return DOCS_DATA.find(d => d.slug.toLowerCase() === lower)?.slug || null;
-      return null;
-    }
+const _slugSet = new Set(DOCS_DATA.map(d => d.slug.toLowerCase()));
 
-    // Rewrite markdown <a href="*.md"> links → /docs?doc=<slug>
-    const currentDir = SELECTED_SLUG ? SELECTED_SLUG.split('/').slice(0, -1) : [];
-    body.querySelectorAll('a[href]').forEach(a => {
-      const href = a.getAttribute('href');
-      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
-      if (!href.endsWith('.md') && !href.includes('.md#')) return;
-      const hrefBase = href.split('#')[0];
+function _resolveDocSlug(raw) {
+  const s = raw.replace(/\.md$/, '').replace(/^design\//i, '');
+  const lower = s.toLowerCase();
+  if (_slugSet.has(lower)) return DOCS_DATA.find(d => d.slug.toLowerCase() === lower)?.slug || null;
+  return null;
+}
 
-      // First: try resolving relative to current doc's directory
-      const parts = [...currentDir];
-      hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
-        if (seg === '..') parts.pop();
-        else if (seg && seg !== '.') parts.push(seg);
-      });
-      const relSlug = parts.join('/');
+function _renderDocsContent(bodyEl, content, slug) {
+  bodyEl.innerHTML = marked.parse(content);
 
-      // Validate; if relative resolution misses, fall back to absolute lookup
-      const slug = _slugSet.has(relSlug.toLowerCase())
-        ? DOCS_DATA.find(d => d.slug.toLowerCase() === relSlug.toLowerCase())?.slug
-        : _resolveDocSlug(hrefBase);
-
-      if (slug) a.href = '/docs?doc=' + encodeURIComponent(slug);
+  // Rewrite .md links → /docs?doc=<slug>
+  const currentDir = slug ? slug.split('/').slice(0, -1) : [];
+  bodyEl.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
+    if (!href.endsWith('.md') && !href.includes('.md#')) return;
+    const hrefBase = href.split('#')[0];
+    const parts = [...currentDir];
+    hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
     });
-
-    // Match any token that looks like a path ending in .md (contains at least one /)
-    const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
-
-    function _linkifyMdTokens(paraEl) {
-      const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
-      const textNodes = [];
-      let node;
-      while ((node = walker.nextNode())) textNodes.push(node);
-      textNodes.forEach(tn => {
-        const text = tn.nodeValue;
-        if (!_mdTokenRe.test(text)) { _mdTokenRe.lastIndex = 0; return; }
-        _mdTokenRe.lastIndex = 0;
-        const frag = document.createDocumentFragment();
-        let last = 0, m;
-        while ((m = _mdTokenRe.exec(text)) !== null) {
-          const slug = _resolveDocSlug(m[1]);
-          if (!slug) continue; // not a known doc — leave as plain text
-          if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-          const a = document.createElement('a');
-          a.href = '/docs?doc=' + encodeURIComponent(slug);
-          a.textContent = m[1];
-          a.title = 'Open in Docs';
-          frag.appendChild(a);
-          last = _mdTokenRe.lastIndex;
-        }
-        if (!frag.childNodes.length) return; // nothing was linked
-        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
-        tn.parentNode.replaceChild(frag, tn);
-      });
+    const relSlug = parts.join('/');
+    const resolvedSlug = _slugSet.has(relSlug.toLowerCase())
+      ? DOCS_DATA.find(d => d.slug.toLowerCase() === relSlug.toLowerCase())?.slug
+      : _resolveDocSlug(hrefBase);
+    if (resolvedSlug) {
+      a.href = '/docs?doc=' + encodeURIComponent(resolvedSlug);
+      a.addEventListener('click', e => { e.preventDefault(); _openDoc(resolvedSlug); });
     }
+  });
 
-    // Apply to every paragraph in the document body
-    body.querySelectorAll('p, li').forEach(_linkifyMdTokens);
-
-    // Highlight code blocks
-    body.querySelectorAll('pre code').forEach(el => {
-      try { hljs.highlightElement(el); } catch (e) {}
+  // Linkify bare .md path tokens
+  const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
+  function _linkifyMdTokens(paraEl) {
+    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let node;
+    while ((node = walker.nextNode())) textNodes.push(node);
+    textNodes.forEach(tn => {
+      const text = tn.nodeValue;
+      if (!_mdTokenRe.test(text)) { _mdTokenRe.lastIndex = 0; return; }
+      _mdTokenRe.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0, m;
+      while ((m = _mdTokenRe.exec(text)) !== null) {
+        const resolvedSlug = _resolveDocSlug(m[1]);
+        if (!resolvedSlug) continue;
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const a = document.createElement('a');
+        a.href = '/docs?doc=' + encodeURIComponent(resolvedSlug);
+        a.textContent = m[1];
+        a.title = 'Open in Docs';
+        a.addEventListener('click', e => { e.preventDefault(); _openDoc(resolvedSlug); });
+        frag.appendChild(a);
+        last = _mdTokenRe.lastIndex;
+      }
+      if (!frag.childNodes.length) return;
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      tn.parentNode.replaceChild(frag, tn);
     });
   }
+  bodyEl.querySelectorAll('p, li').forEach(_linkifyMdTokens);
+
+  bodyEl.querySelectorAll('pre code').forEach(el => {
+    try { hljs.highlightElement(el); } catch (e) {}
+  });
 }
+
+function _makeDocItem(doc) {
+  const a = document.createElement('a');
+  a.className = 'docs-item' + (doc.slug === SELECTED_SLUG ? ' active' : '');
+  a.href = '/docs?doc=' + encodeURIComponent(doc.slug);
+  a.dataset.slug = doc.slug;
+  a.innerHTML = `<span class="docs-item-dot"></span><span>${doc.title}</span>`;
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    _openDoc(doc.slug);
+    history.pushState({ slug: doc.slug }, '', '/docs?doc=' + encodeURIComponent(doc.slug));
+  });
+  return a;
+}
+
+let _currentDocSlug = SELECTED_SLUG;
+
+async function _openDoc(slug) {
+  const header    = document.getElementById('docs-view-header');
+  const body      = document.getElementById('docs-view-body');
+  const emptyState = document.getElementById('docs-empty-state');
+  const titleEl   = document.getElementById('docs-view-title');
+  const relpathEl = document.getElementById('docs-view-relpath');
+
+  // Show header+body, hide empty state
+  header.style.display = '';
+  body.style.display = '';
+  emptyState.style.display = 'none';
+  body.innerHTML = '<div style="padding:20px;color:var(--on-surface-variant);font-size:0.85rem;opacity:.65;">Loading…</div>';
+
+  // Update active state in list
+  document.querySelectorAll('.docs-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.slug === slug);
+  });
+
+  _currentDocSlug = slug;
+
+  try {
+    const res = await fetch('/api/doc?module=docs&slug=' + encodeURIComponent(slug));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    titleEl.textContent   = data.title;
+    relpathEl.textContent = data.rel_path;
+    _renderDocsContent(body, data.content, slug);
+  } catch (e) {
+    body.innerHTML = '<div style="padding:20px;color:var(--error,#b91c1c);font-size:0.85rem;">Failed to load document.</div>';
+  }
+}
+
+window.addEventListener('popstate', e => {
+  if (e.state && e.state.slug) _openDoc(e.state.slug);
+});
+
+// Initial load
+if (SELECTED_SLUG) _openDoc(SELECTED_SLUG);
 </script>
 
 {% endif %}

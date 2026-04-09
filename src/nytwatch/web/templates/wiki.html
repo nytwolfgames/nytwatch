@@ -314,7 +314,7 @@ body { overflow: hidden; }
 <div class="wiki-layout">
 
   <!-- Graph panel -->
-  <div class="wiki-graph-panel {% if selected_doc %}with-doc{% endif %}" id="wiki-graph-panel">
+  <div class="wiki-graph-panel {% if selected_slug %}with-doc{% endif %}" id="wiki-graph-panel">
 
     <!-- Legend (injected by JS) -->
     <div class="wiki-graph-legend" id="wiki-legend"></div>
@@ -331,17 +331,15 @@ body { overflow: hidden; }
   </div>
 
   <!-- Document panel -->
-  <div class="wiki-doc-panel {% if selected_doc %}visible{% endif %}" id="wiki-doc-panel">
-    {% if selected_doc %}
-    <div class="wiki-doc-header">
-      <a href="/wiki" class="btn" style="padding:3px 8px;font-size:0.72rem;display:flex;align-items:center;gap:4px;" title="Close">
+  <div class="wiki-doc-panel {% if selected_slug %}visible{% endif %}" id="wiki-doc-panel">
+    <div class="wiki-doc-header" id="wiki-doc-header">
+      <button id="wiki-doc-close" class="btn" style="padding:3px 8px;font-size:0.72rem;display:flex;align-items:center;gap:4px;background:none;border:1px solid var(--outline-variant);cursor:pointer;" title="Close">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </a>
-      <span style="font-size:0.88rem;font-weight:600;color:var(--on-surface);">{{ selected_doc.title }}</span>
-      <span class="mono" style="margin-left:auto;font-size:0.68rem;color:var(--on-surface-variant);">{{ selected_doc.rel_path }}</span>
+      </button>
+      <span id="wiki-doc-title" style="font-size:0.88rem;font-weight:600;color:var(--on-surface);"></span>
+      <span id="wiki-doc-relpath" class="mono" style="margin-left:auto;font-size:0.68rem;color:var(--on-surface-variant);"></span>
     </div>
     <div class="wiki-doc-body" id="wiki-doc-body"></div>
-    {% endif %}
   </div>
 
 </div>
@@ -349,14 +347,9 @@ body { overflow: hidden; }
 <!-- Data injected for JS -->
 <script>
 const WIKI_DOCS = {{ docs | tojson }};
-const SELECTED_SLUG = {{ (selected_doc.slug if selected_doc else None) | tojson }};
+const SELECTED_SLUG = {{ selected_slug | tojson }};
 const DESIGN_DOCS = {{ design_docs | tojson }};
 window._wikiPath = {{ wiki_path | tojson }};
-{% if selected_doc %}
-const SELECTED_CONTENT = {{ selected_doc.raw_content | tojson }};
-{% else %}
-const SELECTED_CONTENT = null;
-{% endif %}
 </script>
 
 <!-- Marked.js for markdown rendering -->
@@ -755,9 +748,9 @@ class WikiGraph {
     window.addEventListener('mouseup', e => {
       if (this._dragNode) {
         if (!this._dragMoved) {
-          // Save positions so the graph doesn't reset on reload
+          // Save positions before opening doc
           this._savePositions();
-          window.location.href = '/wiki?doc=' + encodeURIComponent(this._dragNode.slug);
+          _openDoc(this._dragNode.slug);
         }
         this._dragNode.fixed = false;
         this._dragNode = null;
@@ -968,81 +961,121 @@ const _wikiCanvas = document.getElementById('wiki-graph-canvas');
 const wikiGraph = new WikiGraph(_wikiCanvas, WIKI_DOCS, SELECTED_SLUG);
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Render selected document (if any)
+//  Lazy document loader
 // ═══════════════════════════════════════════════════════════════════════════
-if (SELECTED_CONTENT !== null) {
-  const body = document.getElementById('wiki-doc-body');
-  if (body) {
-    // Configure marked
-    marked.use({ breaks: false, gfm: true });
 
-    // Render markdown → HTML
-    body.innerHTML = marked.parse(SELECTED_CONTENT);
+marked.use({ breaks: false, gfm: true });
 
-    // Intercept internal wiki links (.md hrefs → /wiki?doc=slug)
-    const currentDir = SELECTED_SLUG
-      ? SELECTED_SLUG.split('/').slice(0, -1)
-      : [];
+const _wikiSlugSet = new Set(DESIGN_DOCS.map(d => d.slug.toLowerCase()));
+function _resolveDesignSlug(raw) {
+  const s = raw.replace(/\.md$/, '').replace(/^design\//i, '');
+  const lower = s.toLowerCase();
+  if (_wikiSlugSet.has(lower)) return DESIGN_DOCS.find(d => d.slug.toLowerCase() === lower)?.slug || null;
+  return null;
+}
 
-    body.querySelectorAll('a[href]').forEach(a => {
-      const href = a.getAttribute('href');
-      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
-      if (!href.endsWith('.md') && !href.includes('.md#')) return;
+function _renderWikiContent(bodyEl, content, slug) {
+  bodyEl.innerHTML = marked.parse(content);
 
-      // Resolve relative path to a slug
-      const hrefBase = href.split('#')[0];
-      const parts = [...currentDir];
-      hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
-        if (seg === '..') parts.pop();
-        else if (seg && seg !== '.') parts.push(seg);
-      });
-      a.href = '/wiki?doc=' + encodeURIComponent(parts.join('/'));
+  // Rewrite .md links → /wiki?doc=<slug>
+  const currentDir = slug ? slug.split('/').slice(0, -1) : [];
+  bodyEl.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
+    if (!href.endsWith('.md') && !href.includes('.md#')) return;
+    const hrefBase = href.split('#')[0];
+    const parts = [...currentDir];
+    hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
     });
+    a.href = '/wiki?doc=' + encodeURIComponent(parts.join('/'));
+    a.addEventListener('click', e => { e.preventDefault(); _openDoc(parts.join('/')); });
+  });
 
-    // Linkify any *.md path token that resolves to a known design doc → /docs?doc=<slug>
-    const _slugSet = new Set(DESIGN_DOCS.map(d => d.slug.toLowerCase()));
-    function _resolveDocSlug(raw) {
-      let s = raw.replace(/\.md$/, '').replace(/^design\//i, '');
-      const lower = s.toLowerCase();
-      if (_slugSet.has(lower)) return DESIGN_DOCS.find(d => d.slug.toLowerCase() === lower)?.slug || null;
-      return null;
-    }
-    const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
-    function _linkifyMdTokens(paraEl) {
-      const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
-      const textNodes = [];
-      let n;
-      while ((n = walker.nextNode())) textNodes.push(n);
-      textNodes.forEach(tn => {
-        const text = tn.nodeValue;
-        if (!_mdTokenRe.test(text)) { _mdTokenRe.lastIndex = 0; return; }
-        _mdTokenRe.lastIndex = 0;
-        const frag = document.createDocumentFragment();
-        let last = 0, m;
-        while ((m = _mdTokenRe.exec(text)) !== null) {
-          const slug = _resolveDocSlug(m[1]);
-          if (!slug) continue;
-          if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-          const a = document.createElement('a');
-          a.href = '/docs?doc=' + encodeURIComponent(slug);
-          a.textContent = m[1];
-          a.title = 'Open in Docs';
-          frag.appendChild(a);
-          last = _mdTokenRe.lastIndex;
-        }
-        if (!frag.childNodes.length) return;
-        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
-        tn.parentNode.replaceChild(frag, tn);
-      });
-    }
-    body.querySelectorAll('p, li').forEach(_linkifyMdTokens);
-
-    // Run syntax highlighting on code blocks
-    body.querySelectorAll('pre code').forEach(el => {
-      try { hljs.highlightElement(el); } catch (e) {}
+  // Linkify bare .md path tokens that resolve to known design docs
+  const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
+  function _linkifyMdTokens(paraEl) {
+    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let n;
+    while ((n = walker.nextNode())) textNodes.push(n);
+    textNodes.forEach(tn => {
+      const text = tn.nodeValue;
+      if (!_mdTokenRe.test(text)) { _mdTokenRe.lastIndex = 0; return; }
+      _mdTokenRe.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0, m;
+      while ((m = _mdTokenRe.exec(text)) !== null) {
+        const resolvedSlug = _resolveDesignSlug(m[1]);
+        if (!resolvedSlug) continue;
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const a = document.createElement('a');
+        a.href = '/docs?doc=' + encodeURIComponent(resolvedSlug);
+        a.textContent = m[1];
+        a.title = 'Open in Docs';
+        frag.appendChild(a);
+        last = _mdTokenRe.lastIndex;
+      }
+      if (!frag.childNodes.length) return;
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      tn.parentNode.replaceChild(frag, tn);
     });
   }
+  bodyEl.querySelectorAll('p, li').forEach(_linkifyMdTokens);
+
+  // Syntax highlighting
+  bodyEl.querySelectorAll('pre code').forEach(el => {
+    try { hljs.highlightElement(el); } catch (e) {}
+  });
 }
+
+async function _openDoc(slug) {
+  const panel      = document.getElementById('wiki-doc-panel');
+  const graphPanel = document.getElementById('wiki-graph-panel');
+  const body       = document.getElementById('wiki-doc-body');
+  const titleEl    = document.getElementById('wiki-doc-title');
+  const relpathEl  = document.getElementById('wiki-doc-relpath');
+
+  panel.classList.add('visible');
+  graphPanel.classList.add('with-doc');
+  body.innerHTML = '<div style="padding:20px;color:var(--on-surface-variant);font-size:0.85rem;opacity:.65;">Loading…</div>';
+
+  try {
+    const res = await fetch('/api/doc?module=wiki&slug=' + encodeURIComponent(slug));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    titleEl.textContent  = data.title;
+    relpathEl.textContent = data.rel_path;
+    _renderWikiContent(body, data.content, slug);
+    history.pushState({ slug }, '', '/wiki?doc=' + encodeURIComponent(slug));
+    wikiGraph.selectedSlug = slug;
+    wikiGraph._draw();
+  } catch (e) {
+    body.innerHTML = '<div style="padding:20px;color:var(--error,#b91c1c);font-size:0.85rem;">Failed to load document.</div>';
+  }
+}
+
+function _closeDoc() {
+  const panel      = document.getElementById('wiki-doc-panel');
+  const graphPanel = document.getElementById('wiki-graph-panel');
+  panel.classList.remove('visible');
+  graphPanel.classList.remove('with-doc');
+  document.getElementById('wiki-doc-body').innerHTML = '';
+  history.pushState({}, '', '/wiki');
+  wikiGraph.selectedSlug = null;
+  wikiGraph._draw();
+}
+
+document.getElementById('wiki-doc-close').addEventListener('click', _closeDoc);
+
+window.addEventListener('popstate', e => {
+  if (e.state && e.state.slug) _openDoc(e.state.slug);
+  else _closeDoc();
+});
+
+// Initial: load selected doc without a full page navigation
+if (SELECTED_SLUG) _openDoc(SELECTED_SLUG);
 </script>
 
 {% endif %}

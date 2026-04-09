@@ -2858,7 +2858,7 @@ async def docs_page(request: Request, doc: Optional[str] = None):
         return templates.TemplateResponse(request, "docs.html", {
             "design_path": None,
             "docs": [],
-            "selected_doc": None,
+            "selected_slug": None,
         })
 
     planning = _planning_root(repo_path)
@@ -2876,10 +2876,15 @@ async def docs_page(request: Request, doc: Optional[str] = None):
     if doc:
         selected = next((d for d in docs if d.slug == doc), None)
 
+    def _list_dict(d):
+        r = doc_to_dict(d)
+        r.pop("raw_content", None)
+        return r
+
     return templates.TemplateResponse(request, "docs.html", {
         "design_path": str(planning) if planning else None,
-        "docs": [doc_to_dict(d) for d in docs],
-        "selected_doc": doc_to_dict(selected) if selected else None,
+        "docs": [_list_dict(d) for d in docs],
+        "selected_slug": selected.slug if selected else None,
     })
 
 
@@ -2895,11 +2900,16 @@ async def wiki_page(request: Request, doc: Optional[str] = None):
 
     wiki_path = _wiki_path(request)
 
+    def _list_wiki_dict(d):
+        r = doc_to_dict(d)
+        r.pop("raw_content", None)
+        return r
+
     if wiki_path is None:
         return templates.TemplateResponse(request, "wiki.html", {
             "wiki_path": None,
             "docs": [],
-            "selected_doc": None,
+            "selected_slug": None,
             "design_docs": [],
         })
 
@@ -2938,9 +2948,74 @@ async def wiki_page(request: Request, doc: Optional[str] = None):
         if repo_path:
             doc_cache.store.set_design(cache_key, design_docs)
 
+    def _list_design_dict(d):
+        r = design_doc_to_dict(d)
+        r.pop("raw_content", None)
+        return r
+
     return templates.TemplateResponse(request, "wiki.html", {
         "wiki_path": str(wiki_path),
-        "docs": [doc_to_dict(d) for d in docs],
-        "selected_doc": doc_to_dict(selected) if selected else None,
-        "design_docs": [design_doc_to_dict(d) for d in design_docs],
+        "docs": [_list_wiki_dict(d) for d in docs],
+        "selected_slug": selected.slug if selected else None,
+        "design_docs": [_list_design_dict(d) for d in design_docs],
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# API: single doc content (lazy loading)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/api/doc")
+async def api_doc(request: Request, module: str, slug: str):
+    from fastapi import HTTPException
+    from nytwatch.pm.doc_cache import doc_cache
+
+    wiki_path = _wiki_path(request)
+    repo_path = getattr(get_config(request), "repo_path", "") or ""
+
+    if module == "wiki":
+        if wiki_path is None:
+            raise HTTPException(status_code=404, detail="Wiki not configured")
+        from nytwatch.pm.wiki_parser import load_wiki_docs, load_narrative_docs, doc_to_dict
+        from nytwatch.pm.docs_parser import _planning_root
+        planning = _planning_root(repo_path) if repo_path else None
+        cache_key = str(planning) if planning else str(wiki_path)
+
+        wiki_docs = doc_cache.store.get_wiki(cache_key)
+        if wiki_docs is None:
+            wiki_docs = load_wiki_docs(wiki_path)
+            doc_cache.store.set_wiki(cache_key, wiki_docs)
+
+        narrative_docs = doc_cache.store.get_narrative(cache_key)
+        if narrative_docs is None:
+            narrative_docs = []
+            if planning is not None:
+                from nytwatch.pm.wiki_parser import load_narrative_docs as _lnd
+                narrative_path = planning / "design" / "narrative"
+                narrative_docs = _lnd(narrative_path)
+            doc_cache.store.set_narrative(cache_key, narrative_docs)
+
+        doc = next((d for d in wiki_docs + narrative_docs if d.slug == slug), None)
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return {"content": doc.raw_content, "title": doc.title, "rel_path": doc.rel_path}
+
+    elif module == "docs":
+        if not repo_path:
+            raise HTTPException(status_code=404, detail="Project not configured")
+        from nytwatch.pm.docs_parser import load_design_docs, doc_to_dict, _planning_root
+        planning = _planning_root(repo_path)
+        cache_key = str(planning) if planning else repo_path
+
+        design_docs = doc_cache.store.get_design(cache_key)
+        if design_docs is None:
+            design_docs = load_design_docs(repo_path)
+            doc_cache.store.set_design(cache_key, design_docs)
+
+        doc = next((d for d in design_docs if d.slug == slug), None)
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return {"content": doc.raw_content, "title": doc.title, "rel_path": doc.rel_path}
+
+    else:
+        raise HTTPException(status_code=400, detail="module must be 'wiki' or 'docs'")
