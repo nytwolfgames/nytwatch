@@ -36,6 +36,9 @@ Read `planning/production/wiki/.pending-update.md`.
 ## Phase 2: Map Changed Files to Wiki Sections
 
 Read `planning/production/wiki/_index.md`.
+Read `.claude/source-paths.md` — extract the in-scope path list from the fenced
+`paths` block (ignore lines starting with `#`). This determines whether an unmatched
+file is new application code or an external/third-party file.
 
 For each changed file, scan the routing table for matching class names, file
 path patterns, or keywords. Build a work list of:
@@ -47,13 +50,15 @@ path patterns, or keywords. Build a work list of:
 - `_index.md` may link to named anchors (`file.md#anchor`) — note the anchor so
   the update targets the right section of the file
 - If a changed file matches no routing entry:
-  1. Check whether the change introduces a **new class, module, or system** — if so,
-     determine which read context it belongs to and add it to the appropriate existing
-     wiki file
-  2. Check whether the change is large enough to warrant a **new wiki file** — apply
+  1. Check whether it falls under any path listed in `.claude/source-paths.md`.
+     If it does NOT — it is an external or third-party file. **Skip it silently.**
+  2. If it IS in-scope: check whether the change introduces a **new class, module,
+     or system** — determine which read context it belongs to and add it to the
+     appropriate existing wiki file
+  3. Check whether the change is large enough to warrant a **new wiki file** — apply
      the extract rule: if this concept will be referenced by 3+ other systems, it
      deserves its own file; flag this in the Phase 7 summary and create the file
-  3. If neither applies, fold it into `architecture.md` as a minor addition
+  4. If neither applies, fold it into `architecture.md` as a minor addition
 
 **Do not default everything unmatched to `architecture.md`.** That file covers
 only the core entry points and module map. Unmatched content belongs somewhere else.

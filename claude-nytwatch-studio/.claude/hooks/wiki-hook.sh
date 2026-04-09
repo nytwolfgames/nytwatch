@@ -38,6 +38,28 @@ if [ -z "$CHANGED_FILES" ]; then
     exit 0
 fi
 
+# ── Load in-scope source paths from config ───────────────────────────────────
+SOURCE_PATHS_FILE=".claude/source-paths.md"
+SOURCE_PATHS=""
+if [ -f "$SOURCE_PATHS_FILE" ]; then
+    SOURCE_PATHS=$(awk '/^```paths$/,/^```$/' "$SOURCE_PATHS_FILE" \
+        | grep -v '^```' | grep -v '^#' | grep -v '^$')
+fi
+
+is_in_scope() {
+    local file="$1"
+    if [ -z "$SOURCE_PATHS" ]; then
+        echo "in-scope"
+        return
+    fi
+    while IFS= read -r path; do
+        case "$file" in
+            "$path"*) echo "in-scope"; return ;;
+        esac
+    done <<< "$SOURCE_PATHS"
+    echo "external"
+}
+
 # ── Write pending update file ────────────────────────────────────────────────
 mkdir -p "$WIKI_DIR" 2>/dev/null
 
@@ -53,14 +75,16 @@ TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
     echo "## Changed Files"
     echo ""
     echo "$CHANGED_FILES" | while read -r f; do
-        echo "- \`$f\`"
+        scope=$(is_in_scope "$f")
+        echo "- \`$f\` [$scope]"
     done
     echo ""
     echo "## Diffs (truncated at 300 lines each)"
     echo ""
     echo "$CHANGED_FILES" | while read -r f; do
         if [ -f "$f" ]; then
-            echo "### \`$f\`"
+            scope=$(is_in_scope "$f")
+            echo "### \`$f\` [$scope]"
             echo '```'
             if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
                 git diff "$LAST_SHA" -- "$f" 2>/dev/null | head -300

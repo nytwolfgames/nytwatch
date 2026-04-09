@@ -29,11 +29,16 @@ Otherwise, rebuild all sections from scratch.
 
 Run these discovery steps to understand what the project contains before reading anything:
 
-1. **Detect primary language(s)**: Count files by extension across `src/`, `lib/`,
-   `app/`, `Source/`, or equivalent source roots. The most common extension is the
-   primary language.
+1. **Read source path config**: Read `.claude/source-paths.md`. Extract the list of
+   source roots from the fenced `paths` block (ignore lines starting with `#`).
+   These are the directories to survey for source files. If the file is missing,
+   fall back to auto-detecting common roots: `src/`, `lib/`, `app/`, `Source/`,
+   `packages/`.
 
-2. **Find design documents**: Glob for any of:
+2. **Detect primary language(s)**: Count files by extension across the configured
+   source roots. The most common extension is the primary language.
+
+3. **Find design documents**: Glob for any of:
    - `planning/design/**/*.md`
    - `planning/design/gdd/*.md`
    - `docs/design/**/*.md`
@@ -41,11 +46,9 @@ Run these discovery steps to understand what the project contains before reading
    - `*.design.md`
    Record every file found — these are the authoritative source of truth.
 
-3. **Find source root(s)**: Glob for common patterns:
-   - `src/**/*` — Python, JS/TS, Rust, Go
-   - `Source/**/*.h` — C++/Unreal
-   - `lib/**/*`, `app/**/*`, `packages/**/*`
-   List the top-level directories under each root to understand the module structure.
+4. **Find source root(s)**: For each path in `.claude/source-paths.md`, glob for
+   source files matching the detected language (`**/*.py`, `**/*.ts`, `**/*.h`, etc.).
+   List the top-level directories to understand the module structure.
 
 4. **Find sprint and milestone files**:
    - `planning/production/sprints/*.md`

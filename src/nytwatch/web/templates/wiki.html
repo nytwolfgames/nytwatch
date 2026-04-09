@@ -341,7 +341,7 @@ class WikiGraph {
     this.hoveredNode = null;
     this._w = 0;
     this._h = 0;
-    this.alpha = 1.0;   // simulation cooling factor
+    this.alpha = 0.8;   // simulation cooling factor
     this.transform = { x: 0, y: 0, scale: 1 };
     this._dragNode = null;
     this._dragMoved = false;
@@ -402,6 +402,10 @@ class WikiGraph {
 
     this._setupResize();
     this._setupEvents();
+
+    // Pre-warm: run simulation headlessly so nodes arrive settled on first paint
+    for (let i = 0; i < 200; i++) this._simulate();
+
     this._animate();
   }
 
@@ -535,7 +539,7 @@ class WikiGraph {
     const springLen  = 90;
     const springK    = 0.06;
     const centerF    = 0.018;
-    const damping    = 0.82;
+    const damping    = 0.72;
 
     // Repulsion between all pairs
     for (let i = 0; i < this.nodes.length; i++) {
