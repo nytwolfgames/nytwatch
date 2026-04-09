@@ -86,24 +86,23 @@ body { overflow: hidden; }
   flex-direction: column;
   gap: 6px;
   z-index: 10;
-  min-width: 168px;
+  min-width: 172px;
+  max-width: 220px;
 }
 .wiki-legend-section {
-  background: rgba(255,255,255,0.92);
+  background: rgba(255,255,255,0.93);
   border: 1px solid rgba(0,0,0,0.09);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   overflow: hidden;
   transition: opacity .18s;
 }
-.wiki-legend-section.hidden-group {
-  opacity: 0.42;
-}
+.wiki-legend-section.hidden-group { opacity: 0.40; }
 .wiki-legend-header {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 9px 6px 8px;
+  padding: 6px 8px;
   font-size: 0.73rem;
   font-weight: 700;
   color: var(--on-surface);
@@ -112,32 +111,43 @@ body { overflow: hidden; }
   border-bottom: 1px solid rgba(0,0,0,0.07);
   transition: background .12s;
 }
-.wiki-legend-section.hidden-group .wiki-legend-header {
-  border-bottom-color: transparent;
-}
 .wiki-legend-header:hover { background: rgba(0,0,0,0.04); }
-.wiki-legend-eye { flex-shrink: 0; color: var(--on-surface-variant); opacity: 0.65; }
+.wiki-legend-eye { flex-shrink: 0; color: var(--on-surface-variant); opacity: 0.60; }
 .wiki-legend-header-label { flex: 1; }
-.wiki-legend-list {
-  padding: 4px 0 5px;
-}
-.wiki-legend-section.hidden-group .wiki-legend-list {
-  display: none;
-}
-.wiki-legend-item {
+.wiki-legend-list { padding: 3px 0 4px; }
+/* Tree items */
+.wiki-legend-tree-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 10px;
+  gap: 5px;
+  padding: 2px 6px 2px 0;
   font-size: 0.67rem;
   color: var(--on-surface-variant);
+  cursor: pointer;
+  user-select: none;
   white-space: nowrap;
+  transition: background .1s, opacity .15s;
 }
+.wiki-legend-tree-item:hover { background: rgba(0,0,0,0.04); }
+.wiki-legend-tree-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wiki-legend-tree-eye {
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+  opacity: 0;
+  transition: opacity .12s;
+}
+.wiki-legend-tree-item:hover .wiki-legend-tree-eye { opacity: 0.55; }
+.wiki-legend-tree-item.hidden-key { opacity: 0.32; }
+.wiki-legend-tree-item.hidden-key .wiki-legend-tree-eye { opacity: 0.6; }
 .wiki-legend-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+.wiki-legend-dot-ghost {
+  background: transparent !important;
+  border: 1.5px dashed #bbb;
 }
 
 /* Document panel */
@@ -399,7 +409,7 @@ class WikiGraph {
       this.sectionColor[k] = PALETTE[colorIdx++ % PALETTE.length];
     });
 
-    this.hiddenGroups = new Set();
+    this.hiddenKeys = new Set();
 
     // ── Build legend ──────────────────────────────────────────────────────
     this._buildLegend(colorKeys);
@@ -471,30 +481,31 @@ class WikiGraph {
     this._animate();
   }
 
+  // ── Legend SVG helpers ──────────────────────────────────────────────────
+  _makeSvg(size, cls) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', size); svg.setAttribute('height', size);
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    if (cls) svg.classList.add(cls);
+    return svg;
+  }
+  _eyeOn()  { return `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`; }
+  _eyeOff() { return `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`; }
+
   _buildLegend(colorKeys) {
     const container = document.getElementById('wiki-legend');
     if (!container) return;
-
-    this.hiddenGroups = new Set();
 
     const narKeys = colorKeys.filter(k => k === 'narrative' || k.startsWith('narrative/'));
     const srcKeys = colorKeys.filter(k => k !== 'narrative' && !k.startsWith('narrative/'));
 
     const groups = [
-      { id: 'source',    label: 'Source',    keys: srcKeys },
-      { id: 'narrative', label: 'Narrative', keys: narKeys },
+      { id: 'source',    label: 'Source',    keys: srcKeys, isNarrative: false },
+      { id: 'narrative', label: 'Narrative', keys: narKeys, isNarrative: true  },
     ];
-
-    const NS = 'http://www.w3.org/2000/svg';
-    const makeSvg = () => {
-      const svg = document.createElementNS(NS, 'svg');
-      svg.setAttribute('width', '13'); svg.setAttribute('height', '13');
-      svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
-      svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
-      svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
-      svg.classList.add('wiki-legend-eye');
-      return svg;
-    };
 
     groups.forEach(g => {
       if (!g.keys.length) return;
@@ -502,49 +513,132 @@ class WikiGraph {
       const section = document.createElement('div');
       section.className = 'wiki-legend-section';
 
-      // ── Header ──
+      // ── Group header ──
       const header = document.createElement('div');
       header.className = 'wiki-legend-header';
-      const eyeSvg = makeSvg();
-      eyeSvg.innerHTML = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
+      const headerEye = this._makeSvg(13, 'wiki-legend-eye');
+      headerEye.innerHTML = this._eyeOn();
       const labelSpan = document.createElement('span');
       labelSpan.className = 'wiki-legend-header-label';
       labelSpan.textContent = g.label;
-      header.appendChild(eyeSvg);
+      header.appendChild(headerEye);
       header.appendChild(labelSpan);
-      header.addEventListener('click', () => this._toggleGroup(g.id, section, eyeSvg));
+      header.addEventListener('click', () => this._toggleGroupFilter(g.id, section, headerEye));
+      section.appendChild(header);
 
-      // ── Item list ──
+      // ── Tree list ──
       const list = document.createElement('div');
       list.className = 'wiki-legend-list';
-      g.keys.forEach(k => {
-        const label = g.id === 'narrative'
-          ? (k === 'narrative' ? 'root' : k.replace(/^narrative\//, '').replace(/\//g, ' / '))
-          : (k === '' ? 'root' : k.replace(/\//g, ' / '));
-        const item = document.createElement('div');
-        item.className = 'wiki-legend-item';
-        item.innerHTML = `<div class="wiki-legend-dot" style="background:${this.sectionColor[k]}"></div><span>${label}</span>`;
-        list.appendChild(item);
-      });
-
-      section.appendChild(header);
+      const tree = this._buildKeyTree(g.keys, g.isNarrative);
+      this._renderTreeNodes(tree.children, list, 0);
       section.appendChild(list);
+
       container.appendChild(section);
     });
   }
 
-  _toggleGroup(groupId, sectionEl, eyeSvg) {
-    const EYE_ON  = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`;
-    const EYE_OFF = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`;
-    if (this.hiddenGroups.has(groupId)) {
-      this.hiddenGroups.delete(groupId);
-      sectionEl.classList.remove('hidden-group');
-      eyeSvg.innerHTML = EYE_ON;
-    } else {
-      this.hiddenGroups.add(groupId);
-      sectionEl.classList.add('hidden-group');
-      eyeSvg.innerHTML = EYE_OFF;
+  // Build a trie from colorKeys for tree display
+  _buildKeyTree(keys, isNarrative) {
+    const root = { children: new Map() };
+    for (const k of keys) {
+      // Display path: strip 'narrative/' prefix for narrative group
+      let dispPath = isNarrative
+        ? (k === 'narrative' ? 'root' : k.replace(/^narrative\//, ''))
+        : (k === '' ? 'root' : k);
+      const parts = dispPath.split('/');
+      let node = root;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (!node.children.has(part)) {
+          // Derive the actual filterKey for this trie node
+          let filterKey;
+          if (isNarrative) {
+            const rel = parts.slice(0, i + 1).join('/');
+            filterKey = rel === 'root' ? 'narrative' : 'narrative/' + rel;
+          } else {
+            const rel = parts[0] === 'root' ? '' : parts.slice(0, i + 1).join('/');
+            filterKey = rel;
+          }
+          node.children.set(part, { label: part, filterKey, colorKey: null, children: new Map() });
+        }
+        node = node.children.get(part);
+      }
+      node.colorKey = k; // mark as a real color entry
     }
+    return root;
+  }
+
+  // Recursively render tree nodes into container div
+  _renderTreeNodes(childrenMap, container, depth) {
+    for (const [, node] of childrenMap) {
+      const item = document.createElement('div');
+      item.className = 'wiki-legend-tree-item';
+      item.style.paddingLeft = (8 + depth * 11) + 'px';
+
+      const dot = document.createElement('div');
+      dot.className = 'wiki-legend-dot' + (node.colorKey === null ? ' wiki-legend-dot-ghost' : '');
+      if (node.colorKey !== null) dot.style.background = this.sectionColor[node.colorKey];
+
+      const label = document.createElement('span');
+      label.className = 'wiki-legend-tree-label';
+      label.textContent = node.label;
+
+      const eye = this._makeSvg(11, 'wiki-legend-tree-eye');
+      eye.innerHTML = this._eyeOn();
+
+      item.appendChild(dot);
+      item.appendChild(label);
+      item.appendChild(eye);
+      item.addEventListener('click', e => {
+        e.stopPropagation();
+        this._toggleTreeItem(node.filterKey, item, eye);
+      });
+      container.appendChild(item);
+
+      if (node.children.size > 0) {
+        this._renderTreeNodes(node.children, container, depth + 1);
+      }
+    }
+  }
+
+  // Toggle a group-level filter (header eye)
+  _toggleGroupFilter(groupId, sectionEl, eyeSvg) {
+    const sentinel = '__grp_' + groupId;
+    if (this.hiddenKeys.has(sentinel)) {
+      this.hiddenKeys.delete(sentinel);
+      sectionEl.classList.remove('hidden-group');
+      eyeSvg.innerHTML = this._eyeOn();
+    } else {
+      this.hiddenKeys.add(sentinel);
+      sectionEl.classList.add('hidden-group');
+      eyeSvg.innerHTML = this._eyeOff();
+    }
+  }
+
+  // Toggle an individual tree-item filter
+  _toggleTreeItem(filterKey, itemEl, eyeEl) {
+    if (this.hiddenKeys.has(filterKey)) {
+      this.hiddenKeys.delete(filterKey);
+      itemEl.classList.remove('hidden-key');
+      eyeEl.innerHTML = this._eyeOn();
+    } else {
+      this.hiddenKeys.add(filterKey);
+      itemEl.classList.add('hidden-key');
+      eyeEl.innerHTML = this._eyeOff();
+    }
+  }
+
+  // Returns true if this colorKey is effectively hidden (self, ancestor, or group)
+  _isNodeHidden(colorKey) {
+    const isNar = colorKey === 'narrative' || colorKey.startsWith('narrative/');
+    if (isNar  && this.hiddenKeys.has('__grp_narrative')) return true;
+    if (!isNar && this.hiddenKeys.has('__grp_source'))    return true;
+    if (this.hiddenKeys.has(colorKey)) return true;
+    const parts = colorKey.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      if (this.hiddenKeys.has(parts.slice(0, i).join('/'))) return true;
+    }
+    return false;
   }
 
   // ── Resize handling ─────────────────────────────────────────────────────
@@ -727,9 +821,7 @@ class WikiGraph {
 
     // ── Edges ──────────────────────────────────────────────────────────────
     for (const e of this.edges) {
-      const srcGrp = e.source.isNarrative ? 'narrative' : 'source';
-      const tgtGrp = e.target.isNarrative ? 'narrative' : 'source';
-      if (this.hiddenGroups.has(srcGrp) || this.hiddenGroups.has(tgtGrp)) continue;
+      if (this._isNodeHidden(e.source.colorKey) || this._isNodeHidden(e.target.colorKey)) continue;
       const sel = (e.source.slug === this.selectedSlug || e.target.slug === this.selectedSlug);
       const hov = (e.source === this.hoveredNode || e.target === this.hoveredNode);
       ctx.beginPath();
@@ -750,8 +842,7 @@ class WikiGraph {
 
     // ── Nodes ──────────────────────────────────────────────────────────────
     for (const n of this.nodes) {
-      const nodeGrp = n.isNarrative ? 'narrative' : 'source';
-      if (this.hiddenGroups.has(nodeGrp)) continue;
+      if (this._isNodeHidden(n.colorKey)) continue;
       const color   = this.sectionColor[n.colorKey] || PALETTE[0];
       const isSel   = n.slug === this.selectedSlug;
       const isHov   = n === this.hoveredNode;
