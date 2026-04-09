@@ -56,19 +56,15 @@ See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for full protocol and examples.
 ## LLM Wiki
 
 The project maintains a living knowledge base in `planning/production/wiki/`.
-Read relevant wiki sections at the start of any task touching a known subsystem.
+Before touching any known subsystem, look up the class or keyword in
+`planning/production/wiki/_index.md` and read the linked section.
 
-| Section | When to read |
-|---|---|
-| `planning/production/wiki/architecture.md` | Any task touching routes, data model, or module structure |
-| `planning/production/wiki/conventions.md` | Any Python authoring task |
-| `planning/production/wiki/decisions.md` | Before proposing architectural changes |
-| `planning/production/wiki/known-gotchas.md` | Before touching routes, modals, or markdown writer |
-| `planning/production/wiki/features/tracker.md` | Any tracker feature work |
-| `planning/production/wiki/features/auditor.md` | Any auditor feature work |
-| `planning/production/wiki/features/project-management.md` | Any PM feature work (sprints, stories, sub-tasks) |
-| `planning/production/wiki/features/settings.md` | Any settings or configuration work |
+These files apply to every task — read them proactively:
+
+- `planning/production/wiki/conventions.md` — naming, patterns, framework idioms
+- `planning/production/wiki/decisions.md` — ADRs; check before proposing changes
+- `planning/production/wiki/known-gotchas.md` — traps, risks, hardcoded values
 
 **Wiki is queued automatically**: The Stop hook writes a pending update at session end.
 Run `/wiki-update` to apply the queued changes after any significant session.
-Run `/wiki-init` to build the wiki from scratch (first time or after major refactor).
+Run `/wiki-init` to rebuild the wiki from scratch if it becomes stale.
