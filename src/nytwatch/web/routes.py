@@ -2804,3 +2804,58 @@ async def api_pm_delete_milestone(request: Request, slug: str):
     from nytwatch.pm.writer import delete_milestone
     ok = delete_milestone(studio, slug)
     return JSONResponse({"ok": ok})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Wiki
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _wiki_path(request: Request) -> Optional[Path]:
+    """Locate the wiki directory for the active project.
+
+    Tries (in order):
+      1. <studio>/production/wiki/   — consistent with the existing PM layout
+      2. <repo_root>/planning/wiki/  — simple flat layout for new projects
+    """
+    config = get_config(request)
+    if not config or not getattr(config, "repo_path", ""):
+        return None
+
+    studio = _pm_studio_path(request)
+    if studio is not None:
+        p = studio / "production" / "wiki"
+        if p.exists():
+            return p
+
+    repo = Path(config.repo_path)
+    p2 = repo / "planning" / "wiki"
+    if p2.exists():
+        return p2
+
+    return None
+
+
+@router.get("/wiki", response_class=HTMLResponse)
+async def wiki_page(request: Request, doc: Optional[str] = None):
+    from nytwatch.pm.wiki_parser import load_wiki_docs, doc_to_dict
+
+    wiki_path = _wiki_path(request)
+
+    if wiki_path is None:
+        return templates.TemplateResponse(request, "wiki.html", {
+            "wiki_path": None,
+            "docs": [],
+            "selected_doc": None,
+        })
+
+    docs = load_wiki_docs(wiki_path)
+
+    selected = None
+    if doc:
+        selected = next((d for d in docs if d.slug == doc), None)
+
+    return templates.TemplateResponse(request, "wiki.html", {
+        "wiki_path": str(wiki_path),
+        "docs": [doc_to_dict(d) for d in docs],
+        "selected_doc": doc_to_dict(selected) if selected else None,
+    })

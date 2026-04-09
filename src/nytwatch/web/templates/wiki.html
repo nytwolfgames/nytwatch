@@ -1,0 +1,725 @@
+{% extends "base.html" %}
+{% block title %}Wiki — Nytwatch{% endblock %}
+
+{% block content %}
+<style>
+/* ── Override main-content layout for full-height wiki ───────────────────── */
+body { overflow: hidden; }
+.main-content {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Wiki header bar ─────────────────────────────────────────────────────── */
+.wiki-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface);
+}
+
+/* ── Two-panel layout ────────────────────────────────────────────────────── */
+.wiki-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Graph panel */
+.wiki-graph-panel {
+  flex: 1 1 100%;
+  min-width: 0;
+  position: relative;
+  background-color: var(--surface-container-low);
+  background-image: radial-gradient(circle, #c9cdd4 1px, transparent 1px);
+  background-size: 22px 22px;
+  transition: flex-basis .28s ease;
+  overflow: hidden;
+}
+.wiki-graph-panel.with-doc {
+  flex: 0 0 38%;
+}
+
+/* Graph canvas */
+#wiki-graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+/* Graph toolbar */
+.wiki-graph-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+/* Graph hint */
+.wiki-graph-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  font-size: 0.65rem;
+  color: var(--on-surface-variant);
+  opacity: .45;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Legend */
+.wiki-graph-legend {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 10;
+}
+.wiki-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  color: var(--on-surface-variant);
+  background: rgba(255,255,255,0.75);
+  padding: 2px 6px 2px 4px;
+  border-radius: 4px;
+}
+.wiki-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Document panel */
+.wiki-doc-panel {
+  flex: 0 0 0%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--outline-variant);
+  background: var(--surface);
+  transition: flex-basis .28s ease;
+}
+.wiki-doc-panel.visible {
+  flex: 0 0 62%;
+}
+
+.wiki-doc-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+}
+
+.wiki-doc-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px 40px;
+}
+
+/* ── Markdown content ────────────────────────────────────────────────────── */
+.wiki-doc-body h1 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 0 0 20px;
+  line-height: 1.25;
+  color: var(--on-surface);
+}
+.wiki-doc-body h2 {
+  font-size: 1.05rem;
+  font-weight: 650;
+  margin: 28px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--outline-variant);
+  color: var(--on-surface);
+}
+.wiki-doc-body h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 20px 0 7px;
+  color: var(--on-surface);
+}
+.wiki-doc-body h4 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 14px 0 5px;
+  color: var(--on-surface-variant);
+}
+.wiki-doc-body p {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  margin: 0 0 13px;
+  color: var(--on-surface);
+}
+.wiki-doc-body ul, .wiki-doc-body ol {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  margin: 0 0 13px;
+  padding-left: 22px;
+}
+.wiki-doc-body li { margin-bottom: 4px; }
+.wiki-doc-body li > ul, .wiki-doc-body li > ol { margin-top: 4px; margin-bottom: 0; }
+.wiki-doc-body code:not(pre code) {
+  font-family: 'Consolas', 'SF Mono', monospace;
+  font-size: 0.8rem;
+  background: var(--surface-container);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--on-surface);
+}
+.wiki-doc-body pre {
+  background: var(--surface-container-low) !important;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0 0 16px;
+}
+.wiki-doc-body pre code {
+  font-size: 0.8rem;
+  background: none !important;
+  padding: 0 !important;
+}
+.wiki-doc-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 16px;
+  font-size: 0.845rem;
+}
+.wiki-doc-body th, .wiki-doc-body td {
+  border: 1px solid var(--outline-variant);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.wiki-doc-body th {
+  background: var(--surface-container);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: none;
+}
+.wiki-doc-body blockquote {
+  border-left: 3px solid var(--primary);
+  margin: 0 0 14px;
+  padding: 8px 14px;
+  background: var(--surface-container-low);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.855rem;
+  color: var(--on-surface-variant);
+}
+.wiki-doc-body blockquote p { margin: 0; font-size: inherit; color: inherit; }
+.wiki-doc-body a { color: var(--primary); text-decoration: none; }
+.wiki-doc-body a:hover { text-decoration: underline; }
+.wiki-doc-body hr {
+  border: none;
+  border-top: 1px solid var(--outline-variant);
+  margin: 20px 0;
+}
+.wiki-doc-body strong { font-weight: 650; }
+</style>
+
+<!-- Header -->
+<div class="wiki-header">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--on-surface-variant);flex-shrink:0;"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+  <span class="headline-md" style="font-size:1rem;font-weight:650;">Wiki</span>
+  {% if wiki_path %}
+  <span class="body-sm mono" style="color:var(--on-surface-variant);font-size:0.72rem;">{{ wiki_path }}</span>
+  {% endif %}
+  <span style="margin-left:auto;font-size:0.78rem;color:var(--on-surface-variant);">
+    {{ docs|length }} doc{% if docs|length != 1 %}s{% endif %}
+  </span>
+</div>
+
+{% if not wiki_path %}
+<!-- No wiki configured -->
+<div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--on-surface-variant);padding:40px;">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.35;"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+  <p class="body-md" style="margin:0;text-align:center;">No wiki found for this project.</p>
+  <p class="body-sm" style="margin:0;text-align:center;opacity:.7;">Create a <code style="font-size:0.82rem;background:var(--surface-container);padding:2px 6px;border-radius:3px;">planning/wiki/</code> directory with Markdown files to get started.</p>
+</div>
+
+{% elif docs|length == 0 %}
+<!-- Wiki dir exists but is empty -->
+<div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--on-surface-variant);padding:40px;">
+  <p class="body-md" style="margin:0;">Wiki directory is empty.</p>
+  <p class="body-sm" style="margin:0;opacity:.7;">Add <code style="font-size:0.82rem;background:var(--surface-container);padding:2px 6px;border-radius:3px;">.md</code> files to <code style="font-size:0.82rem;background:var(--surface-container);padding:2px 6px;border-radius:3px;">planning/wiki/</code>.</p>
+</div>
+
+{% else %}
+
+<!-- Two-panel layout -->
+<div class="wiki-layout">
+
+  <!-- Graph panel -->
+  <div class="wiki-graph-panel {% if selected_doc %}with-doc{% endif %}" id="wiki-graph-panel">
+
+    <!-- Legend (injected by JS) -->
+    <div class="wiki-graph-legend" id="wiki-legend"></div>
+
+    <!-- Toolbar -->
+    <div class="wiki-graph-toolbar">
+      <button class="btn" style="font-size:0.7rem;padding:3px 9px;" onclick="wikiGraph.resetView()" title="Reset zoom &amp; pan">Reset</button>
+      <button class="btn" id="wiki-labels-btn" style="font-size:0.7rem;padding:3px 9px;" onclick="wikiGraph.toggleLabels()" title="Toggle labels">Labels</button>
+    </div>
+
+    <canvas id="wiki-graph-canvas"></canvas>
+
+    <div class="wiki-graph-hint">Scroll to zoom · Drag to pan · Click node to open</div>
+  </div>
+
+  <!-- Document panel -->
+  <div class="wiki-doc-panel {% if selected_doc %}visible{% endif %}" id="wiki-doc-panel">
+    {% if selected_doc %}
+    <div class="wiki-doc-header">
+      <a href="/wiki" class="btn" style="padding:3px 8px;font-size:0.72rem;display:flex;align-items:center;gap:4px;" title="Close">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </a>
+      <span style="font-size:0.88rem;font-weight:600;color:var(--on-surface);">{{ selected_doc.title }}</span>
+      <span class="mono" style="margin-left:auto;font-size:0.68rem;color:var(--on-surface-variant);">{{ selected_doc.rel_path }}</span>
+    </div>
+    <div class="wiki-doc-body" id="wiki-doc-body"></div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Data injected for JS -->
+<script>
+const WIKI_DOCS = {{ docs | tojson }};
+const SELECTED_SLUG = {{ (selected_doc.slug if selected_doc else None) | tojson }};
+{% if selected_doc %}
+const SELECTED_CONTENT = {{ selected_doc.raw_content | tojson }};
+{% else %}
+const SELECTED_CONTENT = null;
+{% endif %}
+</script>
+
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  Wiki Graph — Force-Directed Canvas Renderer
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PALETTE = [
+  '#004ac6', // primary blue (root)
+  '#7c3aed', // purple
+  '#0891b2', // cyan
+  '#059669', // emerald
+  '#d97706', // amber
+  '#dc2626', // red
+  '#db2777', // pink
+  '#65a30d', // lime
+  '#9333ea', // violet
+  '#0284c7', // sky
+];
+
+class WikiGraph {
+  constructor(canvasEl, docs, selectedSlug) {
+    this.canvas = canvasEl;
+    this.ctx = canvasEl.getContext('2d');
+    this.selectedSlug = selectedSlug;
+    this.showLabels = true;
+    this.hoveredNode = null;
+    this._w = 0;
+    this._h = 0;
+    this.alpha = 1.0;   // simulation cooling factor
+    this.transform = { x: 0, y: 0, scale: 1 };
+    this._dragNode = null;
+    this._dragMoved = false;
+    this._dragStartScreen = null;
+    this._isPanning = false;
+    this._panStart = null;
+
+    // ── Build section→color mapping ───────────────────────────────────────
+    const sections = [...new Set(docs.map(d => d.section || ''))].sort();
+    this.sectionColor = {};
+    // Root docs (section="") always use primary blue
+    let colorIdx = 1;
+    sections.forEach(s => {
+      if (s === '') {
+        this.sectionColor[''] = PALETTE[0];
+      } else {
+        this.sectionColor[s] = PALETTE[colorIdx++ % PALETTE.length];
+      }
+    });
+
+    // ── Build legend ──────────────────────────────────────────────────────
+    this._buildLegend(sections);
+
+    // ── Create node objects ───────────────────────────────────────────────
+    // Spread nodes in a rough circle to avoid initial overlap
+    const n = docs.length;
+    this.nodes = docs.map((d, i) => {
+      const angle = (i / n) * Math.PI * 2;
+      const r = Math.min(120, 40 + n * 8);
+      return {
+        slug: d.slug,
+        label: d.title,
+        section: d.section || '',
+        x: Math.cos(angle) * r + (Math.random() - 0.5) * 20,
+        y: Math.sin(angle) * r + (Math.random() - 0.5) * 20,
+        vx: 0,
+        vy: 0,
+        fixed: false,
+        selected: d.slug === selectedSlug,
+      };
+    });
+
+    // ── Build slug → node index ───────────────────────────────────────────
+    this.nodeBySlug = {};
+    this.nodes.forEach(n => { this.nodeBySlug[n.slug] = n; });
+
+    // ── Build edges ───────────────────────────────────────────────────────
+    this.edges = [];
+    docs.forEach(d => {
+      d.links.forEach(targetSlug => {
+        const source = this.nodeBySlug[d.slug];
+        const target = this.nodeBySlug[targetSlug];
+        if (source && target && source !== target) {
+          this.edges.push({ source, target });
+        }
+      });
+    });
+
+    this._setupResize();
+    this._setupEvents();
+    this._animate();
+  }
+
+  _buildLegend(sections) {
+    const container = document.getElementById('wiki-legend');
+    if (!container) return;
+    sections.forEach(s => {
+      const label = s === '' ? 'root' : s;
+      const color = this.sectionColor[s];
+      const el = document.createElement('div');
+      el.className = 'wiki-legend-item';
+      el.innerHTML = `<div class="wiki-legend-dot" style="background:${color}"></div><span>${label}</span>`;
+      container.appendChild(el);
+    });
+  }
+
+  // ── Resize handling ─────────────────────────────────────────────────────
+  _setupResize() {
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = this.canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      this._w = rect.width;
+      this._h = rect.height;
+      this.canvas.width  = rect.width  * dpr;
+      this.canvas.height = rect.height * dpr;
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    new ResizeObserver(resize).observe(this.canvas);
+  }
+
+  // ── Mouse / touch events ────────────────────────────────────────────────
+  _setupEvents() {
+    const c = this.canvas;
+
+    // Zoom on scroll
+    c.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const mx = e.offsetX - this._w / 2 - this.transform.x;
+      const my = e.offsetY - this._h / 2 - this.transform.y;
+      this.transform.x -= mx * (factor - 1);
+      this.transform.y -= my * (factor - 1);
+      this.transform.scale = Math.max(0.15, Math.min(6, this.transform.scale * factor));
+    }, { passive: false });
+
+    c.addEventListener('mousedown', e => {
+      const pos = this._toWorld(e.offsetX, e.offsetY);
+      const hit = this._hitTest(pos.x, pos.y);
+      if (hit) {
+        this._dragNode = hit;
+        this._dragMoved = false;
+        this._dragStartScreen = { x: e.offsetX, y: e.offsetY };
+        hit.fixed = true;
+        this.alpha = Math.max(this.alpha, 0.15);
+      } else {
+        this._isPanning = true;
+        this._panStart = { x: e.offsetX - this.transform.x, y: e.offsetY - this.transform.y };
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      const rect = c.getBoundingClientRect();
+      const ox = e.clientX - rect.left;
+      const oy = e.clientY - rect.top;
+
+      if (this._dragNode) {
+        const pos = this._toWorld(ox, oy);
+        this._dragNode.x = pos.x;
+        this._dragNode.y = pos.y;
+        this._dragNode.vx = 0;
+        this._dragNode.vy = 0;
+        const ds = this._dragStartScreen;
+        if (ds && (Math.abs(ox - ds.x) > 4 || Math.abs(oy - ds.y) > 4)) {
+          this._dragMoved = true;
+        }
+      } else if (this._isPanning) {
+        this.transform.x = ox - this._panStart.x;
+        this.transform.y = oy - this._panStart.y;
+      } else {
+        // Hover detection (only when mouse is over canvas)
+        if (ox >= 0 && ox <= this._w && oy >= 0 && oy <= this._h) {
+          const pos = this._toWorld(ox, oy);
+          const hit = this._hitTest(pos.x, pos.y);
+          this.hoveredNode = hit || null;
+          c.style.cursor = hit ? 'pointer' : 'default';
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', e => {
+      if (this._dragNode) {
+        if (!this._dragMoved) {
+          // Click: navigate to doc
+          window.location.href = '/wiki?doc=' + encodeURIComponent(this._dragNode.slug);
+        }
+        this._dragNode.fixed = false;
+        this._dragNode = null;
+        this._dragStartScreen = null;
+        this._dragMoved = false;
+      }
+      this._isPanning = false;
+      this._panStart = null;
+    });
+  }
+
+  _toWorld(sx, sy) {
+    return {
+      x: (sx - this._w / 2 - this.transform.x) / this.transform.scale,
+      y: (sy - this._h / 2 - this.transform.y) / this.transform.scale,
+    };
+  }
+
+  _hitTest(wx, wy) {
+    // Test in reverse so topmost (last drawn) nodes are hit first
+    for (let i = this.nodes.length - 1; i >= 0; i--) {
+      const n = this.nodes[i];
+      const r = 12; // generous hit radius
+      const dx = n.x - wx, dy = n.y - wy;
+      if (dx * dx + dy * dy <= r * r) return n;
+    }
+    return null;
+  }
+
+  // ── Force simulation ────────────────────────────────────────────────────
+  _simulate() {
+    if (this.alpha < 0.002) return;
+
+    const repulsion  = 2800;
+    const springLen  = 90;
+    const springK    = 0.06;
+    const centerF    = 0.018;
+    const damping    = 0.82;
+
+    // Repulsion between all pairs
+    for (let i = 0; i < this.nodes.length; i++) {
+      for (let j = i + 1; j < this.nodes.length; j++) {
+        const a = this.nodes[i], b = this.nodes[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const d2 = dx * dx + dy * dy || 0.001;
+        const d  = Math.sqrt(d2);
+        const f  = repulsion / d2;
+        const nx = dx / d, ny = dy / d;
+        a.vx -= f * nx;  a.vy -= f * ny;
+        b.vx += f * nx;  b.vy += f * ny;
+      }
+    }
+
+    // Spring attraction along edges
+    for (const e of this.edges) {
+      const { source: a, target: b } = e;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d  = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f  = (d - springLen) * springK;
+      const nx = dx / d, ny = dy / d;
+      a.vx += f * nx;  a.vy += f * ny;
+      b.vx -= f * nx;  b.vy -= f * ny;
+    }
+
+    // Gravity toward center + integrate
+    for (const n of this.nodes) {
+      if (n.fixed) continue;
+      n.vx += -n.x * centerF;
+      n.vy += -n.y * centerF;
+      n.vx *= damping;
+      n.vy *= damping;
+      n.x += n.vx * this.alpha;
+      n.y += n.vy * this.alpha;
+    }
+
+    this.alpha *= 0.995;
+  }
+
+  // ── Rendering ───────────────────────────────────────────────────────────
+  _draw() {
+    const { ctx } = this;
+    const w = this._w, h = this._h;
+    if (!w || !h) return;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w / 2 + this.transform.x, h / 2 + this.transform.y);
+    ctx.scale(this.transform.scale, this.transform.scale);
+
+    const inv = 1 / this.transform.scale;
+
+    // ── Edges ──────────────────────────────────────────────────────────────
+    for (const e of this.edges) {
+      const sel = (e.source.slug === this.selectedSlug || e.target.slug === this.selectedSlug);
+      const hov = (e.source === this.hoveredNode || e.target === this.hoveredNode);
+      ctx.beginPath();
+      ctx.moveTo(e.source.x, e.source.y);
+      ctx.lineTo(e.target.x, e.target.y);
+      if (sel) {
+        ctx.strokeStyle = 'rgba(0,74,198,0.45)';
+        ctx.lineWidth = 1.5 * inv;
+      } else if (hov) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+        ctx.lineWidth = 1.2 * inv;
+      } else {
+        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+        ctx.lineWidth = inv;
+      }
+      ctx.stroke();
+    }
+
+    // ── Nodes ──────────────────────────────────────────────────────────────
+    for (const n of this.nodes) {
+      const color   = this.sectionColor[n.section] || PALETTE[0];
+      const isSel   = n.slug === this.selectedSlug;
+      const isHov   = n === this.hoveredNode;
+      const r       = isSel ? 8 : (isHov ? 7 : 5.5);
+
+      // Glow ring for selected
+      if (isSel) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r + 5, 0, Math.PI * 2);
+        ctx.fillStyle = color + '28';
+        ctx.fill();
+      }
+
+      // Node fill
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = isSel ? color : (isHov ? color + 'cc' : color + '88');
+      ctx.fill();
+
+      // Node stroke
+      if (isSel || isHov) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = (isSel ? 2 : 1.5) * inv;
+        ctx.stroke();
+      }
+
+      // Label
+      if (this.showLabels && this.transform.scale > 0.35) {
+        const fontSize = Math.round(11 * inv);
+        const maxChars = 16;
+        const raw = n.label;
+        const label = raw.length > maxChars ? raw.slice(0, maxChars - 1) + '…' : raw;
+        ctx.font = `${isSel ? '600' : '400'} ${fontSize}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = isSel ? color : (isHov ? '#1f2937' : '#6b7280');
+        ctx.fillText(label, n.x, n.y + r + 3 * inv);
+        ctx.textBaseline = 'alphabetic';
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // ── Animation loop ──────────────────────────────────────────────────────
+  _animate() {
+    this._simulate();
+    this._draw();
+    requestAnimationFrame(() => this._animate());
+  }
+
+  // ── Public controls ─────────────────────────────────────────────────────
+  resetView() {
+    this.transform = { x: 0, y: 0, scale: 1 };
+    this.alpha = 0.6;
+  }
+
+  toggleLabels() {
+    this.showLabels = !this.showLabels;
+    const btn = document.getElementById('wiki-labels-btn');
+    if (btn) btn.style.opacity = this.showLabels ? '1' : '0.45';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Init graph
+// ═══════════════════════════════════════════════════════════════════════════
+const _wikiCanvas = document.getElementById('wiki-graph-canvas');
+const wikiGraph = new WikiGraph(_wikiCanvas, WIKI_DOCS, SELECTED_SLUG);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Render selected document (if any)
+// ═══════════════════════════════════════════════════════════════════════════
+if (SELECTED_CONTENT !== null) {
+  const body = document.getElementById('wiki-doc-body');
+  if (body) {
+    // Configure marked
+    marked.use({ breaks: false, gfm: true });
+
+    // Render markdown → HTML
+    body.innerHTML = marked.parse(SELECTED_CONTENT);
+
+    // Intercept internal wiki links (.md hrefs → /wiki?doc=slug)
+    const currentDir = SELECTED_SLUG
+      ? SELECTED_SLUG.split('/').slice(0, -1)
+      : [];
+
+    body.querySelectorAll('a[href]').forEach(a => {
+      const href = a.getAttribute('href');
+      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
+      if (!href.endsWith('.md') && !href.includes('.md#')) return;
+
+      // Resolve relative path to a slug
+      const hrefBase = href.split('#')[0];
+      const parts = [...currentDir];
+      hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
+        if (seg === '..') parts.pop();
+        else if (seg && seg !== '.') parts.push(seg);
+      });
+      a.href = '/wiki?doc=' + encodeURIComponent(parts.join('/'));
+    });
+
+    // Run syntax highlighting on code blocks
+    body.querySelectorAll('pre code').forEach(el => {
+      try { hljs.highlightElement(el); } catch (e) {}
+    });
+  }
+}
+</script>
+
+{% endif %}
+{% endblock %}
