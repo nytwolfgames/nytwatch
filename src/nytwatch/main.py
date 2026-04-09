@@ -47,6 +47,10 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     async def startup():
         ws_manager.set_loop(asyncio.get_event_loop())
 
+        # Start the doc cache file watcher
+        from nytwatch.pm.doc_cache import doc_cache
+        doc_cache.start()
+
         # Recover any .ndjson orphans left from a previous server run.
         if config.repo_path:
             try:
@@ -146,8 +150,10 @@ def create_app(config: AuditorConfig, config_path: Optional[Path] = None) -> Fas
     @app.on_event("shutdown")
     def shutdown():
         from nytwatch.scan_state import canceller
+        from nytwatch.pm.doc_cache import doc_cache
         if not canceller.is_cancelled:
             canceller.cancel()
+        doc_cache.stop()
         if hasattr(app.state, "scheduler"):
             app.state.scheduler.shutdown()
         if hasattr(app.state, "watcher"):

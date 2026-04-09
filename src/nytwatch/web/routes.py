@@ -2850,6 +2850,7 @@ def _design_path(request: Request) -> Optional[str]:
 @router.get("/docs", response_class=HTMLResponse)
 async def docs_page(request: Request, doc: Optional[str] = None):
     from nytwatch.pm.docs_parser import load_design_docs, doc_to_dict, _planning_root
+    from nytwatch.pm.doc_cache import doc_cache
 
     repo_path = _design_path(request)
 
@@ -2860,8 +2861,16 @@ async def docs_page(request: Request, doc: Optional[str] = None):
             "selected_doc": None,
         })
 
-    docs = load_design_docs(repo_path)
     planning = _planning_root(repo_path)
+    cache_key = str(planning) if planning else repo_path
+
+    if planning:
+        doc_cache.watch(str(planning))
+
+    docs = doc_cache.store.get_design(cache_key)
+    if docs is None:
+        docs = load_design_docs(repo_path)
+        doc_cache.store.set_design(cache_key, docs)
 
     selected = None
     if doc:
@@ -2880,7 +2889,9 @@ async def docs_page(request: Request, doc: Optional[str] = None):
 
 @router.get("/wiki", response_class=HTMLResponse)
 async def wiki_page(request: Request, doc: Optional[str] = None):
-    from nytwatch.pm.wiki_parser import load_wiki_docs, doc_to_dict
+    from nytwatch.pm.wiki_parser import load_wiki_docs, load_narrative_docs, doc_to_dict
+    from nytwatch.pm.docs_parser import load_design_docs, _planning_root, doc_to_dict as design_doc_to_dict
+    from nytwatch.pm.doc_cache import doc_cache
 
     wiki_path = _wiki_path(request)
 
@@ -2889,26 +2900,43 @@ async def wiki_page(request: Request, doc: Optional[str] = None):
             "wiki_path": None,
             "docs": [],
             "selected_doc": None,
+            "design_docs": [],
         })
 
-    from nytwatch.pm.wiki_parser import load_narrative_docs
-    from nytwatch.pm.docs_parser import load_design_docs, _planning_root, doc_to_dict as design_doc_to_dict
-
-    docs = load_wiki_docs(wiki_path)
-
-    # Merge narrative docs from planning/design/narrative/
     repo_path = getattr(get_config(request), "repo_path", "") or ""
     planning = _planning_root(repo_path) if repo_path else None
-    if planning is not None:
-        narrative_path = planning / "design" / "narrative"
-        docs = docs + load_narrative_docs(narrative_path)
+    cache_key = str(planning) if planning else str(wiki_path)
+
+    if planning:
+        doc_cache.watch(str(planning))
+
+    # ── Wiki docs ──────────────────────────────────────────────────────────
+    wiki_docs = doc_cache.store.get_wiki(cache_key)
+    if wiki_docs is None:
+        wiki_docs = load_wiki_docs(wiki_path)
+        doc_cache.store.set_wiki(cache_key, wiki_docs)
+
+    # ── Narrative docs ─────────────────────────────────────────────────────
+    narrative_docs = doc_cache.store.get_narrative(cache_key)
+    if narrative_docs is None:
+        narrative_docs = []
+        if planning is not None:
+            narrative_path = planning / "design" / "narrative"
+            narrative_docs = load_narrative_docs(narrative_path)
+        doc_cache.store.set_narrative(cache_key, narrative_docs)
+
+    docs = wiki_docs + narrative_docs
 
     selected = None
     if doc:
         selected = next((d for d in docs if d.slug == doc), None)
 
-    # Load design docs so wiki can linkify Source references → /docs
-    design_docs = load_design_docs(repo_path) if repo_path else []
+    # ── Design docs (for cross-linking wiki → /docs) ───────────────────────
+    design_docs = doc_cache.store.get_design(cache_key)
+    if design_docs is None:
+        design_docs = load_design_docs(repo_path) if repo_path else []
+        if repo_path:
+            doc_cache.store.set_design(cache_key, design_docs)
 
     return templates.TemplateResponse(request, "wiki.html", {
         "wiki_path": str(wiki_path),
