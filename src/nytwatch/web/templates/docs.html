@@ -543,6 +543,73 @@ if (SELECTED_CONTENT !== null) {
     marked.use({ breaks: false, gfm: true });
     body.innerHTML = marked.parse(SELECTED_CONTENT);
 
+    // Rewrite relative .md links → /docs?doc=<slug>
+    // SELECTED_SLUG e.g. "gdd/battle-system" — resolve relative to its directory
+    const currentDir = SELECTED_SLUG ? SELECTED_SLUG.split('/').slice(0, -1) : [];
+    body.querySelectorAll('a[href]').forEach(a => {
+      const href = a.getAttribute('href');
+      if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('//')) return;
+      if (!href.endsWith('.md') && !href.includes('.md#')) return;
+      const hrefBase = href.split('#')[0];
+      const parts = [...currentDir];
+      hrefBase.replace(/\.md$/, '').split('/').forEach(seg => {
+        if (seg === '..') parts.pop();
+        else if (seg && seg !== '.') parts.push(seg);
+      });
+      a.href = '/docs?doc=' + encodeURIComponent(parts.join('/'));
+    });
+
+    // Linkify any path-like *.md token in the document body that resolves to a known doc slug.
+    // Handles: "gdd/foo.md", "design/gdd/foo.md", "Docs/Plan/foo.md", etc.
+    const _slugSet = new Set(DOCS_DATA.map(d => d.slug.toLowerCase()));
+    function _resolveDocSlug(raw) {
+      // Strip .md extension
+      let s = raw.replace(/\.md$/, '');
+      // Strip leading "design/" prefix (docs_parser strips it when building slugs)
+      s = s.replace(/^design\//i, '');
+      // Find a case-insensitive match in the known slug set
+      const lower = s.toLowerCase();
+      if (_slugSet.has(lower)) {
+        // Return the canonical-cased slug
+        return DOCS_DATA.find(d => d.slug.toLowerCase() === lower)?.slug || null;
+      }
+      return null;
+    }
+
+    // Match any token that looks like a path ending in .md (contains at least one /)
+    const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
+
+    function _linkifyMdTokens(paraEl) {
+      const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) textNodes.push(node);
+      textNodes.forEach(tn => {
+        const text = tn.nodeValue;
+        if (!_mdTokenRe.test(text)) { _mdTokenRe.lastIndex = 0; return; }
+        _mdTokenRe.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let last = 0, m;
+        while ((m = _mdTokenRe.exec(text)) !== null) {
+          const slug = _resolveDocSlug(m[1]);
+          if (!slug) continue; // not a known doc — leave as plain text
+          if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+          const a = document.createElement('a');
+          a.href = '/docs?doc=' + encodeURIComponent(slug);
+          a.textContent = m[1];
+          a.title = 'Open in Docs';
+          frag.appendChild(a);
+          last = _mdTokenRe.lastIndex;
+        }
+        if (!frag.childNodes.length) return; // nothing was linked
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        tn.parentNode.replaceChild(frag, tn);
+      });
+    }
+
+    // Apply to every paragraph in the document body
+    body.querySelectorAll('p, li').forEach(_linkifyMdTokens);
+
     // Highlight code blocks
     body.querySelectorAll('pre code').forEach(el => {
       try { hljs.highlightElement(el); } catch (e) {}

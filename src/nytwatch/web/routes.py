@@ -2897,8 +2897,14 @@ async def wiki_page(request: Request, doc: Optional[str] = None):
     if doc:
         selected = next((d for d in docs if d.slug == doc), None)
 
+    # Load design docs so wiki can linkify Source references → /docs
+    from nytwatch.pm.docs_parser import load_design_docs, doc_to_dict as design_doc_to_dict
+    repo_path = getattr(get_config(request), "repo_path", "") or ""
+    design_docs = load_design_docs(repo_path) if repo_path else []
+
     return templates.TemplateResponse(request, "wiki.html", {
         "wiki_path": str(wiki_path),
         "docs": [doc_to_dict(d) for d in docs],
         "selected_doc": doc_to_dict(selected) if selected else None,
+        "design_docs": [design_doc_to_dict(d) for d in design_docs],
     })

@@ -304,6 +304,7 @@ body { overflow: hidden; }
 <script>
 const WIKI_DOCS = {{ docs | tojson }};
 const SELECTED_SLUG = {{ (selected_doc.slug if selected_doc else None) | tojson }};
+const DESIGN_DOCS = {{ design_docs | tojson }};
 {% if selected_doc %}
 const SELECTED_CONTENT = {{ selected_doc.raw_content | tojson }};
 {% else %}
@@ -717,44 +718,43 @@ if (SELECTED_CONTENT !== null) {
       a.href = '/wiki?doc=' + encodeURIComponent(parts.join('/'));
     });
 
-    // Linkify "Source:" entries in blockquotes → /docs?doc=<slug>
-    // Pattern: > **Source**: gdd/foo.md, docs/bar.md, Source/...
-    body.querySelectorAll('blockquote').forEach(bq => {
-      // Find whichever <strong> says "Source" (may not be the first one)
-      const sourceStrong = Array.from(bq.querySelectorAll('strong'))
-        .find(el => /^source$/i.test(el.textContent.trim()));
-      if (!sourceStrong) return;
-
-      // Only walk text nodes that are siblings/children of the same <p> as the Source strong
-      const sourcePara = sourceStrong.closest('p') || bq;
-      const walker = document.createTreeWalker(sourcePara, NodeFilter.SHOW_TEXT);
+    // Linkify any *.md path token that resolves to a known design doc → /docs?doc=<slug>
+    const _slugSet = new Set(DESIGN_DOCS.map(d => d.slug.toLowerCase()));
+    function _resolveDocSlug(raw) {
+      let s = raw.replace(/\.md$/, '').replace(/^design\//i, '');
+      const lower = s.toLowerCase();
+      if (_slugSet.has(lower)) return DESIGN_DOCS.find(d => d.slug.toLowerCase() === lower)?.slug || null;
+      return null;
+    }
+    const _mdTokenRe = /\b((?:[\w.+-]+\/)+[\w.+-]+\.md)/g;
+    function _linkifyMdTokens(paraEl) {
+      const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
       const textNodes = [];
-      let node;
-      while ((node = walker.nextNode())) textNodes.push(node);
-
+      let n;
+      while ((n = walker.nextNode())) textNodes.push(n);
       textNodes.forEach(tn => {
-        // Match tokens like "gdd/foo.md" or "docs/subdir/bar.md"
-        const re = /\b((?:gdd|docs)\/[^\s,]+\.md)/g;
         const text = tn.nodeValue;
-        if (!re.test(text)) return;
-        re.lastIndex = 0;
-
+        if (!_mdTokenRe.test(text)) { _mdTokenRe.lastIndex = 0; return; }
+        _mdTokenRe.lastIndex = 0;
         const frag = document.createDocumentFragment();
         let last = 0, m;
-        while ((m = re.exec(text)) !== null) {
+        while ((m = _mdTokenRe.exec(text)) !== null) {
+          const slug = _resolveDocSlug(m[1]);
+          if (!slug) continue;
           if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-          const slug = m[1].replace(/\.md$/, '');
           const a = document.createElement('a');
           a.href = '/docs?doc=' + encodeURIComponent(slug);
           a.textContent = m[1];
           a.title = 'Open in Docs';
           frag.appendChild(a);
-          last = re.lastIndex;
+          last = _mdTokenRe.lastIndex;
         }
+        if (!frag.childNodes.length) return;
         if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
         tn.parentNode.replaceChild(frag, tn);
       });
-    });
+    }
+    body.querySelectorAll('p, li').forEach(_linkifyMdTokens);
 
     // Run syntax highlighting on code blocks
     body.querySelectorAll('pre code').forEach(el => {
