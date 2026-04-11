@@ -66,5 +66,7 @@ These files apply to every task — read them proactively:
 - `planning/production/wiki/known-gotchas.md` — traps, risks, hardcoded values
 
 **Wiki is queued automatically**: The Stop hook writes a pending update at session end.
-Run `/wiki-update` to apply the queued changes after any significant session.
-Run `/wiki-init` to rebuild the wiki from scratch if it becomes stale.
+Run `/code-wiki-update` to apply queued code wiki changes after any significant session.
+Run `/code-wiki-init` to rebuild the code wiki from scratch if it becomes stale.
+Run `/narrative-wiki-update` to apply answered lore questions to the narrative wiki.
+Run `/narrative-wiki-init` to rebuild the narrative wiki from scratch.

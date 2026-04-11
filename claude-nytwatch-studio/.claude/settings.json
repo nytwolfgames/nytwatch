@@ -79,6 +79,11 @@
             "type": "command",
             "command": "bash .claude/hooks/validate-skill-change.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/queue-code-audit.sh",
+            "timeout": 5
           }
         ]
       }
