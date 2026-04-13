@@ -2513,7 +2513,10 @@ def _pm_studio_path(request: Request) -> Optional[Path]:
     if not config or not getattr(config, "repo_path", ""):
         return None
     from nytwatch.pm.parser import find_studio_path
-    return find_studio_path(config.repo_path)
+    
+    studio_path = find_studio_path(config.repo_path)
+    logger.info("Studio path %s", studio_path)
+    return studio_path
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
