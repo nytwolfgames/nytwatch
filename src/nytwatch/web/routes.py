@@ -2815,7 +2815,7 @@ def _wiki_path(request: Request) -> Optional[Path]:
 
     Tries (in order):
       1. <studio>/production/wiki/   — consistent with the existing PM layout
-      2. <repo_root>/planning/wiki/  — simple flat layout for new projects
+      2. <repo_root>/planning/production/wiki/  — simple flat layout for new projects
     """
     config = get_config(request)
     if not config or not getattr(config, "repo_path", ""):
@@ -2828,7 +2828,7 @@ def _wiki_path(request: Request) -> Optional[Path]:
             return p
 
     repo = Path(config.repo_path)
-    p2 = repo / "planning" / "wiki"
+    p2 = repo / "planning" / "production" / "wiki"
     if p2.exists():
         return p2
 
@@ -2931,7 +2931,7 @@ async def wiki_page(request: Request, doc: Optional[str] = None):
     if narrative_docs is None:
         narrative_docs = []
         if planning is not None:
-            narrative_path = planning / "design" / "narrative"
+            narrative_path = planning / "design" / "narrative" / "wiki"
             narrative_docs = load_narrative_docs(narrative_path)
         doc_cache.store.set_narrative(cache_key, narrative_docs)
 
