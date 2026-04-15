@@ -416,7 +416,12 @@ class WikiGraph {
     this.ctx = canvasEl.getContext('2d');
     this.selectedSlug = selectedSlug;
     this.showLabels = true;
-    this.hoveredNode = null;
+    this.hoveredNode      = null;
+    this._hovNeighbors   = null;   // Set<slug> connected to hovered node
+    this._hovEdges       = null;   // Set<edge> touching hovered node
+    this._lastHovNeighbors = null; // persists during fade-out so lerp can finish
+    this._lastHovEdges     = null;
+    this._hoverT         = 0;      // 0 = no hover, 1 = full hover (lerped each frame)
     this._w = 0;
     this._h = 0;
     this.alpha = 0.8;   // simulation cooling factor
@@ -472,6 +477,7 @@ class WikiGraph {
           vy: 0,
           fixed: false,
           selected: d.slug === selectedSlug,
+          _dimT: 0,    // 0 = fully bright, 1 = fully dimmed (lerped each frame)
         };
       });
     };
@@ -718,6 +724,15 @@ class WikiGraph {
     return this.hiddenKeys.has(colorKey);
   }
 
+  // Parse a 6-digit hex color → {r, g, b} (integers 0-255)
+  _hexToRgb(hex) {
+    return {
+      r: parseInt(hex.slice(1, 3), 16),
+      g: parseInt(hex.slice(3, 5), 16),
+      b: parseInt(hex.slice(5, 7), 16),
+    };
+  }
+
   // ── Resize handling ─────────────────────────────────────────────────────
   _setupResize() {
     const resize = () => {
@@ -788,6 +803,21 @@ class WikiGraph {
           const pos = this._toWorld(ox, oy);
           const hit = this._hitTest(pos.x, pos.y);
           this.hoveredNode = hit || null;
+          // Precompute neighbour slugs so _draw doesn't recompute each frame
+          if (hit) {
+            this._hovNeighbors = new Set();
+            this._hovEdges     = new Set();
+            for (const e of this.edges) {
+              if (e.source === hit || e.target === hit) {
+                this._hovNeighbors.add(e.source.slug);
+                this._hovNeighbors.add(e.target.slug);
+                this._hovEdges.add(e);
+              }
+            }
+          } else {
+            this._hovNeighbors = null;
+            this._hovEdges     = null;
+          }
           c.style.cursor = hit ? 'pointer' : 'default';
         }
       }
@@ -906,51 +936,54 @@ class WikiGraph {
 
     const inv = 1 / this.transform.scale;
 
-    // ── Edges ──────────────────────────────────────────────────────────────
-    // Clip each edge to start/end at the node circumference (not the centre)
-    // so lines never pass through the node circle.
-    for (const e of this.edges) {
-      if (this._isNodeHidden(e.source.colorKey) || this._isNodeHidden(e.target.colorKey)) continue;
-      const sel = (e.source.slug === this.selectedSlug || e.target.slug === this.selectedSlug);
-      const hov = (e.source === this.hoveredNode || e.target === this.hoveredNode);
+    // ── Hover lerp state ─────────────────────────────────────────────────────
+    // _hoverT smoothly interpolates 0 → 1 when hovering starts and back to 0
+    // when it ends.  Per-node _dimT does the same for individual dim strength.
+    // We keep _lastHovNeighbors/_lastHovEdges alive until the fade-out finishes
+    // so the coloring stays consistent during the exit transition.
+    const LERP       = 0.13;
+    const isHovering = !!this.hoveredNode;
+    this._hoverT     = this._hoverT + ((isHovering ? 1 : 0) - this._hoverT) * LERP;
+    const ht         = this._hoverT;
 
-      const dx = e.target.x - e.source.x;
-      const dy = e.target.y - e.source.y;
-      const d  = Math.sqrt(dx * dx + dy * dy) || 1;
-      const nx = dx / d, ny = dy / d;
-      const srcR = Math.max(3, Math.min(9, 3 + (e.source.degree || 0) * 0.5));
-      const tgtR = Math.max(3, Math.min(9, 3 + (e.target.degree || 0) * 0.5));
+    if (this._hovNeighbors) {
+      this._lastHovNeighbors = this._hovNeighbors;
+      this._lastHovEdges     = this._hovEdges;
+    }
+    const activeNeighbors = this._lastHovNeighbors;  // Set<slug> or null
+    const activeEdges     = this._lastHovEdges;      // Set<edge> or null
 
-      // Only draw if the nodes aren't overlapping
-      if (d <= srcR + tgtR) continue;
-
-      ctx.beginPath();
-      ctx.moveTo(e.source.x + nx * srcR, e.source.y + ny * srcR);
-      ctx.lineTo(e.target.x - nx * tgtR, e.target.y - ny * tgtR);
-      if (sel) {
-        ctx.strokeStyle = 'rgba(0,74,198,0.45)';
-        ctx.lineWidth = 1.5 * inv;
-      } else if (hov) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-        ctx.lineWidth = 1.2 * inv;
-      } else {
-        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-        ctx.lineWidth = inv;
-      }
-      ctx.stroke();
+    // Per-node dim factor — targets `ht` (not 1) so it tracks the global hover
+    // strength in both directions: fades in with ht and back out with ht.
+    for (const n of this.nodes) {
+      const isDimNode = activeNeighbors && !activeNeighbors.has(n.slug);
+      n._dimT += ((isDimNode ? ht : 0) - n._dimT) * LERP;
     }
 
-    // ── Nodes ──────────────────────────────────────────────────────────────
-    for (const n of this.nodes) {
-      if (this._isNodeHidden(n.colorKey)) continue;
-      const color   = this.sectionColor[n.colorKey] || '#4b6fa8';
-      const isSel   = n.slug === this.selectedSlug;
-      const isHov   = n === this.hoveredNode;
-      // Radius scales with connection count: 3px (isolated) → 9px (highly connected)
-      const baseR   = Math.max(3, Math.min(9, 3 + (n.degree || 0) * 0.5));
-      const r       = isSel ? Math.max(baseR + 2, 7) : (isHov ? Math.max(baseR + 1, 5) : baseR);
+    // ── Helper: draw one node ────────────────────────────────────────────────
+    const drawNode = (n) => {
+      if (this._isNodeHidden(n.colorKey)) return;
+      const color      = this.sectionColor[n.colorKey] || '#4b6fa8';
+      const isSel      = n.slug === this.selectedSlug;
+      const isHov      = n === this.hoveredNode;
+      const isNeighbor = ht > 0.01 && !isHov && activeNeighbors && activeNeighbors.has(n.slug);
+      const t          = n._dimT;   // 0 = bright, 1 = dimmed
 
-      // Glow ring for selected
+      const baseR = Math.max(3, Math.min(9, 3 + (n.degree || 0) * 0.5));
+      // Size never changes on hover — only selected nodes get a size boost
+      const r = isSel ? Math.max(baseR + 2, 7) : baseR;
+
+      // Subtle glow ring (hovered node only)
+      if (isHov && ht > 0.01) {
+        ctx.globalAlpha = ht * 0.6;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r + 5, 0, Math.PI * 2);
+        ctx.fillStyle = color + '30';
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      // Selected glow ring
       if (isSel) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, r + 5, 0, Math.PI * 2);
@@ -958,31 +991,120 @@ class WikiGraph {
         ctx.fill();
       }
 
-      // Node fill
+      // Opaque white base (blocks crossing edges underneath)
       ctx.beginPath();
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = isSel ? color : (isHov ? color + 'cc' : color + '88');
+      ctx.fillStyle = '#ffffff';
       ctx.fill();
 
-      // Node stroke
-      if (isSel || isHov) {
+      // Colored fill — interpolate between normal and dimmed using _dimT
+      const { r: cr, g: cg, b: cb } = this._hexToRgb(color);
+      let fillAlpha, fr, fg, fb;
+      if (isHov) {
+        // Slightly boosted from normal — not fully saturated
+        [fr, fg, fb, fillAlpha] = [cr, cg, cb, 0.78];
+      } else if (isSel) {
+        [fr, fg, fb, fillAlpha] = [cr, cg, cb, 1];
+      } else if (isNeighbor) {
+        // Modest lift from normal (0.53 → 0.68)
+        const na = 0.53 + (0.68 - 0.53) * ht;
+        [fr, fg, fb, fillAlpha] = [cr, cg, cb, na];
+      } else {
+        // Normal (0.53 alpha) → dimmed (0.38 alpha, slight grey shift)
+        fr = Math.round(cr + (185 - cr) * t);
+        fg = Math.round(cg + (185 - cg) * t);
+        fb = Math.round(cb + (185 - cb) * t);
+        fillAlpha = 0.53 + (0.38 - 0.53) * t;
+      }
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${fr},${fg},${fb},${fillAlpha.toFixed(2)})`;
+      ctx.fill();
+
+      // Stroke — selected only; no border on hover or neighbour highlight
+      if (isSel) {
         ctx.strokeStyle = color;
-        ctx.lineWidth = (isSel ? 2 : 1.5) * inv;
+        ctx.lineWidth   = 2 * inv;
         ctx.stroke();
       }
 
-      // Individual labels — only when zoomed in enough
+      // Label
       if (this.showLabels && this.transform.scale > 0.80) {
         const fontSize = Math.round(11 * inv);
-        const maxChars = 16;
-        const raw = n.label;
-        const label = raw.length > maxChars ? raw.slice(0, maxChars - 1) + '…' : raw;
-        ctx.font = `${isSel ? '600' : '400'} ${fontSize}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
+        const raw      = n.label;
+        const label    = raw.length > 16 ? raw.slice(0, 15) + '…' : raw;
+        ctx.font         = `${(isHov || isSel) ? '600' : '400'} ${fontSize}px system-ui, sans-serif`;
+        ctx.textAlign    = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillStyle = isSel ? color : (isHov ? '#1f2937' : '#6b7280');
+        const labelAlpha = isHov ? 1
+                         : isSel ? 1
+                         : isNeighbor ? (0.45 + 0.55 * ht)
+                         : (1 - t * 0.75);
+        ctx.globalAlpha  = labelAlpha;
+        ctx.fillStyle    = (isHov || isSel) ? color
+                         : isNeighbor       ? '#1f2937'
+                         :                    '#6b7280';
         ctx.fillText(label, n.x, n.y + r + 3 * inv);
         ctx.textBaseline = 'alphabetic';
+        ctx.globalAlpha  = 1;
+      }
+    };
+
+    // ── Helper: draw one edge (clipped to node circumferences) ───────────────
+    const drawEdge = (e, styleOverride) => {
+      if (this._isNodeHidden(e.source.colorKey) || this._isNodeHidden(e.target.colorKey)) return;
+      const dx   = e.target.x - e.source.x;
+      const dy   = e.target.y - e.source.y;
+      const d    = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx   = dx / d, ny = dy / d;
+      const srcR = Math.max(3, Math.min(9, 3 + (e.source.degree || 0) * 0.5));
+      const tgtR = Math.max(3, Math.min(9, 3 + (e.target.degree || 0) * 0.5));
+      if (d <= srcR + tgtR) return;
+      ctx.beginPath();
+      ctx.moveTo(e.source.x + nx * srcR, e.source.y + ny * srcR);
+      ctx.lineTo(e.target.x - nx * tgtR, e.target.y - ny * tgtR);
+      styleOverride();
+      ctx.stroke();
+    };
+
+    // ── PASS 1 — background (non-highlighted) edges ──────────────────────────
+    for (const e of this.edges) {
+      const sel        = e.source.slug === this.selectedSlug || e.target.slug === this.selectedSlug;
+      const isHovEdge  = ht > 0.01 && activeEdges && activeEdges.has(e);
+      if (isHovEdge) continue;   // drawn in pass 3
+      drawEdge(e, () => {
+        if (sel) {
+          ctx.strokeStyle = `rgba(0,74,198,${0.45 - 0.38 * ht})`;
+          ctx.lineWidth   = (1.5 - 0.5 * ht) * inv;
+        } else {
+          ctx.strokeStyle = `rgba(0,0,0,${0.10 - 0.07 * ht})`;
+          ctx.lineWidth   = inv;
+        }
+      });
+    }
+
+    // ── PASS 2 — all nodes (dimmed ones rendered here, active ones re-drawn later) ──
+    for (const n of this.nodes) drawNode(n);
+
+    // ── PASS 3 — highlighted edges ON TOP of dimmed nodes ────────────────────
+    if (ht > 0.01 && activeEdges) {
+      const hovColor = this.hoveredNode
+        ? (this.sectionColor[this.hoveredNode.colorKey] || '#4b6fa8')
+        : (this._lastHovNeighbors ? '#4b6fa8' : '#4b6fa8');
+      const { r: hr, g: hg, b: hb } = this._hexToRgb(hovColor);
+      for (const e of activeEdges) {
+        drawEdge(e, () => {
+          ctx.strokeStyle = `rgba(${hr},${hg},${hb},${(0.20 + 0.45 * ht).toFixed(2)})`;
+          ctx.lineWidth   = (0.8 + 0.5 * ht) * inv;
+        });
+      }
+    }
+
+    // ── PASS 4 — active nodes (hovered + neighbours) re-drawn on top of edges ─
+    if (ht > 0.01 && activeNeighbors) {
+      for (const n of this.nodes) {
+        if (!activeNeighbors.has(n.slug)) continue;
+        drawNode(n);
       }
     }
 
