@@ -544,25 +544,42 @@ def remove_task_from_sprint(studio_path: Path, sprint_n: int, task_id: str,
 
 
 def update_task_in_sprint(studio_path: Path, sprint_n: int, task: dict,
-                           old_name: str = "") -> bool:
+                           old_name: str = "", old_id: str = "") -> bool:
     """
     Update a task in the sprint markdown file.
-    - Checklist format: updates [{status}] marker and task name (if changed).
+
+    - Checklist / full update (sub_tasks present in task dict):
+        Removes the task from its current position then re-inserts it in the
+        correct P-section.  This correctly handles all editable fields:
+        ID renames (pass old_id), priority changes (section moves), status,
+        name, and sub-task list changes.
+    - Checklist / status-only (no sub_tasks key):
+        Lightweight in-place marker update — used by Kanban drag-and-drop so
+        that sub_tasks already in the file are not disturbed.
     - Table format: replaces the full row.
     """
     p = _sprint_path(studio_path, sprint_n)
     if not p.exists():
         return False
     content = p.read_text(encoding='utf-8')
-    task_id   = task['id']
-    task_name = task.get('name', '')
+    task_id    = task['id']
+    task_name  = task.get('name', '')
     new_status = task.get('status', 'backlog')
 
     if _is_checklist(content):
-        # Full block replace when sub_tasks are explicitly provided
         if 'sub_tasks' in task:
-            return _replace_task_block(studio_path, sprint_n, task, old_name)
-        # Otherwise do lightweight field-by-field updates
+            # Full update: remove from wherever the task currently lives, then
+            # re-add into the P-section that matches the (possibly new) priority.
+            # old_id handles ID renames; old_name handles name-only lookups.
+            lookup_id   = old_id or task_id
+            lookup_name = old_name or task_name
+            removed = remove_task_from_sprint(studio_path, sprint_n, lookup_id, lookup_name)
+            if not removed:
+                return False
+            return add_task_to_sprint(studio_path, sprint_n, task)
+
+        # Status-only lightweight update (Kanban drag — no sub_tasks payload).
+        # Only touches the [marker]; leaves sub-task lines untouched.
         changed = False
         if set_task_status_in_sprint(studio_path, sprint_n, task_id,
                                       old_name or task_name, new_status):
@@ -576,7 +593,7 @@ def update_task_in_sprint(studio_path: Path, sprint_n: int, task: dict,
         # Table format: replace the full row
         new_row = _make_row(task)
         new_content = re.sub(
-            rf'^\|\s*{re.escape(task_id)}\s*\|[^\n]*',
+            rf'^\|\s*{re.escape(old_id or task_id)}\s*\|[^\n]*',
             new_row,
             content, flags=re.MULTILINE, count=1,
         )
@@ -591,9 +608,14 @@ def move_task_between_sprints(
     task: dict,
     from_sprint: int,
     to_sprint: int,
+    old_id: str = "",
 ) -> bool:
-    """Remove task from source sprint file and add to destination sprint file."""
-    remove_task_from_sprint(studio_path, from_sprint, task['id'], task.get('name', ''))
+    """Remove task from source sprint file and add to destination sprint file.
+
+    Pass old_id when the task ID is being renamed simultaneously with the move,
+    so the removal lookup uses the ID that is actually present in the file.
+    """
+    remove_task_from_sprint(studio_path, from_sprint, old_id or task['id'], task.get('name', ''))
     task_copy = dict(task, sprint=to_sprint)
     add_task_to_sprint(studio_path, to_sprint, task_copy)
     return True

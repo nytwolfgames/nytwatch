@@ -2682,8 +2682,9 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
     move_to = body.get("move_to_sprint")
 
     if move_to is not None and int(move_to) != sprint_n:
+        new_id = body.get("id", task_id)
         task = {
-            "id":                  task_id,
+            "id":                  new_id,
             "name":                body.get("name", ""),
             "owner":               body.get("owner", ""),
             "estimate_days":       body.get("estimate_days", 0),
@@ -2694,7 +2695,10 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
             "status":              body.get("status", "backlog"),
             "sprint":              sprint_n,
         }
-        move_task_between_sprints(studio, task, sprint_n, int(move_to))
+        move_task_between_sprints(
+            studio, task, sprint_n, int(move_to),
+            old_id=task_id if new_id != task_id else "",
+        )
         return JSONResponse({"ok": True, "moved_to": move_to})
 
     # Status-only update (e.g. drag between Kanban columns)
@@ -2710,8 +2714,9 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
 
     # Full task update
     old_name = body.get("old_name", "")
+    new_id   = body.get("id", task_id)   # allow renaming the task ID
     task = {
-        "id":                  task_id,
+        "id":                  new_id,
         "name":                body.get("name", ""),
         "owner":               body.get("owner", ""),
         "estimate_days":       body.get("estimate_days", 0),
@@ -2725,7 +2730,11 @@ async def api_pm_update_task(request: Request, sprint_n: int, task_id: str):
         "completed":           body.get("completed", ""),
         "file":                body.get("file", ""),
     }
-    update_task_in_sprint(studio, sprint_n, task, old_name=old_name)
+    update_task_in_sprint(
+        studio, sprint_n, task,
+        old_name=old_name,
+        old_id=task_id if new_id != task_id else "",
+    )
     return JSONResponse({"ok": True})
 
 
