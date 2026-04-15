@@ -521,10 +521,15 @@ def remove_task_from_sprint(studio_path: Path, sprint_n: int, task_id: str,
 
     if _is_checklist(content):
         lines = content.splitlines(keepends=True)
-        idx = _find_task_line_index([l.rstrip('\n') for l in lines], task_id, task_name)
+        flat = [l.rstrip('\n') for l in lines]
+        idx = _find_task_line_index(flat, task_id, task_name)
         if idx == -1:
             return False
-        del lines[idx]
+        # Remove the task line AND all immediately-following indented sub-task lines
+        end = idx + 1
+        while end < len(lines) and flat[end].startswith('  '):
+            end += 1
+        del lines[idx:end]
         p.write_text(''.join(lines), encoding='utf-8')
         return True
     else:
