@@ -413,14 +413,44 @@ const _NAR_COLORS = [
   '#4d7c0f', // lime-700
 ];
 
+// Convert HSL → 6-digit hex (used for overflow color generation below).
+function _hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+// Assign colors to `count` keys.
+// First: use the curated array in order (guaranteed unique, on-brand).
+// Overflow: generate additional unique hues within the same band using the
+// golden angle so no two generated colors are perceptually close.
+function _assignColors(count, curated, hueBase, hueSpan) {
+  const colors = [];
+  const generated = [];  // track generated hues to avoid curated collisions
+  for (let i = 0; i < count; i++) {
+    if (i < curated.length) {
+      colors.push(curated[i]);
+    } else {
+      // Golden-angle step within the band, offset past the curated range
+      const step  = i - curated.length;
+      const hue   = (hueBase + (step * 137.508) % hueSpan) % 360;
+      colors.push(_hslToHex(hue, 68, 38));
+    }
+  }
+  return colors;
+}
+
 function _genPalette(sourceCount, narrativeCount) {
-  const out = {};
-  for (let i = 0; i < sourceCount; i++) {
-    out[`src:${i}`] = _SRC_COLORS[i % _SRC_COLORS.length];
-  }
-  for (let i = 0; i < narrativeCount; i++) {
-    out[`nar:${i}`] = _NAR_COLORS[i % _NAR_COLORS.length];
-  }
+  const out     = {};
+  const srcList = _assignColors(sourceCount,    _SRC_COLORS, 185, 140);
+  const narList = _assignColors(narrativeCount, _NAR_COLORS,   2, 155);
+  srcList.forEach((c, i) => { out[`src:${i}`] = c; });
+  narList.forEach((c, i) => { out[`nar:${i}`] = c; });
   return out;
 }
 
