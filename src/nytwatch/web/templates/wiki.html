@@ -374,38 +374,52 @@ window._wikiPath = {{ wiki_path | tojson }};
 //  Wiki Graph — Force-Directed Canvas Renderer
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Convert HSL to a 6-digit hex string so callers can safely append hex-alpha suffixes.
-function _hslToHex(h, s, l) {
-  s /= 100; l /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = n => {
-    const k = (n + h / 30) % 12;
-    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * c).toString(16).padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
+// Curated palettes drawn from the app's design vocabulary (Tailwind 600–700).
+// Rich enough to read clearly at 53% alpha on the light (#f2f4f6) canvas.
+// Source → cool family (blues / cyans / teals / indigos / greens).
+// Narrative → warm/mixed family (ambers / reds / oranges / pinks / limes).
+// Two distinct families so the two main clusters are always visually separate.
 
-// Generate distinct hex colors for source and narrative key sets.
-// Source keys → cool band (blues/cyans/greens/violets: 185°–325°).
-// Narrative keys → warm band (reds/oranges/yellows/limes: 2°–157°).
-// Keeping the two bands separate ensures the two main clusters always have
-// visually distinct color families regardless of how many keys there are.
+const _SRC_COLORS = [
+  '#2563eb', // blue-600
+  '#0891b2', // cyan-600
+  '#4f46e5', // indigo-600
+  '#0d9488', // teal-600
+  '#0369a1', // sky-700
+  '#7c3aed', // violet-700
+  '#059669', // emerald-600
+  '#1d4ed8', // blue-700
+  '#0e7490', // cyan-700
+  '#4338ca', // indigo-700
+  '#0f766e', // teal-700
+  '#6d28d9', // purple-700
+];
+
+const _NAR_COLORS = [
+  '#d97706', // amber-600
+  '#dc2626', // red-600
+  '#ea580c', // orange-600
+  '#db2777', // pink-600
+  '#9333ea', // purple-600
+  '#65a30d', // lime-600
+  '#e11d48', // rose-600
+  '#ca8a04', // yellow-600
+  '#c026d3', // fuchsia-600
+  '#b45309', // amber-700
+  '#b91c1c', // red-700
+  '#c2410c', // orange-700
+  '#be185d', // pink-700
+  '#7e22ce', // purple-800
+  '#4d7c0f', // lime-700
+];
+
 function _genPalette(sourceCount, narrativeCount) {
   const out = {};
-  const SRC_BASE = 185, SRC_SPAN = 140;
   for (let i = 0; i < sourceCount; i++) {
-    const h = (SRC_BASE + (i / Math.max(sourceCount, 1)) * SRC_SPAN) % 360;
-    const s = 62 + (i % 2) * 10;
-    const l = 41 + (i % 3) * 6;
-    out[`src:${i}`] = _hslToHex(h, s, l);
+    out[`src:${i}`] = _SRC_COLORS[i % _SRC_COLORS.length];
   }
-  const NAR_BASE = 2, NAR_SPAN = 155;
   for (let i = 0; i < narrativeCount; i++) {
-    const h = (NAR_BASE + (i / Math.max(narrativeCount, 1)) * NAR_SPAN) % 360;
-    const s = 60 + (i % 2) * 10;
-    const l = 40 + (i % 3) * 6;
-    out[`nar:${i}`] = _hslToHex(h, s, l);
+    out[`nar:${i}`] = _NAR_COLORS[i % _NAR_COLORS.length];
   }
   return out;
 }
