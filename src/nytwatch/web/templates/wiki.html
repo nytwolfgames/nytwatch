@@ -416,12 +416,13 @@ class WikiGraph {
     this.ctx = canvasEl.getContext('2d');
     this.selectedSlug = selectedSlug;
     this.showLabels = true;
-    this.hoveredNode      = null;
-    this._hovNeighbors   = null;   // Set<slug> connected to hovered node
-    this._hovEdges       = null;   // Set<edge> touching hovered node
-    this._lastHovNeighbors = null; // persists during fade-out so lerp can finish
+    this.hoveredNode       = null;
+    this._hovNeighbors    = null;   // Set<slug> connected to hovered node
+    this._hovEdges        = null;   // Set<edge> touching hovered node
+    this._lastHovNeighbors = null;  // persists during fade-out so lerp can finish
     this._lastHovEdges     = null;
-    this._hoverT         = 0;      // 0 = no hover, 1 = full hover (lerped each frame)
+    this._lastHoveredNode  = null;  // previous frame's hovered node (for switch detection)
+    this._hoverT           = 0;     // 0 = no hover, 1 = full hover (lerped each frame)
     this._w = 0;
     this._h = 0;
     this.alpha = 0.8;   // simulation cooling factor
@@ -937,19 +938,32 @@ class WikiGraph {
     const inv = 1 / this.transform.scale;
 
     // ── Hover lerp state ─────────────────────────────────────────────────────
-    // _hoverT smoothly interpolates 0 → 1 when hovering starts and back to 0
-    // when it ends.  Per-node _dimT does the same for individual dim strength.
-    // We keep _lastHovNeighbors/_lastHovEdges alive until the fade-out finishes
-    // so the coloring stays consistent during the exit transition.
+    // _hoverT smoothly interpolates 0→1 when hovering starts, back to 0 when
+    // it ends.  On a direct node-to-node switch we reset _hoverT to 0 so the
+    // old highlight fades out before the new one fades in.
+    // _lastHovNeighbors is only latched when _hoverT is near 0, ensuring the
+    // new node's data doesn't replace the old mid-transition.
     const LERP       = 0.13;
     const isHovering = !!this.hoveredNode;
-    this._hoverT     = this._hoverT + ((isHovering ? 1 : 0) - this._hoverT) * LERP;
-    const ht         = this._hoverT;
 
-    if (this._hovNeighbors) {
-      this._lastHovNeighbors = this._hovNeighbors;
-      this._lastHovEdges     = this._hovEdges;
+    // Detect hover target change and latch neighbour data immediately.
+    // On a direct node→node switch also reset _hoverT so the old highlight
+    // fades out before the new one fades in.
+    // We never clear _lastHov* when leaving a node (to null) so the fade-out
+    // continues to use the correct outgoing data.
+    if (this.hoveredNode !== this._lastHoveredNode) {
+      if (this.hoveredNode) {
+        // Always restart fade-in when landing on any node, regardless of
+        // whether we came from another node or from empty space.
+        this._hoverT = 0;
+        this._lastHovNeighbors = this._hovNeighbors;
+        this._lastHovEdges     = this._hovEdges;
+      }
+      this._lastHoveredNode = this.hoveredNode;
     }
+
+    this._hoverT = this._hoverT + ((isHovering ? 1 : 0) - this._hoverT) * LERP;
+    const ht     = this._hoverT;
     const activeNeighbors = this._lastHovNeighbors;  // Set<slug> or null
     const activeEdges     = this._lastHovEdges;      // Set<edge> or null
 
